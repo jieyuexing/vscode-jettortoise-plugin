@@ -1,6 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+import {
+  type VcsAction,
+  VcsContextMenu,
+} from "../../../../packages/vcs-ui/src";
 import { bridge, bridgeWithProgress } from "../../shared/bridge";
+import { GIT_UI_CAPABILITIES } from "../../shared/git-ui-adapter";
+import { t } from "../../shared/i18n";
 import { usePanelStore } from "../../shared/store/panel-store";
 import type { Commit } from "../../shared/types/git";
 
@@ -98,12 +103,7 @@ export function CommitContextMenu({
   onClose,
   onCreateBranch,
 }: CommitContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const currentBranch = usePanelStore((s) => s.currentBranch);
-  const [position, setPosition] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const [isRebasing, setIsRebasing] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [isCherryPicking, setIsCherryPicking] = useState(false);
@@ -128,74 +128,6 @@ export function CommitContextMenu({
     };
     fetchRepoState();
   }, []);
-
-  // Adjust position after first render
-  useEffect(() => {
-    const menu = menuRef.current;
-    if (!menu) return;
-    requestAnimationFrame(() => {
-      const rect = menu.getBoundingClientRect();
-      const viewportH = window.innerHeight;
-      const viewportW = window.innerWidth;
-
-      let top = y;
-      let left = x;
-
-      if (top + rect.height > viewportH) {
-        const above = y - rect.height;
-        if (above >= 4) {
-          top = above;
-        } else {
-          top = Math.max(4, viewportH - rect.height - 4);
-        }
-      }
-      if (left + rect.width > viewportW) {
-        left = Math.max(4, viewportW - rect.width - 4);
-      }
-
-      setPosition({ top, left });
-    });
-  }, [x, y]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const handleBlur = () => onClose();
-    const handleScroll = (e: Event) => {
-      if (
-        menuRef.current &&
-        e.target instanceof Node &&
-        !menuRef.current.contains(e.target)
-      ) {
-        onClose();
-      }
-    };
-    const handleContextMenu = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside, true);
-    document.addEventListener("contextmenu", handleContextMenu, true);
-    document.addEventListener("keydown", handleEscape);
-    window.addEventListener("blur", handleBlur);
-    document.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", handleBlur);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside, true);
-      document.removeEventListener("contextmenu", handleContextMenu, true);
-      document.removeEventListener("keydown", handleEscape);
-      window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleBlur);
-    };
-  }, [onClose]);
 
   const shortHash = commit.shortHash || commit.hash.slice(0, 8);
 
@@ -228,11 +160,6 @@ export function CommitContextMenu({
 
   const handleResetHard = async () => {
     onClose();
-    const result = (await bridge.request("showConfirmMessage", {
-      message: `Reset '${currentBranch}' to ${shortHash} (hard)? This will discard all uncommitted changes.`,
-      confirmLabel: "Reset",
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("resetToCommit", {
         hash: commit.hash,
@@ -279,11 +206,6 @@ export function CommitContextMenu({
   const handleDropCommit = async () => {
     onClose();
     try {
-      const result = (await bridge.request("showConfirmMessage", {
-        message: `Drop commit ${shortHash} "${commit.subject}"?\n\nThis will remove the commit from history but keep its changes as unstaged modifications.\n\nThis operation cannot be undone.`,
-        confirmLabel: "Drop Commit",
-      })) as { confirmed: boolean };
-      if (!result.confirmed) return;
       await bridgeWithProgress("dropCommit", { hash: commit.hash });
     } catch (err) {
       console.error("Drop commit failed:", err);
@@ -298,8 +220,8 @@ export function CommitContextMenu({
     }
     // Fallback to showInputBox if no dialog handler provided
     const result = (await bridge.request("showInputBox", {
-      prompt: `Create new branch from ${shortHash}:`,
-      placeHolder: "branch-name",
+      prompt: t("panel.newBranchPrompt", { hash: shortHash }),
+      placeHolder: t("panel.branchNamePlaceholder"),
     })) as { value: string | null };
     if (!result.value || !result.value.trim()) return;
     try {
@@ -315,8 +237,8 @@ export function CommitContextMenu({
   const handleNewTag = async () => {
     onClose();
     const result = (await bridge.request("showInputBox", {
-      prompt: `Create tag at ${shortHash}:`,
-      placeHolder: "tag-name",
+      prompt: t("panel.newTagPrompt", { hash: shortHash }),
+      placeHolder: t("panel.tagNamePlaceholder"),
     })) as { value: string | null };
     if (!result.value || !result.value.trim()) return;
     try {
@@ -347,6 +269,8 @@ export function CommitContextMenu({
     !currentBranch || isRebasing || isMerging || isCherryPicking;
 
   const items: {
+    id?: string;
+    capability?: VcsAction["capability"];
     label: string;
     action: () => void;
     separator?: boolean;
@@ -354,122 +278,112 @@ export function CommitContextMenu({
     disabled?: boolean;
   }[] = [
     {
-      label: `Copy Revision Number`,
+      id: "copyRevision",
+      capability: "copyRevision",
+      label: t("panel.copyRevisionNumber"),
       action: handleCopyHash,
       icon: <IconCopy />,
     },
     {
-      label: "Cherry-Pick",
+      id: "cherryPick",
+      capability: "cherryPick",
+      label: t("panel.cherryPick"),
       action: handleCherryPick,
       icon: <IconCherryPick />,
     },
     { label: "", action: () => {}, separator: true },
-    { label: "Checkout Revision", action: handleCheckoutRevision },
+    {
+      id: "checkoutRevision",
+      capability: "checkoutRevision",
+      label: t("panel.checkoutRevision"),
+      action: handleCheckoutRevision,
+    },
     { label: "", action: () => {}, separator: true },
     {
-      label: "Reset Current Branch to Here (Mixed)...",
+      id: "resetMixed",
+      label: t("panel.resetMixed"),
       action: handleResetMixed,
       icon: <IconRevert />,
     },
     {
-      label: "Reset Current Branch to Here (Soft)...",
+      id: "resetSoft",
+      label: t("panel.resetSoft"),
       action: handleResetSoft,
       icon: <IconRevert />,
     },
     {
-      label: "Reset Current Branch to Here (Hard)...",
+      id: "resetHard",
+      label: t("panel.resetHard"),
       action: handleResetHard,
       icon: <IconRevert />,
     },
-    { label: "Revert Commit", action: handleRevert, icon: <IconRevert /> },
     {
-      label: "Drop Commit",
+      id: "revertCommit",
+      label: t("panel.revertCommit"),
+      action: handleRevert,
+      icon: <IconRevert />,
+    },
+    {
+      id: "dropCommit",
+      label: t("panel.dropCommit"),
       action: handleDropCommit,
       icon: <IconRevert />,
       disabled: isDropCommitDisabled,
     },
     { label: "", action: () => {}, separator: true },
-    { label: "New Branch...", action: handleNewBranch, icon: <IconBranch /> },
-    { label: "New Tag...", action: handleNewTag, icon: <IconTag /> },
+    {
+      id: "newBranch",
+      capability: "createBranch",
+      label: t("panel.newBranch"),
+      action: handleNewBranch,
+      icon: <IconBranch />,
+    },
+    {
+      id: "newTag",
+      label: t("panel.newTag"),
+      action: handleNewTag,
+      icon: <IconTag />,
+    },
   ];
 
   // Add "Show in Git Log" when file filter is active
   if (filter.file) {
     items.push({ label: "", action: () => {}, separator: true });
     items.push({
-      label: "Show in Git Log",
+      id: "showInGitLog",
+      label: t("panel.showInGitLog"),
       action: handleShowInGitLog,
       icon: <IconBranch />,
     });
   }
 
-  const menu = (
-    <div
-      ref={menuRef}
-      style={{
-        position: "fixed",
-        top: position ? position.top : -9999,
-        left: position ? position.left : -9999,
-        zIndex: 9999,
-        background: "var(--vscode-menu-background, #1e1e1e)",
-        border: "1px solid var(--vscode-menu-border, #454545)",
-        borderRadius: 4,
-        padding: "4px 0",
-        minWidth: 200,
-        maxHeight: "calc(100vh - 8px)",
-        overflowY: "auto",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-        visibility: position ? "visible" : "hidden",
-      }}
-    >
-      {items.map((item, i) =>
-        item.separator ? (
-          <div
-            key={`sep-${i}`}
-            style={{
-              height: 1,
-              background: "var(--vscode-menu-separatorBackground, #454545)",
-              margin: "4px 0",
-            }}
-          />
-        ) : (
-          <div
-            key={item.label}
-            onClick={item.disabled ? undefined : item.action}
-            style={{
-              padding: "6px 12px",
-              cursor: item.disabled ? "default" : "pointer",
-              opacity: item.disabled ? 0.5 : 1,
-              color: "var(--vscode-menu-foreground, #ccc)",
-              fontSize: "13px",
-              whiteSpace: "nowrap",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-            onMouseEnter={(e) => {
-              if (!item.disabled) {
-                (e.currentTarget as HTMLElement).style.background =
-                  "var(--vscode-list-hoverBackground, #2a2d2e)";
-                (e.currentTarget as HTMLElement).style.color =
-                  "var(--vscode-menu-selectionForeground, #fff)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
-              (e.currentTarget as HTMLElement).style.color =
-                "var(--vscode-menu-foreground, #ccc)";
-            }}
-          >
-            <span style={{ width: 16, flexShrink: 0, opacity: 0.7 }}>
-              {item.icon ?? null}
-            </span>
-            {item.label}
-          </div>
-        ),
-      )}
-    </div>
+  const actions = new Map<string, () => void>();
+  const menuItems: VcsAction[] = [];
+  let separatorBefore = false;
+  for (const item of items) {
+    if (item.separator) {
+      separatorBefore = true;
+      continue;
+    }
+    if (!item.id) continue;
+    actions.set(item.id, item.action);
+    menuItems.push({
+      id: item.id,
+      label: item.label,
+      capability: item.capability,
+      disabled: item.disabled,
+      icon: item.icon,
+      separatorBefore,
+    });
+    separatorBefore = false;
+  }
+  return (
+    <VcsContextMenu
+      position={{ x, y }}
+      items={menuItems}
+      capabilities={GIT_UI_CAPABILITIES}
+      onSelect={(id) => actions.get(id)?.()}
+      onClose={onClose}
+    />
   );
-
-  return createPortal(menu, document.body);
 }

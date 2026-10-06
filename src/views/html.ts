@@ -3,7 +3,14 @@ import * as vscode from "vscode";
 export function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  mode: "panel" | "merge" | "conflicts" | "commit" | "push" | "rollback",
+  mode:
+    | "panel"
+    | "merge"
+    | "conflicts"
+    | "commit"
+    | "push"
+    | "rollback"
+    | "cvs",
   extra?: Record<string, string>,
 ): string {
   const distUri = vscode.Uri.joinPath(extensionUri, "dist", "webview");
@@ -15,7 +22,11 @@ export function getWebviewHtml(
   );
   const nonce = getNonce();
 
-  const dataAttrs = [`data-mode="${mode}"`];
+  const language = normalizeWebviewLanguage(vscode.env.language);
+  const dataAttrs = [
+    `data-mode="${mode}"`,
+    `data-language="${escapeHtml(vscode.env.language)}"`,
+  ];
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
       dataAttrs.push(`data-${key}="${escapeHtml(value)}"`);
@@ -23,7 +34,7 @@ export function getWebviewHtml(
   }
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${language}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,13 +46,20 @@ export function getWebviewHtml(
     img-src ${webview.cspSource} data:;
   ">
   <link rel="stylesheet" href="${styleUri}">
-  <title>JetGit</title>
+  <title>JetTortoise</title>
 </head>
 <body>
   <div id="root" ${dataAttrs.join(" ")}></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+function normalizeWebviewLanguage(language: string): "en" | "zh-cn" {
+  const normalized = language.toLowerCase();
+  return normalized === "zh" || normalized === "zh-cn" || normalized === "zh-tw"
+    ? "zh-cn"
+    : "en";
 }
 
 function getNonce(): string {

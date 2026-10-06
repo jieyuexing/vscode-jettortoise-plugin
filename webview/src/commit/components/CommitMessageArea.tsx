@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { bridge } from "../../shared/bridge";
 import { Tooltip } from "../../shared/components/Tooltip";
 import "../../shared/components/Tooltip.css";
+import { t } from "../../shared/i18n";
 import { useCommitStore } from "../../shared/store/commit-store";
 
 export function CommitMessageArea() {
@@ -44,6 +45,7 @@ export function CommitMessageArea() {
       // Ctrl/Cmd + Enter to commit
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
+        e.stopPropagation();
         handleCommit();
       }
     },
@@ -98,7 +100,7 @@ export function CommitMessageArea() {
     <div className="commit-message-area">
       <textarea
         className="commit-message-textarea"
-        placeholder="Commit message (Ctrl+Enter to commit)"
+        placeholder={t("commit.commitMessage")}
         value={commitMessage}
         onChange={(e) => setCommitMessage(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -112,11 +114,21 @@ export function CommitMessageArea() {
             checked={amend}
             onChange={(e) => setAmend(e.target.checked)}
           />
-          Amend
+          {t("commit.amend")}
         </label>
-        <Tooltip text="Recent commit messages">
+        <Tooltip text={t("commit.recentMessages")}>
           <span
             ref={historyBtnRef}
+            role="button"
+            tabIndex={0}
+            aria-label={t("commit.recentMessages")}
+            aria-expanded={showHistory}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void handleHistoryClick();
+              }
+            }}
             onClick={handleHistoryClick}
             style={{
               cursor: "pointer",
@@ -171,7 +183,7 @@ export function CommitMessageArea() {
           disabled={!canCommit}
           onClick={handleCommit}
         >
-          Commit
+          {t("commit.commit")}
         </button>
 
         <div className="commit-dropdown" ref={dropdownRef}>
@@ -181,7 +193,7 @@ export function CommitMessageArea() {
             disabled={!canCommit}
             onClick={handleCommitAndPush}
           >
-            Commit and Push...
+            {t("commit.commitAndPushMenu")}
           </button>
           <button
             type="button"
@@ -207,7 +219,7 @@ export function CommitMessageArea() {
                 className="commit-dropdown-item"
                 onClick={handleCommitAndPush}
               >
-                Commit and Push
+                {t("commit.commitAndPush")}
               </button>
               <div className="commit-dropdown-separator" />
               <button
@@ -217,7 +229,7 @@ export function CommitMessageArea() {
                   setShowDropdown(false);
                 }}
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           )}
@@ -237,9 +249,11 @@ interface HistoryDropdownProps {
 const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
   ({ anchorRef, messages, onSelect, onClose }, ref) => {
     const innerRef = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState<{ bottom: number; left: number } | null>(
-      null,
-    );
+    const [pos, setPos] = useState<{
+      bottom: number;
+      left: number;
+      width: number;
+    } | null>(null);
 
     // Combine forwarded ref and inner ref
     const setRefs = useCallback(
@@ -254,14 +268,41 @@ const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
     );
 
     useEffect(() => {
-      if (anchorRef.current) {
-        const rect = anchorRef.current.getBoundingClientRect();
-        // Position above the button, align right edge to viewport
-        const bottom = window.innerHeight - rect.top + 4;
-        const left = Math.min(rect.left, window.innerWidth - 8);
-        setPos({ bottom, left });
-      }
-    }, [anchorRef]);
+      const anchor = anchorRef.current;
+      const owner = anchor?.closest<HTMLElement>(".commit-app");
+      if (!anchor || !owner) return;
+      const update = () => {
+        const area = owner.getBoundingClientRect();
+        if (area.width === 0 || area.height === 0) {
+          onClose();
+          return;
+        }
+        const rect = anchor.getBoundingClientRect();
+        const left = Math.max(4, area.left + 4);
+        const width = Math.max(
+          0,
+          Math.min(area.right - 4, window.innerWidth - 4) - left,
+        );
+        setPos({
+          bottom: Math.max(4, window.innerHeight - rect.top + 4),
+          left,
+          width,
+        });
+      };
+      update();
+      const observer =
+        typeof ResizeObserver === "undefined"
+          ? undefined
+          : new ResizeObserver(update);
+      observer?.observe(owner);
+      window.addEventListener("resize", update);
+      document.addEventListener("scroll", update, true);
+      return () => {
+        observer?.disconnect();
+        window.removeEventListener("resize", update);
+        document.removeEventListener("scroll", update, true);
+      };
+    }, [anchorRef, onClose]);
 
     useEffect(() => {
       const handleKey = (e: KeyboardEvent) => {
@@ -279,14 +320,17 @@ const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
         style={{
           position: "fixed",
           bottom: pos.bottom,
-          left: 4,
-          right: 4,
+          left: pos.left,
+          width: pos.width,
           zIndex: 99999,
           background: "var(--vscode-menu-background, #1e1e1e)",
           border: "1px solid var(--vscode-menu-border, #454545)",
           borderRadius: 4,
           padding: "4px 0",
-          maxHeight: 250,
+          maxHeight: Math.max(
+            40,
+            Math.min(250, window.innerHeight - pos.bottom - 4),
+          ),
           overflowY: "auto",
           boxShadow: "0 -3px 12px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06)",
         }}
@@ -299,7 +343,7 @@ const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
               fontSize: 12,
             }}
           >
-            No recent commit messages
+            {t("commit.noRecentMessages")}
           </div>
         ) : (
           messages.map((msg, i) => (

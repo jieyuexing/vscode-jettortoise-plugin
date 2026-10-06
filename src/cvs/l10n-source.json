@@ -1,0 +1,14 @@
+{
+  "cvs.missingClient": "CVS was not found. Install a local CVS client and set JetTortoise: CVS Path.",
+  "cvs.workingCopy": "Open a CVS working copy folder, then refresh.",
+  "cvs.cancelled": "Operation cancelled. Refresh to check the working copy; CVS may have applied part of the operation.",
+  "cvs.timeout": "CVS timed out. Refresh to check the working copy before retrying.",
+  "cvs.symlink": "A symbolic link crosses the operation boundary. Use a working copy without symbolic links.",
+  "cvs.root": "Unsupported CVS root. Use a local repository or pserver without an embedded password.",
+  "cvs.commitState": "Some selected files cannot be committed. Refresh, resolve conflicts or update first.",
+  "cvs.changed": "The file changed during rollback. Your file and its backup were preserved.",
+  "cvs.entriesLog": "CVS recovery metadata is pending. Run CVS status in a terminal, then refresh.",
+  "cvs.outputLimit": "The operation exceeded the output or working copy size limit. Use a smaller working copy.",
+  "cvs.command": "CVS failed. Check repository access and working copy state in a terminal, then refresh.",
+  "cvs.dirty": "Save or close unsaved editors in this working copy before modifying files."
+}

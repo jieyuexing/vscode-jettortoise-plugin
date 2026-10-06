@@ -9,6 +9,13 @@ import type {
   LaneSnapshot,
   TagInfo,
 } from "../types/git";
+import { selectComparison } from "../workbench/transport";
+import { readHistoryState } from "./history-state";
+import {
+  isHistoryView,
+  useWorkbenchStore,
+  workbenchState,
+} from "./workbench-store";
 
 interface PanelFilter {
   searchQuery: string;
@@ -185,6 +192,9 @@ function deriveSelectionFromVisible(
   };
 }
 
+let historyRequestGeneration = 0;
+const restoredHistory = workbenchState.getState().history;
+
 export const usePanelStore = create<PanelStore>((set, get) => ({
   commits: [],
   visibleCommits: [],
@@ -194,13 +204,13 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
   graphLayout: {},
   laneSnapshot: null,
 
-  selectedCommitHash: null,
-  selectedCommitHashes: [],
-  lastSelectedCommitHash: null,
+  selectedCommitHash: restoredHistory.selectedCommitHashes[0] ?? null,
+  selectedCommitHashes: restoredHistory.selectedCommitHashes,
+  lastSelectedCommitHash: restoredHistory.selectedCommitHashes[0] ?? null,
   hoveredColumn: null,
   commitFiles: [],
   selectedFilePath: null,
-  visibleColumns: { author: true, date: true, hash: true },
+  visibleColumns: restoredHistory.visibleColumns,
   rangeOldest: null,
   rangeNewest: null,
   selectedBranches: [],
@@ -213,8 +223,8 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
     }
   })(),
 
-  filter: { searchQuery: "", branch: "", author: "", dateRange: "", file: "" },
-  pendingSelectionFromFilter: [],
+  filter: restoredHistory.filter,
+  pendingSelectionFromFilter: restoredHistory.selectedCommitHashes,
   collapsedSequenceIds: new Set(),
   collapsedIntermediates: new Map(),
 
@@ -223,6 +233,7 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
   operationInProgress: false,
 
   async fetchInitialData() {
+    const requestGeneration = ++historyRequestGeneration;
     set({ loading: true });
     const start = Date.now();
     try {
@@ -240,6 +251,7 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
         bridge.request("getTags") as Promise<TagInfo[] | null>,
       ]);
 
+      if (requestGeneration !== historyRequestGeneration) return;
       const commits = graphResult?.graphData?.commits ?? [];
       const lanes = graphResult?.graphData?.lanes ?? {};
       const snapshot = graphResult?.snapshot ?? null;
@@ -280,7 +292,8 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
           const files = (await bridge.request("getCommitRangeFiles", {
             hashes: validHashes,
           })) as DiffFile[] | null;
-          set({ commitFiles: files ?? [] });
+          if (requestGeneration === historyRequestGeneration)
+            set({ commitFiles: files ?? [] });
           return;
         }
       }
@@ -312,7 +325,13 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
         const files = (await bridge.request("getCommitRangeFiles", {
           hashes: [hash],
         })) as DiffFile[] | null;
-        set({ commitFiles: files ?? [], rangeOldest: hash, rangeNewest: hash });
+        if (requestGeneration === historyRequestGeneration) {
+          set({
+            commitFiles: files ?? [],
+            rangeOldest: hash,
+            rangeNewest: hash,
+          });
+        }
       }
     } catch (err) {
       console.error("fetchInitialData failed:", err);
@@ -321,7 +340,8 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
       if (elapsed < 1000) {
         await new Promise((r) => setTimeout(r, 1000 - elapsed));
       }
-      set({ loading: false });
+      if (requestGeneration === historyRequestGeneration)
+        set({ loading: false });
     }
   },
 
@@ -438,6 +458,16 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
 
   selectFile(filePath: string) {
     set({ selectedFilePath: filePath });
+    const { selectedCommitHash, selectedCommitHashes } = get();
+    if (selectedCommitHash)
+      selectComparison({
+        source: "history",
+        filePath,
+        revision: selectedCommitHash,
+        ...(selectedCommitHashes.length > 1
+          ? { cherryPickHashes: selectedCommitHashes }
+          : {}),
+      });
   },
 
   async openDiffEditor(commitHash: string, file: DiffFile) {
@@ -630,7 +660,11 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
   },
 
   async refresh() {
-    set({ collapsedSequenceIds: new Set(), collapsedIntermediates: new Map() });
+    set({
+      collapsedSequenceIds: new Set(),
+      collapsedIntermediates: new Map(),
+      pendingSelectionFromFilter: get().selectedCommitHashes,
+    });
     await get().fetchInitialData();
   },
 }));
@@ -639,6 +673,9 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
 bridge.onEvent((event, data) => {
   if (event === "gitStateChanged") {
     usePanelStore.getState().refresh();
+  }
+  if (event === "showCommitPanel") {
+    useWorkbenchStore.getState().revealCommit();
   }
   if (event === "showFileHistory") {
     const { file } = data as { file: string };
@@ -651,3 +688,20 @@ bridge.onEvent((event, data) => {
     usePanelStore.setState({ operationInProgress: false });
   }
 });
+
+if (isHistoryView) {
+  let lastSaved = "";
+  usePanelStore.subscribe((state) => {
+    const saved = readHistoryState({
+      version: 1,
+      filter: state.filter,
+      selectedCommitHashes: state.selectedCommitHashes,
+      visibleColumns: state.visibleColumns,
+    });
+    const serialized = JSON.stringify(saved);
+    if (serialized !== lastSaved) {
+      lastSaved = serialized;
+      workbenchState.update({ history: saved });
+    }
+  });
+}

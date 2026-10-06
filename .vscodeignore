@@ -21,4 +21,15 @@ CLAUDE.md
 **/*.ts
 **/.vscode-test.*
 images/assets/**
-images/*.gif
+
+release/**
+scripts/**
+!package.nls*.json
+!l10n/**
+
+.idea/**
+.kiro/**
+.omc/**
+**/.DS_Store
+
+packages/**

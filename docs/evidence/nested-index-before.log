@@ -1,0 +1,3 @@
+Error: full index overlap unexpectedly succeeded
+    at rejectsNested (/Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/scripts/git-nesting-check.cjs:24:9)
+    at async main (/Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/scripts/git-nesting-check.cjs:137:5)

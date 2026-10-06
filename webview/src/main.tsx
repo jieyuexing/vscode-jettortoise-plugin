@@ -1,11 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { CommitApp } from "./commit/App";
 import { ConflictsApp } from "./conflicts/App";
 import { MergeStandaloneApp } from "./conflicts/MergeStandaloneApp";
+import { CvsApp } from "./cvs/App";
 import { PanelApp } from "./panel/App";
 import { PushApp } from "./push/App";
 import { RollbackApp } from "./rollback/App";
+import { bridge } from "./shared/bridge";
+import { initializeI18n } from "./shared/i18n";
 import "./shared/theme/variables.css";
 
 // Fix Cmd+A/Ctrl+A not working in webview inputs (VS Code intercepts it)
@@ -21,11 +23,12 @@ document.addEventListener("keydown", (e) => {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");
+initializeI18n(root.dataset.language);
 const mode = root.dataset.mode as
   | "panel"
   | "merge"
   | "conflicts"
-  | "commit"
+  | "cvs"
   | "push"
   | "rollback"
   | undefined;
@@ -36,8 +39,8 @@ createRoot(root).render(
       <MergeStandaloneApp />
     ) : mode === "conflicts" ? (
       <ConflictsApp />
-    ) : mode === "commit" ? (
-      <CommitApp />
+    ) : mode === "cvs" ? (
+      <CvsApp />
     ) : mode === "push" ? (
       <PushApp />
     ) : mode === "rollback" ? (
@@ -47,3 +50,6 @@ createRoot(root).render(
     )}
   </StrictMode>,
 );
+
+// Store event listeners exist before the Host releases a pending file-history request.
+if (mode === "panel") bridge.notifyHistoryReady?.();

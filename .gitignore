@@ -8,4 +8,11 @@ node_modules
 .kiro/
 .omc/
 *.vsix
+/release/
 webview/node_modules
+
+# Generated locale aliases (maintain zh-cn only)
+/package.nls.zh.json
+/package.nls.zh-tw.json
+/l10n/bundle.l10n.zh.json
+/l10n/bundle.l10n.zh-tw.json

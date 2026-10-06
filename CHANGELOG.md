@@ -1,3 +1,5 @@
+> This file records feature history. For installation, see README.
+
 # Changelog / 更新日志
 
 ## [0.4.17] - 2026-06-20

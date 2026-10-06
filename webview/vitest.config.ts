@@ -1,11 +1,10 @@
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
+import { defineConfig, mergeConfig } from 'vitest/config';
+import webviewConfig from './vite.config';
 
-export default defineConfig({
-  plugins: [react()],
+export default mergeConfig(webviewConfig, defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
-});
+}));

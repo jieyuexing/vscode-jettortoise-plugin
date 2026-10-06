@@ -1,0 +1,5 @@
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-git-security-hx5ljI/remote.git
+ * [new branch]      main -> main
+Error: dangling external symlink write unexpectedly succeeded
+    at rejects (/Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/scripts/git-security-check.cjs:26:9)
+    at async main (/Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/scripts/git-security-check.cjs:89:5)

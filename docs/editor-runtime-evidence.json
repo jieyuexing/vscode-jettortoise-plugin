@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-09-15T01:52:48.000Z",
+  "vsix": {
+    "path": "release/jetgit-0.4.17.vsix",
+    "sha256": "b4a84d965d796075d9f5dddaf426786709f836d62b76f04767fb79984dd41297",
+    "bytes": 3476335
+  },
+  "environment": {
+    "vscode": "1.137.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "fixture": "temporary local Git repository with no remote and a synthetic author identity",
+    "isolation": "fresh user-data and extensions directories for each attempted locale"
+  },
+  "languages": {
+    "en": {
+      "status": "passed",
+      "actualVscodeEnvLanguage": "en",
+      "checks": {
+        "commitDoesNotOpenHistory": true,
+        "singletonOpenAndLegacyFocus": true,
+        "opensInCurrentGroup": true,
+        "keepsUserMovedGroup": true,
+        "closeAndReopen": true,
+        "coldFileHistory": true,
+        "reloadRestoresHistoryTab": true,
+        "historyGroupIndexBeforeReload": 1,
+        "historyGroupIndexAfterReload": 1
+      }
+    },
+    "zh-cn": {
+      "status": "not-verified",
+      "reason": "GUI runtime testing was stopped on request before this locale could run."
+    },
+    "zh-tw": {
+      "status": "not-verified",
+      "reason": "Initial isolated attempt fell back to en because the host lacked the Traditional Chinese language pack. The official temporary pack was provisioned, but GUI runtime testing was stopped before a successful rerun."
+    },
+    "de": {
+      "status": "not-verified",
+      "reason": "GUI runtime testing was stopped on request before this locale could run."
+    }
+  },
+  "limitations": [
+    "The helper extension is created only in the temporary isolated extensions directory and is not included in the VSIX.",
+    "The completed check uses VS Code Extension API tab lifecycle and command routing. It does not inspect browser DOM state, persisted file filters or selected revisions, or network traffic.",
+    "No claim about security, privacy, telemetry, or network behavior follows from this runtime check."
+  ],
+  "cleanup": {
+    "status": "completed",
+    "detail": "All Code main processes with a jetgit-editor-runtime temporary profile were terminated and a follow-up process query found no matching main process."
+  }
+}

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createVcsTranslator,
+  VcsRepositoryBoundaries,
+} from "../../../../packages/vcs-ui/src";
 import { bridge } from "../../shared/bridge";
+import { t } from "../../shared/i18n";
 import {
   useCommitStore,
   type WorkingTreeFile,
@@ -10,6 +15,10 @@ import { FileItem } from "./FileItem";
 import { Toolbar } from "./Toolbar";
 
 export function CommitTab() {
+  const boundaryText = createVcsTranslator(
+    document.getElementById("root")?.dataset.language,
+  );
+  const boundaries = useCommitStore((state) => state.boundaries);
   const {
     changes,
     selectedFiles,
@@ -132,11 +141,29 @@ export function CommitTab() {
         hasChanges={changes.length > 0}
       />
 
+      <VcsRepositoryBoundaries
+        items={boundaries ?? []}
+        title={boundaryText("repository.nested")}
+        openLabel={boundaryText("repository.open")}
+        addLabel={boundaryText("repository.add")}
+        onOpen={(boundaryId) => {
+          void bridge
+            .request("openRepositoryBoundary", { boundaryId })
+            .catch((error: unknown) => {
+              void bridge
+                .request("showErrorNotification", {
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                })
+                .catch(() => {});
+            });
+        }}
+      />
       <div className="commit-file-list">
         {/* Merge Conflicts */}
         {conflictedFiles.length > 0 && (
           <FileGroup
-            label="Merge Conflicts"
+            label={t("commit.mergeConflicts")}
             files={conflictedFiles}
             count={conflictedFiles.length}
             expanded={expandedGroups.has("conflicts")}
@@ -161,7 +188,7 @@ export function CommitTab() {
                 role="button"
                 tabIndex={0}
               >
-                Resolve
+                {t("commit.resolve")}
               </span>
             }
           />
@@ -170,7 +197,7 @@ export function CommitTab() {
         {/* Changes (tracked, modified) */}
         {changedFiles.length > 0 && (
           <FileGroup
-            label="Changes"
+            label={t("commit.changes")}
             files={changedFiles}
             count={changedFiles.length}
             expanded={expandedGroups.has("changes")}
@@ -190,7 +217,7 @@ export function CommitTab() {
         {/* Staged files */}
         {stagedFiles.length > 0 && (
           <FileGroup
-            label="Staged"
+            label={t("commit.staged")}
             files={stagedFiles}
             count={stagedFiles.length}
             expanded={expandedGroups.has("staged")}
@@ -210,7 +237,7 @@ export function CommitTab() {
         {/* Unversioned Files */}
         {showUnversioned && untrackedFiles.length > 0 && (
           <FileGroup
-            label="Unversioned Files"
+            label={t("commit.unversionedFiles")}
             files={untrackedFiles}
             count={untrackedFiles.length}
             expanded={expandedGroups.has("unversioned")}
@@ -228,7 +255,7 @@ export function CommitTab() {
         )}
 
         {changes.length === 0 && (
-          <div className="shelf-empty">No changes detected</div>
+          <div className="shelf-empty">{t("commit.noChanges")}</div>
         )}
       </div>
 
@@ -385,7 +412,7 @@ function FileGroup({
         </span>
         {label}
         <span className="commit-group-count">
-          {count} {count === 1 ? "file" : "files"}
+          {t(count === 1 ? "shelf.oneFile" : "shelf.manyFiles", { count })}
         </span>
         {action}
       </div>
@@ -624,8 +651,12 @@ function DirNodeView({
                 <FolderIcon />
                 <span className="commit-dir-name">{child.name}</span>
                 <span className="commit-dir-count">
-                  {countFiles(child)}{" "}
-                  {countFiles(child) === 1 ? "file" : "files"}
+                  {t(
+                    countFiles(child) === 1
+                      ? "shelf.oneFile"
+                      : "shelf.manyFiles",
+                    { count: countFiles(child) },
+                  )}
                 </span>
               </div>
               {!isCollapsed && (
@@ -801,7 +832,7 @@ function DirContextMenu({
         onClick={handleRollback}
       >
         <RollbackIcon />
-        <span>Rollback...</span>
+        <span>{t("commit.rollback")}</span>
       </button>
 
       <div className="commit-context-menu-separator" />
@@ -812,7 +843,7 @@ function DirContextMenu({
         onClick={handleOpenInSystemFolder}
       >
         <FolderOpenIcon />
-        <span>Open in System Folder</span>
+        <span>{t("commit.openInSystemFolder")}</span>
       </button>
 
       <div className="commit-context-menu-separator" />
@@ -823,7 +854,7 @@ function DirContextMenu({
         onClick={handleDelete}
       >
         <DeleteDirIcon />
-        <span>Delete "{dirName}"...</span>
+        <span>{t("commit.deleteDirectory", { directory: dirName })}</span>
         <span className="commit-context-menu-shortcut">⌫</span>
       </button>
     </div>

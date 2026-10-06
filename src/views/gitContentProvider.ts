@@ -1,11 +1,23 @@
 import * as vscode from "vscode";
 import type { GitService } from "../git/gitService";
 
-export const GIT_BRAINS_SCHEME = "git-brains";
+export const JETTORTOISE_SCHEME = "jettortoise";
+export function gitRevisionUri(
+  repositoryId: string,
+  filePath: string,
+  ref: string,
+): vscode.Uri {
+  return vscode.Uri.from({
+    scheme: JETTORTOISE_SCHEME,
+    authority: repositoryId,
+    path: `/${filePath}`,
+    query: new URLSearchParams({ ref }).toString(),
+  });
+}
 
 /**
  * Provides virtual file content for git file revisions.
- * Uri format: git-brains:/<filePath>?ref=<commitHash>
+ * Uri format: jettortoise://<repositoryId>/<filePath>?ref=<commitHash>
  *
  * Implements both TextDocumentContentProvider (for text diff) and
  * FileSystemProvider (for binary files like images).
@@ -20,7 +32,19 @@ export class GitContentProvider
   >();
   readonly onDidChangeFile = this._onDidChangeFile.event;
 
-  constructor(private readonly gitService: GitService) {}
+  constructor(
+    private readonly gitService: GitService,
+    private readonly repositoryId: string,
+    private readonly ensureAvailable: () => Promise<void>,
+  ) {}
+  private async validate(uri: vscode.Uri) {
+    await this.ensureAvailable();
+    if (
+      uri.scheme !== JETTORTOISE_SCHEME ||
+      uri.authority !== this.repositoryId
+    )
+      throw vscode.FileSystemError.NoPermissions();
+  }
 
   setExternalContentMap(map: Map<string, string>): void {
     this.externalContent = map;
@@ -29,6 +53,7 @@ export class GitContentProvider
   // ─── TextDocumentContentProvider ──────────────────────────────────
 
   async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+    await this.validate(uri);
     // Check external content map first (used for shelf diffs)
     if (this.externalContent) {
       const external = this.externalContent.get(uri.toString());
@@ -67,6 +92,9 @@ export class GitContentProvider
   createDirectory(): void {}
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    await this.validate(uri);
+    const external = this.externalContent?.get(uri.toString());
+    if (external !== undefined) return Buffer.from(external);
     const ref = new URLSearchParams(uri.query).get("ref") ?? "";
     const filePath = uri.path.startsWith("/") ? uri.path.slice(1) : uri.path;
     if (!ref || !filePath) {
@@ -77,14 +105,24 @@ export class GitContentProvider
   }
 
   writeFile(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only git content");
+    throw vscode.FileSystemError.NoPermissions(
+      vscode.l10n.t("Read-only git content"),
+    );
   }
 
   delete(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only git content");
+    throw vscode.FileSystemError.NoPermissions(
+      vscode.l10n.t("Read-only git content"),
+    );
   }
 
   rename(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only git content");
+    throw vscode.FileSystemError.NoPermissions(
+      vscode.l10n.t("Read-only git content"),
+    );
+  }
+  dispose(): void {
+    this._onDidChangeFile.dispose();
+    this.externalContent = null;
   }
 }

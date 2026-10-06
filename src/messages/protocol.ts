@@ -68,6 +68,8 @@ export type CommandType =
   | "rollbackFile"
   | "rollbackFiles"
   | "getWorkingTreeChanges"
+  | "getRepositoryBoundaries"
+  | "openRepositoryBoundary"
   | "getShelves"
   | "shelveChanges"
   | "unshelveChanges"

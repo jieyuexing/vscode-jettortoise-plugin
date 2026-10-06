@@ -1,0 +1,52 @@
+
+> jettortoise@0.4.17 test:headless /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> node scripts/git-nesting-check.cjs && node --test scripts/cvs-nesting-check.mjs && node scripts/nested-registry-check.cjs && node scripts/nested-watcher-check.cjs && node scripts/git-security-check.cjs && node scripts/check-message-contract.cjs && node scripts/message-security-check.cjs && node scripts/repository-isolation-check.cjs && node scripts/workspace-host-check.cjs && node scripts/history-panel-check.cjs && node scripts/host-ui-check.cjs && node scripts/check-vcs-ui.cjs && node scripts/cvs-core-check.cjs && node --test scripts/cvs-real-test.mjs && pnpm --dir webview test
+
+{"checks":15,"stageAllSkipsNestedCandidates":true,"preStagedChildPreserved":true,"parentAndChildCommitsIndependent":true,"mixedCvsBoundaryRejected":true,"statusBoundarySnapshotAvailable":true,"parentShelfPreservedChild":true,"sentinelUnchanged":true}
+✔ continuous CVS directories share the parent working copy (1724.454833ms)
+✔ independent CVS and Git children are excluded and block parent-wide mutations (5053.197542ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6820.625791
+{"checks":22,"noAutoDiscover":true,"nearestChildOnly":true,"childWindowDoesNotBorrowOuterRoot":true,"hierarchy":true,"removeAndReaddRetainsSession":true,"legacyDoesNotRegister":true,"cancelledRestoreKeepsPageButDeniesOperations":true,"forgedAndStaleBoundaryIdsRejected":true,"replacedRootRejected":true}
+{"checks":5,"childOnly":true,"canonicalAlias":true,"exactIndexOverlap":true,"peerQuiet":true,"outsideQuiet":true}
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-git-security-pTpUj2/remote.git
+ * [new branch]      main -> main
+{"negativeControls":15,"internalSymlinkUnlinkedWithoutDeletingTarget":true,"outsideWrite":"before\n","outsideDelete":"keep\n","unicodePathStaged":"目录/with space-文件.txt","localRemoteOnly":"/var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-git-security-pTpUj2/remote.git"}
+{"frontendLiteralRequests":127,"fieldAndSurfaceContracts":true}
+{"positive":true,"malformed":true,"forbiddenSurface":true,"paths":true,"hostConfirmation":true,"queuedLiveness":true,"queuedAvailability":true,"confirmationLiveness":true}
+{"checks":14,"canonicalRepositoryId":"32a19fc46abd9528bbca8fe7d950f23473dedc3e0b93bf2d0e2d93a0514b2612","isolatedRepositoryId":"fc106691271e9a325adf44a2f622d0f181a48365f02f94ca5556beedeec37eb8","rootFileHistoryRouting":"/private/var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-repository-isolation-siJcvb/git-a","cvsDiscovery":true}
+warning: adding embedded git repository: nested
+{"declaredCommands":14,"addAndOpenBeforePanel":true,"threeRepositoryPanels":true,"perRepositorySingleton":true,"readyQueue":true,"workingChangesIsolated":true,"hostConfirmCancel":true,"mutationTargetIsolated":true,"eventsIsolated":true,"closeReopenListeners":true,"realGitHostCommit":true,"realCvsHostCommit":true,"cvsTraversalRejected":true,"nestedHostDeleteRejected":true,"commitRejectedBeforeStaging":true,"boundaryCreatedDuringConfirmationRejected":true}
+{"singletonPanel":true,"currentEditorGroup":true,"readyQueue":true,"disposeCleanup":true,"reloadRestore":true,"independentFileHistoryAndCommitQueues":true,"commitFocusUsesRepositoryTab":true}
+{"htmlModes":6,"languageNormalization":["en","zh","zh-cn","zh-tw","other"],"escapedHostileAttributes":true,"cspNoConnectSource":true,"note":"HTML builder only; actual Host routing is covered by workspace-host-check.cjs"}
+{"sharedSourceFiles":10,"sharedTranslationKeys":19,"noBackendImports":true,"localeFallback":true}
+CVS core and protocol boundary checks passed.
+✔ temporary local CVS: checkout, discovery, history, content, diff, commit, update, rollback (4243.203375ms)
+✔ CVS input, symlink and cancellation boundaries reject hostile inputs (946.349875ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5234.147208
+
+> webview@0.0.0 test /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/webview
+> vitest --run
+
+
+ RUN  v4.1.8 /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/webview
+
+
+ Test Files  15 passed (15)
+      Tests  63 passed (63)
+   Start at  14:14:54
+   Duration  2.93s (transform 1.05s, setup 0ms, import 2.11s, tests 2.30s, environment 11.51s)
+

@@ -17,8 +17,8 @@ export class ConflictsManager {
     }
 
     const panel = vscode.window.createWebviewPanel(
-      "git-brains.conflicts",
-      "Conflicts",
+      "jettortoise.git.conflicts",
+      vscode.l10n.t("Conflicts"),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -33,12 +33,18 @@ export class ConflictsManager {
       "conflicts",
     );
 
-    const routerDisposable = this.messageRouter.registerWebview(panel.webview);
+    const routerDisposable = this.messageRouter.registerWebview(
+      panel.webview,
+      "conflicts",
+    );
 
     this.panel = panel;
     panel.onDidDispose(() => {
       this.panel = null;
       routerDisposable.dispose();
     });
+  }
+  dispose(): void {
+    this.panel?.dispose();
   }
 }

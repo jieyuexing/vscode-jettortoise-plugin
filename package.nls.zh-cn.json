@@ -1,0 +1,23 @@
+{
+  "extension.description": "IntelliJ IDEA 风格的 VS Code Git / CVS 工作面板。",
+  "category.jettortoise": "JetTortoise",
+  "workspace.trust": "JetTortoise 执行本地 Git 和 CVS 命令，需要受信任的工作区。",
+  "config.cvsPath": "本机 CVS 可执行文件路径，不会自动下载客户端。",
+  "cmd.openHistory": "打开历史",
+  "cmd.openCommit": "打开提交区",
+  "cmd.refresh": "刷新仓库",
+  "cmd.git.openPushPanel": "Git：推送…",
+  "cmd.git.openConflicts": "Git：冲突",
+  "cmd.git.openMergeEditorFromSCM": "Git：打开合并编辑器",
+  "cmd.git.nextDiff": "Git：下一个文件差异",
+  "cmd.git.prevDiff": "Git：上一个文件差异",
+  "cmd.git.editSource": "Git：编辑源文件",
+  "cmd.cvs.checkout": "CVS：检出…",
+  "cmd.cvs.update": "CVS：更新",
+  "cmd.cvs.cancel": "CVS：取消操作",
+  "cmd.addRepository": "添加仓库...",
+  "cmd.removeRepository": "从列表移除仓库...",
+  "cmd.scanRepositories": "重新扫描仓库",
+  "cmd.updateRepository": "更新仓库文件",
+  "config.autoDiscoverRepositories": "在受信任的当前工作区内递归发现 Git/CVS 仓库，不向上级目录扩展，不执行网络操作。关闭后保留已有列表，仍可手动扫描。"
+}

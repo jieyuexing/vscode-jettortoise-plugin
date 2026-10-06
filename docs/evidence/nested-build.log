@@ -1,0 +1,301 @@
+
+> jettortoise@0.4.17 build /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> pnpm run compile && pnpm run build:web
+
+
+> jettortoise@0.4.17 compile /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> pnpm run l10n:prepare && pnpm run check-types && pnpm run lint && node esbuild.js
+
+
+> jettortoise@0.4.17 l10n:prepare /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> node scripts/prepare-l10n.cjs
+
+
+> jettortoise@0.4.17 check-types /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> tsc --noEmit
+
+
+> jettortoise@0.4.17 lint /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> biome check src webview/src
+
+src/cvs/core.mjs:401:39 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    399 │         ...parseStatus(
+    400 │           (
+  > 401 │             await this.run(["status", "./" + file.newPath], signal)
+        │                                       ^^^^^^^^^^^^^^^^^^^
+    402 │           ).stdout.toString("utf8"),
+    403 │         ),
+  
+  i Unsafe fix: Use a template literal.
+  
+    399 399 │           ...parseStatus(
+    400 400 │             (
+    401     │ - ············await·this.run(["status",·"./"·+·file.newPath],·signal)
+        401 │ + ············await·this.run(["status",·`./${file.newPath}`],·signal)
+    402 402 │             ).stdout.toString("utf8"),
+    403 403 │           ),
+  
+
+src/cvs/core.mjs:410:31 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    408 │     await this.file(name);
+    409 │     return parseLog(
+  > 410 │       (await this.run(["log", "./" + name], signal)).stdout.toString("utf8"),
+        │                               ^^^^^^^^^^^
+    411 │     );
+    412 │   }
+  
+  i Unsafe fix: Use a template literal.
+  
+    408 408 │       await this.file(name);
+    409 409 │       return parseLog(
+    410     │ - ······(await·this.run(["log",·"./"·+·name],·signal)).stdout.toString("utf8"),
+        410 │ + ······(await·this.run(["log",·`./${name}`],·signal)).stdout.toString("utf8"),
+    411 411 │       );
+    412 412 │     }
+  
+
+src/cvs/core.mjs:417:56 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    415 │     if (!(await this.log(name, signal)).some((item) => item.revisionId === rev))
+    416 │       fail("revision");
+  > 417 │     return (await this.run(["update", "-p", "-r", rev, "./" + name], signal))
+        │                                                        ^^^^^^^^^^^
+    418 │       .stdout;
+    419 │   }
+  
+  i Unsafe fix: Use a template literal.
+  
+    415 415 │       if (!(await this.log(name, signal)).some((item) => item.revisionId === rev))
+    416 416 │         fail("revision");
+    417     │ - ····return·(await·this.run(["update",·"-p",·"-r",·rev,·"./"·+·name],·signal))
+        417 │ + ····return·(await·this.run(["update",·"-p",·"-r",·rev,·`./${name}`],·signal))
+    418 418 │         .stdout;
+    419 419 │     }
+  
+
+src/cvs/core.mjs:423:37 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    421 │     await this.file(name);
+    422 │     return (
+  > 423 │       await this.run(["diff", "-u", "./" + name], signal, [0, 1])
+        │                                     ^^^^^^^^^^^
+    424 │     ).stdout.toString("utf8");
+    425 │   }
+  
+  i Unsafe fix: Use a template literal.
+  
+    421 421 │       await this.file(name);
+    422 422 │       return (
+    423     │ - ······await·this.run(["diff",·"-u",·"./"·+·name],·signal,·[0,·1])
+        423 │ + ······await·this.run(["diff",·"-u",·`./${name}`],·signal,·[0,·1])
+    424 424 │       ).stdout.toString("utf8");
+    425 425 │     }
+  
+
+src/cvs/core.mjs:459:56 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    457 │     }
+    458 │     await this.run(
+  > 459 │       ["commit", "-m", message, ...names.map((name) => "./" + name)],
+        │                                                        ^^^^^^^^^^^
+    460 │       signal,
+    461 │     );
+  
+  i Unsafe fix: Use a template literal.
+  
+    457 457 │       }
+    458 458 │       await this.run(
+    459     │ - ······["commit",·"-m",·message,·...names.map((name)·=>·"./"·+·name)],
+        459 │ + ······["commit",·"-m",·message,·...names.map((name)·=>·`./${name}`)],
+    460 460 │         signal,
+    461 461 │       );
+  
+
+src/cvs/core.mjs:475:20 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    473 │     if (signal?.aborted) fail("cancelled");
+    474 │     await assertOwnedPath(this.root, "cvs", name);
+  > 475 │     const backup = target + ".jettortoise-backup-" + randomUUID(),
+        │                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    476 │       temp = target + ".jettortoise-restore-" + randomUUID();
+    477 │     await fs.writeFile(backup, original, {
+  
+  i Unsafe fix: Use a template literal.
+  
+    473 473 │       if (signal?.aborted) fail("cancelled");
+    474 474 │       await assertOwnedPath(this.root, "cvs", name);
+    475     │ - ····const·backup·=·target·+·".jettortoise-backup-"·+·randomUUID(),
+        475 │ + ····const·backup·=·`${target}.jettortoise-backup-${randomUUID()}`,
+    476 476 │         temp = target + ".jettortoise-restore-" + randomUUID();
+    477 477 │       await fs.writeFile(backup, original, {
+  
+
+src/cvs/core.mjs:476:14 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    474 │     await assertOwnedPath(this.root, "cvs", name);
+    475 │     const backup = target + ".jettortoise-backup-" + randomUUID(),
+  > 476 │       temp = target + ".jettortoise-restore-" + randomUUID();
+        │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    477 │     await fs.writeFile(backup, original, {
+    478 │       flag: "wx",
+  
+  i Unsafe fix: Use a template literal.
+  
+    474 474 │       await assertOwnedPath(this.root, "cvs", name);
+    475 475 │       const backup = target + ".jettortoise-backup-" + randomUUID(),
+    476     │ - ······temp·=·target·+·".jettortoise-restore-"·+·randomUUID();
+        476 │ + ······temp·=·`${target}.jettortoise-restore-${randomUUID()}`;
+    477 477 │       await fs.writeFile(backup, original, {
+    478 478 │         flag: "wx",
+  
+
+webview/src/conflicts/App.tsx:234:13 lint/complexity/noUselessFragments  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  i This fragment is unnecessary.
+  
+    232 │         <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+    233 │           {branchInfo ? (
+  > 234 │             <>
+        │             ^^
+  > 235 │               {t("conflicts.merging", {
+  > 236 │                 from: branchInfo.from,
+  > 237 │                 into: branchInfo.into,
+  > 238 │               })}
+  > 239 │             </>
+        │             ^^^
+    240 │           ) : mergeState?.isMerging ? (
+    241 │             <>{t("conflicts.inProgress")}</>
+  
+  i A fragment is redundant if it contains only one child, or if it is the child of a html element, and is not a keyed fragment.
+  
+  i Unsafe fix: Remove the Fragment
+  
+    232 232 │           <p style={{ margin: 0, fontSize: 13, opacity: 0.8 }}>
+    233 233 │             {branchInfo ? (
+    234     │ - ············<>
+    235     │ - ··············{t("conflicts.merging",·{
+        234 │ + ············t("conflicts.merging",·{
+    236 235 │                   from: branchInfo.from,
+    237 236 │                   into: branchInfo.into,
+    238     │ - ··············})}
+    239     │ - ············</>
+        237 │ + ··············})
+    240 238 │             ) : mergeState?.isMerging ? (
+    241 239 │               <>{t("conflicts.inProgress")}</>
+  
+
+webview/src/conflicts/App.tsx:241:13 lint/complexity/noUselessFragments  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  i This fragment is unnecessary.
+  
+    239 │             </>
+    240 │           ) : mergeState?.isMerging ? (
+  > 241 │             <>{t("conflicts.inProgress")}</>
+        │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    242 │           ) : (
+    243 │             <>{t("conflicts.noneInProgress")}</>
+  
+  i A fragment is redundant if it contains only one child, or if it is the child of a html element, and is not a keyed fragment.
+  
+  i Unsafe fix: Remove the Fragment
+  
+    241 │ ············<>{t("conflicts.inProgress")}</>
+        │             ---                         ----
+
+webview/src/conflicts/App.tsx:243:13 lint/complexity/noUselessFragments  FIXABLE  ━━━━━━━━━━━━━━━━━━
+
+  i This fragment is unnecessary.
+  
+    241 │             <>{t("conflicts.inProgress")}</>
+    242 │           ) : (
+  > 243 │             <>{t("conflicts.noneInProgress")}</>
+        │             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    244 │           )}
+    245 │         </p>
+  
+  i A fragment is redundant if it contains only one child, or if it is the child of a html element, and is not a keyed fragment.
+  
+  i Unsafe fix: Remove the Fragment
+  
+    243 │ ············<>{t("conflicts.noneInProgress")}</>
+        │             ---                             ----
+
+webview/src/panel/components/CommitRow.tsx:241:11 lint/complexity/noUselessFragments  FIXABLE  ━━━━━━━━━━
+
+  i This fragment is unnecessary.
+  
+    239 │         </span>
+    240 │         {refItems.length > 0 && (
+  > 241 │           <>
+        │           ^^
+  > 242 │             <span
+         ...
+  > 304 │             </span>
+  > 305 │           </>
+        │           ^^^
+    306 │         )}
+    307 │       </span>
+  
+  i A fragment is redundant if it contains only one child, or if it is the child of a html element, and is not a keyed fragment.
+  
+  i Unsafe fix: Remove the Fragment
+  
+    239 239 │           </span>
+    240 240 │           {refItems.length > 0 && (
+    241     │ - ··········<>
+    242     │ - ············<span
+        241 │ + ··········<span
+    243 242 │                 style={{
+    244 243 │                   display: "inline-flex",
+    ······· │ 
+    302 301 │                   </span>
+    303 302 │                 </Tooltip>
+    304     │ - ············</span>
+    305     │ - ··········</>
+        303 │ + ············</span>
+    306 304 │           )}
+    307 305 │         </span>
+  
+
+Checked 120 files in 26ms. No fixes applied.
+Found 11 infos.
+[watch] build started
+[watch] build finished
+
+> jettortoise@0.4.17 build:web /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> cd webview && pnpm run build
+
+
+> webview@0.0.0 build /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/webview
+> tsc && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 553 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/webview/index.html             0.37 kB │ gzip:     0.26 kB
+../dist/webview/assets/style.css      40.06 kB │ gzip:     6.76 kB
+../dist/webview/assets/main.js    10,067.09 kB │ gzip: 1,820.23 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.95s

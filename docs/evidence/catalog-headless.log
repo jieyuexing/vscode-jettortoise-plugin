@@ -1,0 +1,65 @@
+
+> jettortoise@0.4.17 test:headless /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> node scripts/workbench-channel-check.cjs && node scripts/catalog-discovery-check.cjs && node scripts/catalog-registry-check.cjs && node scripts/catalog-update-check.cjs && node scripts/comparison-check.cjs && node scripts/git-nesting-check.cjs && node --test scripts/cvs-nesting-check.mjs && node scripts/nested-registry-check.cjs && node scripts/nested-watcher-check.cjs && node scripts/git-security-check.cjs && node scripts/check-message-contract.cjs && node scripts/message-security-check.cjs && node scripts/repository-isolation-check.cjs && node scripts/workspace-host-check.cjs && node scripts/history-panel-check.cjs && node scripts/host-ui-check.cjs && node scripts/check-vcs-ui.cjs && node scripts/cvs-core-check.cjs && node --test scripts/cvs-real-test.mjs && pnpm --dir webview test
+
+{"checks":16,"strictCatalog":true,"comparisonBound":true,"lateResponseSuppressed":true}
+{"checks":14,"roots":5,"metadataOnly":true,"cancellation":true,"permissionIncomplete":true}
+{"checks":10,"v1Migration":true,"unavailableRetained":true,"hiddenUnavailableReversible":true}
+{"checks":14,"command":"pull --ff-only --no-rebase --no-autostash --no-recurse-submodules"}
+{"checks":57,"stagedBaseline":"HEAD-to-index","cvsBaseline":"Entries-to-working-copy"}
+{"checks":15,"stageAllSkipsNestedCandidates":true,"preStagedChildPreserved":true,"parentAndChildCommitsIndependent":true,"mixedCvsBoundaryRejected":true,"statusBoundarySnapshotAvailable":true,"parentShelfPreservedChild":true,"sentinelUnchanged":true}
+✔ continuous CVS directories share the parent working copy (1075.975083ms)
+✔ independent CVS and Git children are excluded and block parent-wide mutations (5037.029958ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6157.132958
+{"checks":22,"noAutoDiscover":true,"nearestChildOnly":true,"childWindowDoesNotBorrowOuterRoot":true,"hierarchy":true,"removeAndReaddRetainsSession":true,"legacyDoesNotRegister":true,"cancelledRestoreKeepsPageButDeniesOperations":true,"forgedAndStaleBoundaryIdsRejected":true,"replacedRootRejected":true}
+{"checks":5,"childOnly":true,"canonicalAlias":true,"exactIndexOverlap":true,"peerQuiet":true,"outsideQuiet":true}
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-git-security-MEweUi/remote.git
+ * [new branch]      main -> main
+{"negativeControls":15,"internalSymlinkUnlinkedWithoutDeletingTarget":true,"outsideWrite":"before\n","outsideDelete":"keep\n","unicodePathStaged":"目录/with space-文件.txt","localRemoteOnly":"/var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-git-security-MEweUi/remote.git"}
+{"frontendLiteralRequests":127,"fieldAndSurfaceContracts":true}
+{"positive":true,"malformed":true,"forbiddenSurface":true,"paths":true,"hostConfirmation":true,"queuedLiveness":true,"queuedAvailability":true,"confirmationLiveness":true}
+{"checks":14,"canonicalRepositoryId":"a5fef3c34106d7591433ff36c54850e420fb9dc4b6b29f9c41dd142aba7f3391","isolatedRepositoryId":"63660e7ef45f1453565d8a30adda448fea8046a41bb1ddedf0431e923b7aaec0","rootFileHistoryRouting":"/private/var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-repository-isolation-H0dTIP/git-a","cvsDiscovery":true}
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-workspace-host-oKxVJB/b-remote.git
+ * [new branch]      main -> main
+Cloning into '/var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-workspace-host-oKxVJB/b-writer'...
+done.
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-workspace-host-oKxVJB/b-remote.git
+   a058935..47d40b7  main -> main
+To /var/folders/8c/9d7dgf850f953df1q55w2hd00000gn/T/jettortoise-workspace-host-oKxVJB/b-remote.git
+   47d40b7..687c406  main -> main
+warning: adding embedded git repository: nested
+{"declaredCommands":16,"addAndOpenBeforePanel":true,"threeRepositoryPanels":true,"perRepositorySingleton":true,"readyQueue":true,"workingChangesIsolated":true,"hostConfirmCancel":true,"mutationTargetIsolated":true,"eventsIsolated":true,"closeReopenListeners":true,"realGitHostCommit":true,"realCvsHostCommit":true,"cvsTraversalRejected":true,"cvsDirtyAliasUpdateRejected":true,"cvsDirtyAliasCommitRejected":true,"nestedHostDeleteRejected":true,"commitRejectedBeforeStaging":true,"boundaryCreatedDuringConfirmationRejected":true,"catalogOtherRepositoryFastForward":true,"catalogUpdateDidNotFocusOtherPanel":true,"catalogSuccessFeedbackTargeted":true,"dirtyEditorGuardRejected":true,"catalogRetryAfterCleanSuccess":true}
+{"singletonPanel":true,"currentEditorGroup":true,"readyQueue":true,"disposeCleanup":true,"reloadRestore":true,"independentFileHistoryAndCommitQueues":true,"commitFocusUsesRepositoryTab":true}
+{"htmlModes":6,"languageNormalization":["en","zh","zh-cn","zh-tw","other"],"escapedHostileAttributes":true,"cspNoConnectSource":true,"note":"HTML builder only; actual Host routing is covered by workspace-host-check.cjs"}
+{"sharedSourceFiles":12,"sharedTranslationKeys":19,"noBackendImports":true,"localeFallback":true}
+CVS core and protocol boundary checks passed.
+✔ temporary local CVS: checkout, discovery, history, content, diff, commit, update, rollback (4205.089458ms)
+✔ CVS input, symlink and cancellation boundaries reject hostile inputs (965.540541ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5219.223875
+
+> webview@0.0.0 test /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/webview
+> vitest --run
+
+
+ RUN  v4.1.8 /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin/webview
+
+
+ Test Files  17 passed (17)
+      Tests  70 passed (70)
+   Start at  09:52:33
+   Duration  3.07s (transform 1.53s, setup 0ms, import 3.29s, tests 2.74s, environment 12.52s)
+

@@ -1,0 +1,23 @@
+{
+  "extension.description": "An IntelliJ IDEA-style Git and CVS workspace for VS Code.",
+  "category.jettortoise": "JetTortoise",
+  "workspace.trust": "JetTortoise runs local Git and CVS commands and requires a trusted workspace.",
+  "config.cvsPath": "Path to the local CVS executable. No client is downloaded automatically.",
+  "cmd.openHistory": "Open History",
+  "cmd.openCommit": "Open Commit Area",
+  "cmd.refresh": "Refresh Repository",
+  "cmd.git.openPushPanel": "Git: Push...",
+  "cmd.git.openConflicts": "Git: Conflicts",
+  "cmd.git.openMergeEditorFromSCM": "Git: Open Merge Editor",
+  "cmd.git.nextDiff": "Git: Next File Diff",
+  "cmd.git.prevDiff": "Git: Previous File Diff",
+  "cmd.git.editSource": "Git: Edit Source",
+  "cmd.cvs.checkout": "CVS: Checkout...",
+  "cmd.cvs.update": "CVS: Update",
+  "cmd.cvs.cancel": "CVS: Cancel Operation",
+  "cmd.addRepository": "Add Repository...",
+  "cmd.removeRepository": "Remove Repository from List...",
+  "cmd.scanRepositories": "Rescan Repositories",
+  "cmd.updateRepository": "Update Repository Files",
+  "config.autoDiscoverRepositories": "Recursively discover Git/CVS repositories inside trusted workspace folders without scanning ancestors or performing network operations. Disabling this retains the saved list; manual scanning remains available."
+}

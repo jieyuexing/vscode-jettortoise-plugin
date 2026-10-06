@@ -1,0 +1,12 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const root = path.resolve(__dirname, '..');
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(manifest.version)) throw new Error('Invalid package version');
+const output = path.join(root, 'release', `jettortoise-${manifest.version}.vsix`);
+fs.mkdirSync(path.dirname(output), { recursive: true });
+const vsce = require.resolve('@vscode/vsce/vsce');
+const result = spawnSync(process.execPath, [vsce, 'package', '--no-dependencies', '--out', output], { cwd: root, stdio: 'inherit' });
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;

@@ -114,6 +114,9 @@ export type CommandType =
   | "closeRollbackPanel";
 
 export interface Bridge {
+  getState?(): unknown;
+  setState?(state: unknown): void;
+  notifyHistoryReady?(): void;
   request(
     command: CommandType | string,
     params?: Record<string, unknown>,

@@ -1,7 +1,8 @@
 .commit-app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);

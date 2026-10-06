@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import type { VcsRepositoryBoundary } from "../../../../packages/vcs-ui/src";
 import { bridge } from "../bridge";
+import { selectComparison } from "../workbench/transport";
 
 export interface WorkingTreeFile {
   path: string;
@@ -33,6 +35,7 @@ export interface IdeaShelfEntry {
 type TabType = "commit" | "shelf" | "stash";
 
 interface CommitStore {
+  boundaries: VcsRepositoryBoundary[];
   // File changes
   changes: WorkingTreeFile[];
   selectedFiles: Set<string>;
@@ -95,6 +98,7 @@ interface CommitStore {
 
 export const useCommitStore = create<CommitStore>((set, get) => ({
   changes: [],
+  boundaries: [],
   selectedFiles: new Set<string>(),
   highlightedFiles: new Set<string>(),
   commitMessage: "",
@@ -115,6 +119,8 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
       const result = (await bridge.request(
         "getWorkingTreeChanges",
       )) as WorkingTreeFile[];
+      const boundaryResult = await bridge.request("getRepositoryBoundaries");
+      set({ boundaries: Array.isArray(boundaryResult) ? boundaryResult : [] });
       if (Array.isArray(result)) {
         const newPaths = new Set(result.map((f) => `${f.path}:${f.staged}`));
         const { selectedFiles, changes } = get();
@@ -211,6 +217,14 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   },
 
   highlightFile(key: string, mode: "single" | "toggle") {
+    const target = get().changes.find(
+      (file) => `${file.path}:${file.staged}` === key,
+    );
+    if (target && target.status !== "conflicted")
+      selectComparison({
+        source: target.staged ? "staged" : "working",
+        filePath: target.path,
+      });
     const { highlightedFiles } = get();
     if (mode === "single") {
       set({ highlightedFiles: new Set([key]) });

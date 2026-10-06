@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import type {
   Bridge,
   EventMessage,
@@ -5,14 +6,10 @@ import type {
   ResponseMessage,
 } from "./types";
 
-declare function acquireVsCodeApi(): {
-  postMessage(msg: unknown): void;
-  getState(): unknown;
-  setState(state: unknown): void;
-};
+import { getVSCodeApi } from "./vscode-api";
 
 export function createVSCodeBridge(): Bridge {
-  const vscode = acquireVsCodeApi();
+  const vscode = getVSCodeApi();
   const pendingRequests = new Map<
     string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
@@ -29,7 +26,9 @@ export function createVSCodeBridge(): Bridge {
         if (resp.success) {
           pending.resolve(resp.data);
         } else {
-          pending.reject(new Error(resp.error?.message ?? "Unknown error"));
+          pending.reject(
+            new Error(resp.error?.message ?? t("common.unknownError")),
+          );
         }
       }
     } else if (msg.type === "event") {
@@ -41,12 +40,16 @@ export function createVSCodeBridge(): Bridge {
   });
 
   return {
+    getState: () => vscode.getState(),
+    setState: (state) => vscode.setState(state),
+    notifyHistoryReady: () =>
+      vscode.postMessage({ type: "jettortoiseHistoryReady" }),
     request(command, params = {}) {
       return new Promise((resolve, reject) => {
         const id = crypto.randomUUID();
         const timeout = setTimeout(() => {
           pendingRequests.delete(id);
-          reject(new Error(`Request '${command}' timed out`));
+          reject(new Error(t("common.requestTimedOut", { command })));
         }, 10_000);
 
         pendingRequests.set(id, {

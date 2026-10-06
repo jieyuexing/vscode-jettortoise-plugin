@@ -1,4 +1,5 @@
 import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 import { CommitDetail } from "./CommitDetail";
 import { FileChangeTree } from "./FileChangeTree";
 

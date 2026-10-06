@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../../shared/i18n";
 
 export interface CreateBranchDialogProps {
   /** Title shown at top, e.g. "Create Branch from dev" */
@@ -59,7 +60,7 @@ function Checkbox({
 export function CreateBranchDialog({
   title,
   defaultName = "",
-  placeholder = "branch-name",
+  placeholder = t("panel.branchNamePlaceholder"),
   onClose,
   onConfirm,
 }: CreateBranchDialogProps) {
@@ -194,7 +195,7 @@ export function CreateBranchDialog({
                 whiteSpace: "nowrap",
               }}
             >
-              Branch Name:
+              {t("panel.branchNameLabel")}
             </label>
             <input
               ref={inputRef}
@@ -244,7 +245,7 @@ export function CreateBranchDialog({
             }}
           >
             <Checkbox checked={checkout} onChange={(v) => setCheckout(v)} />
-            Checkout branch
+            {t("panel.checkoutBranchOption")}
           </label>
           <label
             style={{
@@ -263,7 +264,7 @@ export function CreateBranchDialog({
                 setError(null);
               }}
             />
-            Overwrite existing branch
+            {t("panel.overwriteBranchOption")}
           </label>
         </div>
 
@@ -283,7 +284,7 @@ export function CreateBranchDialog({
               cursor: "pointer",
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -301,7 +302,7 @@ export function CreateBranchDialog({
               opacity: branchName.trim() && !submitting ? 1 : 0.4,
             }}
           >
-            Create
+            {t("panel.createBranchButton")}
           </button>
         </div>
       </div>

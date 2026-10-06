@@ -1,0 +1,12 @@
+Command: node scripts/workspace-host-check.cjs
+Scope: temporary local Git bare remote and temporary worktrees only; no GUI, user repository, or network host.
+Result: expected pre-fix failure (exit 1).
+
+AssertionError [ERR_ASSERTION]: dirty editor did not reject queued catalog update
+
+true !== false
+
+The production Host catalog request targeted repository B while a VS Code file
+document beneath B was marked isDirty. The request returned ok:true and the
+fast-forward proceeded. The temporary path has been intentionally redacted.
+This evidence is retained before the canonical/lexical path helper repair.

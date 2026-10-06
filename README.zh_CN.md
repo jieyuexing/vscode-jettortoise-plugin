@@ -1,148 +1,83 @@
-<a name="readme-top"></a>
+# JetTortoise
 
-<div align="center">
+IntelliJ IDEA 风格的 VS Code Git / CVS 工作面板。
 
-<img src="https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/assets/logo-128.png" width="80" />
+[English](./README.md) | 简体中文
 
-<h1>IntelliJ Git Graph - IDEA 风格分支与合并</h1>
+在一个编辑器标签页内查看本地变更和仓库历史，左侧为 **仓库列表与导航 · 提交区**，右侧上方为只读 diff，下方为 **历史 · 详情**。每个 Git 仓库或 CVS 工作副本使用独立的标签页、状态与操作。JetTortoise 是独立开源项目。
 
-IntelliJ IDEA 风格的 Git 可视化工具：提交图、分支管理、Cherry-Pick、Rebase 和三路合并编辑器。
+## 核心特点
 
-> 基于 [zhyc9de/jet-git](https://github.com/zhyc9de/jet-git) 的 Fork，新增完整的 IntelliJ IDEA 风格右键菜单和 UI 增强。
+- **按仓库打开。** 多个仓库可同时打开、并排查看；重复打开同一仓库会聚焦已有标签，完整路径用于区分同名仓库。
+- **仓库列表。** 默认递归发现当前工作区内各层 Git/CVS 仓库，按层级显示类型与分支/标签；手动添加、自动发现和隐藏项随工作区保存。右键可更新指定仓库而不切换标签。
+- **只读 diff 工作台。** 左侧选择待提交文件并填写说明，右侧上方查看左右或行内差异，下方独立浏览历史。各栏可调整宽度和折叠，diff 可展开后恢复；窄窗口先收起详情，再收起仓库导航。
+- **Git。** 提交图、分支与标签、文件历史、差异、提交与修订、Shelf/Stash、推送与回滚、冲突及三路合并。
+- **CVS。** 通过本机客户端检出，查看工作副本状态、文件 revision 历史和差异，执行提交、更新、取消及带确认和同目录备份的回滚。CVS 使用文件修订号，不显示 Git 专有操作。
+- **显示语言。** 跟随 VS Code；英文默认，`zh`、`zh-cn`、`zh-tw` 使用简体中文，其它语言回退英文。更换 VS Code 显示语言并 Reload 后生效。
 
-[English](./README.md) · **简体中文**
+## Git 历史与合并
 
-</div>
+浏览提交和分支，检查变更文件，并通过右键菜单执行相应操作。以下截图展示已有 Git 功能，合并后的仓库工作面板布局见上方说明。
 
----
+![Git 历史](./images/git-graph.png)
 
-## 功能特性
+![提交右键菜单](./images/commit-context-menu.gif)
 
-### 分支右键菜单
+![冲突列表](./images/conflicts-list.png)
 
-右键任意分支即可执行 Checkout、创建、合并、Rebase、重命名、删除、Push、Pull 等操作，与 IntelliJ IDEA 体验一致。
-
-![分支 Checkout](https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/checkout.gif)
-
-### 提交右键菜单
-
-右键任意提交即可复制 Hash、Cherry-Pick、Checkout、Reset、Revert、创建分支或标签。
-
-![提交右键菜单](https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/commit-context-menu.gif)
-
-### 变更文件右键菜单
-
-右键变更文件面板中的文件：查看 Diff、编辑源文件、打开仓库版本、还原/Cherry-Pick 文件变更、复制路径。
-
-### Git 提交图
-
-![Git Graph](https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/git-graph.png)
-
-- **分支树** — 按 Local / Remote / Tags 分组，支持搜索过滤
-- **提交列表** — 彩色分支线，可调整列宽（Message、Author、Date、Hash）
-- **详情面板** — 提交信息和变更文件树
-- **过滤器** — 按分支、作者、日期范围过滤
-
-### 三路合并编辑器
-
-![三路合并编辑器](https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/three-way-merge.png)
-
-- 三栏布局：Theirs | Result | Yours
-- 冲突高亮 + 逐块操作按钮
-- 完整语法高亮
-
-### 冲突管理
-
-![冲突列表](https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/conflicts-list.png)
-
-- 快捷操作：接受 Yours / 接受 Theirs / 合并
-- 与 VS Code 源代码管理面板无缝集成
-
----
-
-## 所有右键菜单操作
-
-<details>
-<summary><b>分支（右键）</b></summary>
-
-- Checkout — 切换分支
-- New Branch from... — 从选中分支创建新分支
-- Checkout and Rebase onto current — 切换并 Rebase 到当前分支
-- Rebase current onto branch — 将当前分支 Rebase 到选中分支
-- Merge into current — 合并到当前分支
-- Rename — 重命名（仅本地分支）
-- Delete — 删除（未合并时提示强制删除）
-- Update — 拉取远程更新
-- Push — 推送到远程
-
-</details>
-
-<details>
-<summary><b>提交（右键）</b></summary>
-
-- Copy Revision Number — 复制完整 Hash
-- Cherry-Pick — Cherry-Pick 该提交
-- Checkout Revision — 切换到该提交（Detached HEAD）
-- Reset Current Branch to Here — 重置当前分支（Mixed/Soft/Hard）
-- Revert Commit — 创建 Revert 提交
-- New Branch... — 从该提交创建分支
-- New Tag... — 在该提交创建标签
-
-</details>
-
-<details>
-<summary><b>变更文件（右键）</b></summary>
-
-- Show Diff — 打开 Diff 编辑器
-- Edit Source — 在编辑器中打开文件
-- Open Repository Version — 查看该提交时的文件版本
-- Revert Selected Changes — 还原文件到父提交状态
-- Cherry-Pick Selected Changes — 将文件变更应用到工作区
-- Copy Path — 复制文件路径
-- Copy File Name — 复制文件名
-
-</details>
-
----
+![三路合并](./images/three-way-merge.png)
 
 ## 安装
 
-**从 Marketplace 安装：**
+先按下方开发步骤安装依赖，再构建安装包：
 
-在 VS Code 扩展中搜索 **"IntelliJ Git Graph"** 即可安装。
+```sh
+pnpm run vsce:package
+code --install-extension release/jettortoise-0.4.17.vsix
+```
 
-**从 .vsix 安装：**
+也可执行 **扩展：从 VSIX 安装…**，选择 `release/jettortoise-0.4.17.vsix`。Git 功能需要本机 Git 客户端；CVS 功能需要本机 `cvs` 客户端，未加入 PATH 时请设置 `jettortoise.cvsPath`。JetTortoise 不会自动下载客户端。
 
-1. 从 [Releases](https://github.com/aotemj/jetbrains-git-graph/releases) 下载最新 `.vsix`
-2. `Cmd+Shift+P` → "Extensions: Install from VSIX..."
+默认在受信任的当前工作区内递归发现 Git/CVS 仓库，不扫描窗口外的祖先，不跟随目录符号链接。仓库列表支持搜索、添加、重新扫描和恢复隐藏项；右键提供打开工作台、打开提交区、更新文件、刷新状态、复制路径和移除。列表保存于当前工作区，重开同一工作区后沿用。关闭 `jettortoise.autoDiscoverRepositories` 可停止自动发现，已有列表保留，仍可手动扫描。扫描取消或局部失败会标为未完成。
 
-## 环境要求
+**更新此仓库文件** 对 Git 仅执行当前 upstream 的快进更新；有未提交内容、未保存编辑器、无 upstream、分离 HEAD、分叉或嵌套边界时拒绝。CVS 使用既有 update 和边界保护。更新不会切换当前标签。
 
-- VS Code 1.85.0+
-- Git 已安装并在 PATH 中
+选择工作区文件或历史文件即可预览 diff：Git 已暂存为 HEAD ↔ 暂存区，未暂存为暂存区 ↔ 磁盘；CVS 为 Entries/所选 revision ↔ 工作副本。每侧最多 2 MiB、20,000 行，二进制或超限内容可转到原生 diff。预览只读，未保存编辑会提示，文件正文不写入 webview 持久状态。
 
-## 本地开发
+文件归属最近的真实仓库边界。未登记的子仓提供“添加并打开”；取消后不会退回父仓。父仓写操作不能跨入子仓，即使子仓已从列表移除。存在子仓且无法确认完整影响范围的操作会暂停，具体规则见[嵌套仓库说明](./docs/nested-repositories.md)。
 
-```bash
-git clone https://github.com/aotemj/jetbrains-git-graph.git
-cd jetbrains-git-graph
+在独立 VS Code 窗口打开子目录时，不会自动带入外层仓库。独立子仓可以添加；普通子目录则提示真实仓根在窗口之外，需要打开该仓根或将其添加为工作区文件夹。VS Code 自带 Git“源代码管理”视图使用另一套发现设置。
+
+本扩展使用新身份 `jetgit.jettortoise`，不导入旧 JetGit/JetCVS 命令与私有状态。命令、快捷键、CVS 配置及回退方法见[迁移说明](./docs/migration.md)。
+
+## 安全与隐私
+
+本次检查的源码未发现专用遥测、分析客户端或自动上传工作区的逻辑，仓库数据在本机处理。Git remote 操作和 CVS 服务端操作通过已安装客户端及其配置执行；Git 仍可能调用已配置的 hooks、filters 和凭据助手。CVS 使用已有客户端认证，并拒绝在仓库地址中内嵌密码。
+
+Shelf/patch 文件和 CVS 回滚备份会留在磁盘中，复制和导入操作会使用系统剪贴板。各标签通过 VS Code 保存布局与历史偏好；Git 提交草稿仅保留在页面内存，CVS 提交草稿使用 webview state。仓库操作要求受信任的本地工作区。
+
+输入、路径和确认边界已有专门回归检查。依赖风险、文件系统竞态限制及未覆盖的运行场景见[安全审查记录](./docs/security-review.md)。这些检查不构成无漏洞保证。
+
+## 开发
+
+```sh
+git clone https://github.com/jieyuexing/vscode-jettortoise-plugin.git
+cd vscode-jettortoise-plugin
 pnpm install
-cd webview && pnpm install && cd ..
+(cd webview && pnpm install)
+pnpm run build
 ```
 
-按 **F5** 启动扩展开发宿主。
+使用 `pnpm run watch` 增量构建。在 VS Code 中打开本目录并按 **F5** 启动扩展开发宿主。自动化无窗口检查见[验收记录](./docs/jettortoise-validation.md)；真实 VS Code 窗口测试单独安排，不由这些检查自动启动。
 
-```bash
-pnpm run watch          # 监听模式
-pnpm run build          # 生产构建
-pnpm run vsce:package   # 打包为 .vsix
-```
-
-## 致谢
-
-- 原项目：[zhyc9de/jet-git](https://github.com/zhyc9de/jet-git)
-- 图标：[IntelliJ IDEA Icons](https://intellij-icons.jetbrains.design/)（Apache 2.0 许可）
+Git 和 CVS 适配器均直接编译本仓 `packages/vcs-ui`。构建与运行不依赖旧 JetCVS 源目录，也不下载 UI 快照。
 
 ## 许可证
 
-[MIT](./LICENSE)
+[MIT](./LICENSE)，保留原始版权声明。[CVS 迁入来源](./docs/cvs-import.md)记录了本地实现来源；安装包不包含 IntelliJ 集成层或协议库。
+
+## 致谢
+
+- [aotemj/jetbrains-git-graph](https://github.com/aotemj/jetbrains-git-graph)
+- [zhyc9de/jet-git](https://github.com/zhyc9de/jet-git)
+- [IntelliJ IDEA Icons](https://intellij-icons.jetbrains.design/) — Apache-2.0

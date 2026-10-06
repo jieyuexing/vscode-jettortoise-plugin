@@ -1,8 +1,14 @@
+import { execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import * as vscode from "vscode";
 import type { GitCache } from "../git/cache";
 import type { MessageRouter } from "../messages/messageRouter";
+import { nearestRepositories, within } from "../repositories/boundaries.cjs";
 
 type Scope = "all" | "branches" | "status" | "mergeState" | "log";
+const execFileAsync = promisify(execFile);
 
 export class GitWatcher implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
@@ -12,6 +18,7 @@ export class GitWatcher implements vscode.Disposable {
     private readonly workspaceRoot: string,
     private readonly messageRouter: MessageRouter,
     private readonly cache: GitCache,
+    private readonly ensureAvailable?: () => Promise<void>,
   ) {
     this.setupFileWatchers();
     this.setupEditorWatchers();
@@ -111,8 +118,73 @@ export class GitWatcher implements vscode.Disposable {
   private setupEditorWatchers(): void {
     // Save → status refresh
     this.disposables.push(
-      vscode.workspace.onDidSaveTextDocument(() => this.notify("status")),
+      vscode.workspace.onDidSaveTextDocument((document) => {
+        void this.routeSavedDocument(document);
+      }),
     );
+  }
+
+  /**
+   * A nested repository owns saves below its real root. The parent only also
+   * refreshes if its own native index contains that exact path, which handles
+   * intentional overlap without turning every child save into a broadcast.
+   */
+  private async routeSavedDocument(
+    document: vscode.TextDocument,
+  ): Promise<void> {
+    if (document.uri.scheme !== "file") return;
+    try {
+      await this.ensureAvailable?.();
+      const [root, file] = await Promise.all([
+        fs.realpath(this.workspaceRoot),
+        fs.realpath(document.uri.fsPath),
+      ]);
+      if (!within(root, file) || root === file) return;
+
+      const nearest = await nearestRepositories(file);
+      if (
+        nearest.some(
+          (repository) => repository.kind === "git" && repository.root === root,
+        )
+      ) {
+        this.notify("status");
+        return;
+      }
+
+      const relative = path.relative(root, file);
+      if (
+        !relative ||
+        path.isAbsolute(relative) ||
+        relative === ".." ||
+        relative.startsWith(`..${path.sep}`)
+      ) {
+        return;
+      }
+      if (await this.isExactIndexPath(root, relative)) {
+        this.notify("status");
+      }
+    } catch {
+      // A malformed, deleted, untrusted, or non-local path never broadcasts.
+    }
+  }
+
+  private async isExactIndexPath(
+    root: string,
+    relative: string,
+  ): Promise<boolean> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["-C", root, "ls-files", "-z", "--error-unmatch", "--", relative],
+        {
+          maxBuffer: 64 * 1024,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        },
+      );
+      return stdout.split("\0").some((entry) => entry === relative);
+    } catch {
+      return false;
+    }
   }
 
   private notify(scope: Scope): void {

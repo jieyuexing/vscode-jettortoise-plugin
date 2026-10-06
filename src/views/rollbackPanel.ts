@@ -35,8 +35,8 @@ export class RollbackPanel {
     }
 
     this.panel = vscode.window.createWebviewPanel(
-      "git-brains.rollbackPanel",
-      "Rollback Changes",
+      "jettortoise.git.rollbackPanel",
+      vscode.l10n.t("Rollback Changes"),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -54,6 +54,7 @@ export class RollbackPanel {
 
     const routerDisposable = this.messageRouter.registerWebview(
       this.panel.webview,
+      "rollback",
     );
 
     this.panel.onDidDispose(() => {
@@ -63,6 +64,9 @@ export class RollbackPanel {
   }
 
   close(): void {
+    this.panel?.dispose();
+  }
+  dispose(): void {
     this.panel?.dispose();
   }
 }

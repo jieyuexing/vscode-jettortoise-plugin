@@ -1,0 +1,11 @@
+
+> jettortoise@0.4.17 check:l10n /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> pnpm run l10n:prepare && node scripts/check-l10n.cjs
+
+
+> jettortoise@0.4.17 l10n:prepare /Users/jieyuexing/dsh-universe/dsh-workspaces/projects/vscode-plugins/vscode-jettortoise-plugin
+> node scripts/prepare-l10n.cjs
+
+Manifest keys: 21; host l10n calls: 167; resource checks passed.
+Webview keys: 278; static t calls: 305; JSX/attribute coverage passed.
+CVS dictionary keys: 35; locale fallback passed.

@@ -4,7 +4,14 @@ IntelliJ IDEA 风格的 VS Code Git / CVS 工作面板。
 
 [English](./README.md) | 简体中文
 
-在一个编辑器标签页内查看本地变更和仓库历史，左侧为 **仓库列表与导航 · 提交区**，右侧上方为只读 diff，下方为 **历史 · 详情**。每个 Git 仓库或 CVS 工作副本使用独立的标签页、状态与操作。JetTortoise 是独立开源项目。
+在一个编辑器标签页内查看本地变更和仓库历史，左侧为 **仓库列表与导航 · 提交区**，右侧上方为只读 diff，下方为 **历史 · 详情**。每个 Git 仓库或 CVS 工作副本使用独立的标签页、状态与操作。
+
+JetTortoise 是独立开源项目，与 JetBrains、TortoiseGit、TortoiseCVS 均无隶属关系。
+
+[扩展市场](https://marketplace.visualstudio.com/items?itemName=jieyuexing.jettortoise) ·
+[Releases](https://github.com/jieyuexing/vscode-jettortoise-plugin/releases) ·
+[更新日志](./CHANGELOG.md) ·
+许可证：[MIT](./LICENSE)
 
 ## 核心特点
 
@@ -29,14 +36,19 @@ IntelliJ IDEA 风格的 VS Code Git / CVS 工作面板。
 
 ## 安装
 
-先按下方开发步骤安装依赖，再构建安装包：
+**扩展市场：** 在扩展视图搜索 **JetTortoise**，或执行：
 
 ```sh
-pnpm run vsce:package
-code --install-extension release/jettortoise-0.4.17.vsix
+code --install-extension jieyuexing.jettortoise
 ```
 
-也可执行 **扩展：从 VSIX 安装…**，选择 `release/jettortoise-0.4.17.vsix`。Git 功能需要本机 Git 客户端；CVS 功能需要本机 `cvs` 客户端，未加入 PATH 时请设置 `jettortoise.cvsPath`。JetTortoise 不会自动下载客户端。
+**从 VSIX：** 从 [Releases](https://github.com/jieyuexing/vscode-jettortoise-plugin/releases) 下载 `jettortoise-<version>.vsix`，或按下方开发步骤自行 `pnpm run vsce:package`，然后执行 **扩展：从 VSIX 安装…**，或：
+
+```sh
+code --install-extension release/jettortoise-<version>.vsix
+```
+
+Git 功能需要本机 Git 客户端；CVS 功能需要本机 `cvs` 客户端，未加入 PATH 时请设置 `jettortoise.cvsPath`。JetTortoise 不会自动下载客户端。
 
 默认在受信任的当前工作区内递归发现 Git/CVS 仓库，不扫描窗口外的祖先，不跟随目录符号链接。仓库列表支持搜索、添加、重新扫描和恢复隐藏项；右键提供打开工作台、打开提交区、更新文件、刷新状态、复制路径和移除。列表保存于当前工作区，重开同一工作区后沿用。关闭 `jettortoise.autoDiscoverRepositories` 可停止自动发现，已有列表保留，仍可手动扫描。扫描取消或局部失败会标为未完成。
 
@@ -48,7 +60,7 @@ code --install-extension release/jettortoise-0.4.17.vsix
 
 在独立 VS Code 窗口打开子目录时，不会自动带入外层仓库。独立子仓可以添加；普通子目录则提示真实仓根在窗口之外，需要打开该仓根或将其添加为工作区文件夹。VS Code 自带 Git“源代码管理”视图使用另一套发现设置。
 
-本扩展使用新身份 `jetgit.jettortoise`，不导入旧 JetGit/JetCVS 命令与私有状态。命令、快捷键、CVS 配置及回退方法见[迁移说明](./docs/migration.md)。
+扩展身份为 `jieyuexing.jettortoise`，不导入旧 JetGit/JetCVS 命令与私有状态。命令、快捷键、CVS 配置及回退方法见[迁移说明](./docs/migration.md)。
 
 ## 安全与隐私
 
@@ -68,7 +80,7 @@ pnpm install
 pnpm run build
 ```
 
-使用 `pnpm run watch` 增量构建。在 VS Code 中打开本目录并按 **F5** 启动扩展开发宿主。自动化无窗口检查见[验收记录](./docs/jettortoise-validation.md)；真实 VS Code 窗口测试单独安排，不由这些检查自动启动。
+使用 `pnpm run watch` 增量构建。在 VS Code 中打开本目录并按 **F5** 启动扩展开发宿主。`pnpm run check:l10n` 校验词典，`pnpm run test:headless` 运行不打开 VS Code 窗口的自动检查；真实窗口测试单独安排。打包与上架步骤见 [docs/release.md](./docs/release.md)。
 
 Git 和 CVS 适配器均直接编译本仓 `packages/vcs-ui`。构建与运行不依赖旧 JetCVS 源目录，也不下载 UI 快照。
 

@@ -4,7 +4,14 @@ An IntelliJ IDEA-style Git and CVS workspace for VS Code.
 
 English | [简体中文](./README.zh_CN.md)
 
-Review local changes and repository history in one editor tab with **Repositories and Navigation · Commit** on the left, a read-only diff above **History · Details** on the right. Each Git repository or CVS working copy has its own tab, state, and operations. JetTortoise is an independent open-source project.
+Review local changes and repository history in one editor tab with **Repositories and Navigation · Commit** on the left, a read-only diff above **History · Details** on the right. Each Git repository or CVS working copy has its own tab, state, and operations.
+
+JetTortoise is an independent open-source project. It is not affiliated with JetBrains, TortoiseGit, or TortoiseCVS.
+
+[Marketplace](https://marketplace.visualstudio.com/items?itemName=jieyuexing.jettortoise) ·
+[Releases](https://github.com/jieyuexing/vscode-jettortoise-plugin/releases) ·
+[Changelog](./CHANGELOG.md) ·
+License: [MIT](./LICENSE)
 
 ## Features
 
@@ -29,14 +36,19 @@ Browse commits and branches, inspect changed files, and open contextual operatio
 
 ## Install
 
-Install the development dependencies below, then build the package:
+**Marketplace:** open the Extensions view, search for **JetTortoise**, or run:
 
 ```sh
-pnpm run vsce:package
-code --install-extension release/jettortoise-0.4.17.vsix
+code --install-extension jieyuexing.jettortoise
 ```
 
-Alternatively, use **Extensions: Install from VSIX...** and select `release/jettortoise-0.4.17.vsix`. Git support requires a local Git client. CVS support requires a local `cvs` client; set `jettortoise.cvsPath` when it is not on PATH. JetTortoise does not download a client automatically.
+**From VSIX:** download `jettortoise-<version>.vsix` from [Releases](https://github.com/jieyuexing/vscode-jettortoise-plugin/releases), or build it yourself with `pnpm run vsce:package` (see Development), then use **Extensions: Install from VSIX...** or:
+
+```sh
+code --install-extension release/jettortoise-<version>.vsix
+```
+
+Git support requires a local Git client. CVS support requires a local `cvs` client; set `jettortoise.cvsPath` when it is not on PATH. JetTortoise does not download a client automatically.
 
 Discovery starts automatically in trusted local workspace folders, never scans outer ancestors, and skips directory symlinks. The catalog offers search, add, rescan, and restore-hidden controls; repository menus open a workbench or commit area, update files, refresh status, copy the path, or remove an entry. Registrations persist in the current workspace. Disable `jettortoise.autoDiscoverRepositories` to stop automatic scanning without deleting the list; manual scanning remains available. Cancelled or partially failed scans are marked incomplete.
 
@@ -48,7 +60,7 @@ A file belongs to its nearest repository boundary. An unregistered child offers 
 
 Opening a subdirectory in its own VS Code window does not bring in an outer repository. An independent child repository can be added; a plain subdirectory reports that its actual root is outside the window. Open that root or add it as a workspace folder to use it. VS Code's built-in Git Source Control view has separate discovery settings.
 
-This is a new extension identity, `jetgit.jettortoise`. Old JetGit/JetCVS commands and private state are not imported. See [migration instructions](./docs/migration.md) for commands, shortcuts, CVS configuration, and rollback.
+The extension identity is `jieyuexing.jettortoise`. Old JetGit/JetCVS commands and private state are not imported. See [migration instructions](./docs/migration.md) for commands, shortcuts, CVS configuration, and rollback.
 
 ## Security and privacy
 
@@ -68,7 +80,7 @@ pnpm install
 pnpm run build
 ```
 
-Use `pnpm run watch` for incremental builds. Open this directory in VS Code and press **F5** to launch an Extension Development Host. Automated headless checks are documented in the [validation record](./docs/jettortoise-validation.md). Real VS Code window tests are separate and are not launched by these checks.
+Use `pnpm run watch` for incremental builds. Open this directory in VS Code and press **F5** to launch an Extension Development Host. `pnpm run check:l10n` verifies the dictionaries and `pnpm run test:headless` runs the automated checks without opening a VS Code window; real window tests are separate. Packaging and Marketplace publishing steps are in [docs/release.md](./docs/release.md).
 
 Both adapters compile `packages/vcs-ui` directly from this repository. Building or running JetTortoise does not require the old JetCVS source directory or a downloaded UI snapshot.
 

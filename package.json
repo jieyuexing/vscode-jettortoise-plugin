@@ -1,15 +1,29 @@
 {
   "name": "jettortoise",
   "displayName": "JetTortoise",
-  "publisher": "jetgit",
+  "publisher": "jieyuexing",
   "description": "%extension.description%",
-  "version": "0.4.17",
+  "version": "0.5.0",
   "license": "MIT",
+  "author": {
+    "name": "jieyuexing",
+    "url": "https://github.com/jieyuexing"
+  },
   "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1f22",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/jieyuexing/vscode-jettortoise-plugin"
   },
+  "homepage": "https://github.com/jieyuexing/vscode-jettortoise-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/jieyuexing/vscode-jettortoise-plugin/issues"
+  },
+  "qna": "https://github.com/jieyuexing/vscode-jettortoise-plugin/issues",
+  "pricing": "Free",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -230,6 +244,7 @@
     "watch:webview": "cd webview && pnpm run watch",
     "package": "pnpm run l10n:prepare && pnpm run check-types && pnpm run lint && node esbuild.js --production",
     "vsce:package": "pnpm run package && pnpm run build:web && node scripts/package-vsix.cjs",
+    "vsce:publish": "node scripts/publish-vsix.cjs",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",

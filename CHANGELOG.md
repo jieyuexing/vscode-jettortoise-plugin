@@ -2,6 +2,19 @@
 
 # Changelog / 更新日志
 
+## [0.5.0] - 2026-10-15
+
+### Changed / 变更
+- **Rebranded to JetTortoise** — new extension identity `jieyuexing.jettortoise`; old JetGit/JetCVS commands and private state are not imported, see [docs/migration.md](./docs/migration.md) / 更名为 JetTortoise，使用新扩展身份，不导入旧 JetGit/JetCVS 命令与私有状态
+- **Repository-first workbench** — one editor tab per repository: repositories and navigation · commit on the left, a read-only diff above history · details on the right; columns resize and collapse / 按仓库打开的四栏工作台，右上为只读 diff
+- **Marketplace metadata** — publisher, links, gallery banner; screenshots are no longer bundled in the VSIX / 补齐扩展市场元数据，截图不再打入 VSIX
+
+### Added / 新增
+- **CVS support** — checkout, working-copy status, revision history, diff, commit, update, cancel, and confirmed rollback with a sibling backup via the local `cvs` client (`jettortoise.cvsPath`) / 通过本机 cvs 客户端支持检出、状态、历史、差异、提交、更新、取消与带备份的回滚
+- **Repository catalog** — recursive discovery of Git/CVS roots inside trusted workspace folders; automatic, manual and hidden entries persist per workspace; update another repository from its context menu (`jettortoise.autoDiscoverRepositories`) / 递归发现工作区内各层 Git/CVS 仓库，登记随工作区保存
+- **Nested repository protection** — a file belongs to its nearest repository; parent writes never cross into child repositories, see [docs/nested-repositories.md](./docs/nested-repositories.md) / 父仓写操作不跨入子仓
+- **Simplified Chinese UI** — `zh`, `zh-cn`, `zh-tw` follow the VS Code display language / 简体中文界面跟随 VS Code 显示语言
+
 ## [0.4.17] - 2026-06-20
 
 ### Added / 新增

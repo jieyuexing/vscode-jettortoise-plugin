@@ -24,7 +24,13 @@ az login            # 用创建 publisher 的同一个 Microsoft 账号登录
 pnpm run vsce:publish
 ```
 
-未核实点：个人 Microsoft 账号经 `az login` 能否取到 Azure DevOps 资源令牌并被 Marketplace 接受；首次发布时验证，失败则回退路线 B，并把结果记回本节。
+2026-10-15 实测：publisher 所属账号 `jieyuexing@outlook.com` 是个人 Microsoft 账号，不属于任何 Entra 租户。`az login --use-device-code --allow-no-subscriptions` 浏览器登录成功但返回空列表，`az account get-access-token` 因此无法执行；Azure DevOps 也不接受个人账号经 `/consumers` 取得的令牌。所以本路线目前走不通，前提是先有一个 Entra 租户：
+
+1. 用该账号在 [Microsoft Entra 管理中心](https://entra.microsoft.com/) 创建租户（或注册 Azure 账号时自动得到 Default Directory），记下租户 ID。
+2. 在 [Marketplace 管理页](https://marketplace.visualstudio.com/manage) 的 publisher **Members** 里加入该租户内的身份（可以就是本人在租户里的成员账号）。
+3. `az login --tenant <租户ID> --allow-no-subscriptions`，再 `pnpm run vsce:publish -- --entra`。
+
+完成前先用路线 B。
 
 ### 路线 B：全球 PAT（只能用到 2026-12-01）
 

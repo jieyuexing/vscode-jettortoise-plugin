@@ -236,7 +236,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run package",
+    "vscode:prepublish": "pnpm run package && pnpm run build:web",
     "compile": "pnpm run l10n:prepare && pnpm run check-types && pnpm run lint && node esbuild.js",
     "watch": "pnpm run l10n:prepare && npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

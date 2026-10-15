@@ -12,7 +12,7 @@
 ## 一次性准备（用户本人完成）
 
 1. 在 [Marketplace 管理页](https://marketplace.visualstudio.com/manage) 创建 publisher，ID 必须是 `jieyuexing`（与 `package.json` 的 `publisher` 一致；2026-10-15 已创建）。若换 ID，同步改 `package.json`、两份 README、`docs/migration.md`、`CHANGELOG.md` 和本文。
-2. 选一条认证路线。`scripts/publish-vsix.cjs` 在 `az account show` 成功时走 Entra，否则走 PAT；也可用 `pnpm run vsce:publish -- --entra` / `-- --pat` 强制指定。
+2. 选一条发布路线：A（Entra，需先有租户）、B（全球 PAT，2026-12-01 前）、C（网页手动上传，无需令牌）。`scripts/publish-vsix.cjs` 只服务 A/B：`az account show` 成功时走 Entra，否则走 PAT；也可用 `pnpm run vsce:publish -- --entra` / `-- --pat` 强制指定。
 
 ### 路线 A：Microsoft Entra ID（长期）
 
@@ -45,6 +45,14 @@ security add-generic-password -a jettortoise -s vscode-marketplace-token -w
 脚本只把它注入 `vsce publish` 子进程的环境变量 `VSCE_PAT`。也可以临时 `VSCE_PAT=… pnpm run vsce:publish -- --pat`，但不要把 token 写进仓库、日志或任务书。
 
 GitHub Actions 的 trusted publishing（`vsce publish --oidc`）只在 CI 里可用；本仓没有 CI，不采用。
+
+### 路线 C：网页手动上传（不需要任何令牌）
+
+在 [Marketplace 管理页](https://marketplace.visualstudio.com/manage/publishers/jieyuexing) 用 Microsoft 账号登录，对扩展选 **Update**，上传 `release/jettortoise-<version>.vsix`。只需账号登录，不受 PAT 退役影响；发布频率低时这是最省事的做法。上传后仍按「每次发布」的第 3、4 步打 tag、发 GitHub Release 并核对。
+
+## 发布记录
+
+- 2026-10-15 `0.5.0`：首次上架，用户经路线 C 网页上传；Marketplace 校验通过（`validated, public`）。GitHub Release `v0.5.0` 挂同一个 VSIX，市场包、GitHub 资产与本地构建 SHA-256 一致：`0be67fdd9f1e390f67a063c1d2e83c818faccb1ac274da6a2b41c25c6d63cd23`。
 
 ## 每次发布
 

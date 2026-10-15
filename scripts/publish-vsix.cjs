@@ -1,7 +1,13 @@
 // Publish the already-packaged VSIX for the current manifest version.
-// The Marketplace token comes from VSCE_PAT or the login keychain item
-// `vscode-marketplace-token` (account `jettortoise`); it is passed to vsce
-// through the environment only, never through argv.
+//
+// Authentication (see docs/release.md):
+//   --entra  vsce publish --azure-credential; the token comes from the Azure
+//            identity chain (AZURE_* env, `az login`, …). Default when `az
+//            account show` succeeds.
+//   --pat    Personal Access Token from VSCE_PAT or the login keychain item
+//            `vscode-marketplace-token` (account `jettortoise`). Passed to vsce
+//            through the environment only, never through argv. Default
+//            otherwise. Global PATs stop working on 2026-12-01.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -14,25 +20,33 @@ if (!fs.existsSync(vsix)) {
   process.exit(1);
 }
 
-let pat = process.env.VSCE_PAT;
-if (!pat) {
-  const keychain = spawnSync(
-    'security',
-    ['find-generic-password', '-a', 'jettortoise', '-s', 'vscode-marketplace-token', '-w'],
-    { encoding: 'utf8' },
-  );
-  pat = keychain.status === 0 ? keychain.stdout.trim() : '';
+const argv = process.argv.slice(2);
+const azLoggedIn = () => spawnSync('az', ['account', 'show', '-o', 'none'], { stdio: 'ignore' }).status === 0;
+const mode = argv.includes('--pat') ? 'pat' : argv.includes('--entra') ? 'entra' : azLoggedIn() ? 'entra' : 'pat';
+
+const args = ['publish', '--packagePath', vsix];
+const env = { ...process.env };
+if (mode === 'entra') {
+  args.push('--azure-credential');
+} else {
+  let pat = process.env.VSCE_PAT;
+  if (!pat) {
+    const keychain = spawnSync(
+      'security',
+      ['find-generic-password', '-a', 'jettortoise', '-s', 'vscode-marketplace-token', '-w'],
+      { encoding: 'utf8' },
+    );
+    pat = keychain.status === 0 ? keychain.stdout.trim() : '';
+  }
+  if (!pat) {
+    console.error('No Marketplace token: run `az login` for Entra, set VSCE_PAT, or add keychain item vscode-marketplace-token (see docs/release.md).');
+    process.exit(1);
+  }
+  env.VSCE_PAT = pat;
 }
-if (!pat) {
-  console.error('No Marketplace token: set VSCE_PAT or add keychain item vscode-marketplace-token (see docs/release.md).');
-  process.exit(1);
-}
+console.log(`Publishing ${path.relative(root, vsix)} as ${manifest.publisher}.${manifest.name} via ${mode === 'entra' ? 'Microsoft Entra ID' : 'PAT'}`);
 
 const vsce = require.resolve('@vscode/vsce/vsce');
-const result = spawnSync(process.execPath, [vsce, 'publish', '--packagePath', vsix], {
-  cwd: root,
-  stdio: 'inherit',
-  env: { ...process.env, VSCE_PAT: pat },
-});
+const result = spawnSync(process.execPath, [vsce, ...args], { cwd: root, stdio: 'inherit', env });
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;

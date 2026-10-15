@@ -1,6 +1,6 @@
 # JetTortoise 嵌套仓库
 
-本说明对应 2026-09-16 的本地工作树，基线 commit 为 `32f7f5e4659f948cfbe2bf19412bfec0147c7f07`。最终源码清单与安装包摘要见 [jettortoise-evidence.json](./jettortoise-evidence.json)，检查结果见[验收记录](./jettortoise-validation.md)。没有提交、发布或自动安装。
+本说明描述 JetTortoise 如何处理工作区内的多层 Git/CVS 仓库：怎样登记与打开，以及父仓写操作为什么不能跨入子仓。
 
 ## 添加与打开
 
@@ -48,6 +48,6 @@ Git 文件保存事件按真实归属刷新；只有父索引精确跟踪重叠�
 
 ## 验证范围
 
-无窗口检查使用临时真实仓库及生产源码加模拟 VS Code API，覆盖三层 Git、Git 内 CVS、CVS 内 Git、连续 CVS、同源/异源独立 checkout、登记取消与恢复、索引重叠、子仓符号链接、Shelf、确认期间新增边界和保存事件归属。复现输出及测试日志保存在 `docs/evidence/nested-*.log`。
+`pnpm run test:headless` 中的嵌套检查使用临时真实仓库及生产源码加模拟 VS Code API，覆盖三层 Git、Git 内 CVS、CVS 内 Git、连续 CVS、同源/异源独立 checkout、登记取消与恢复、索引重叠、子仓符号链接、Shelf、确认期间新增边界和保存事件归属。
 
 这些检查没有覆盖真实 VS Code 的层级选择器观感、窗口 Reload、安装切换与键盘焦点。也没有验证 Windows/Linux、真实 CVS 服务器、submodule/worktree 专用管理及恶意本机进程在文件检查与执行之间并发替换目录的全部竞态。现有依赖风险继续保留，见[安全审查](./security-review.md)。

@@ -1,6 +1,6 @@
 # 仓库列表与 diff 工作台
 
-对应 `jetgit.jettortoise` 0.4.17 的 2026-09-16 未提交工作树。源码和 VSIX 绑定见 [证据清单](./jettortoise-evidence.json)，无窗口检查与未覆盖场景见 [验收记录](./jettortoise-validation.md)。
+本说明描述仓库列表的发现与保存、针对单个仓库的更新，以及只读 diff 工作台的布局与比较规则。
 
 ## 仓库列表与保存
 

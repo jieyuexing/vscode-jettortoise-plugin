@@ -1,1 +1,0 @@
-src/repositories/discovery.ts:59:    const branch = /^ref:\s*refs\/heads\/(.+)$/.exec(head)?.[1];

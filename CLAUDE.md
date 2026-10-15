@@ -1,6 +1,6 @@
 # JetTortoise Project Guide
 
-This repository owns one VS Code extension: `jetgit.jettortoise`, version `0.4.17`.
+This repository owns one VS Code extension: `jieyuexing.jettortoise`. The version lives only in `package.json`; bump it together with `CHANGELOG.md`.
 Git and CVS share presentation code and a Host registry, not repository data.
 
 ## Source boundaries
@@ -36,4 +36,4 @@ pnpm run test:headless
 pnpm run vsce:package
 ```
 
-The package is `release/jettortoise-0.4.17.vsix`; keep `release/` ignored. Headless fixtures and mocked VS Code checks do not prove actual window interaction, Reload or installation behavior. Do not start GUI test hosts without a separate user request. Historical GUI scripts are not part of headless validation.
+The package is `release/jettortoise-<version>.vsix`; keep `release/` ignored. Marketplace publishing follows `docs/release.md` and is never run without an explicit user request. Headless fixtures and mocked VS Code checks do not prove actual window interaction, Reload or installation behavior. Do not start GUI test hosts without a separate user request. Historical GUI scripts are not part of headless validation.

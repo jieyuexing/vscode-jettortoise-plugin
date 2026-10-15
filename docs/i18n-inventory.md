@@ -10,7 +10,7 @@
 
 | Key / source | English | 简体中文 |
 | --- | --- | --- |
-| category.jetgit | JetGit | JetGit |
+| category.jettortoise | JetTortoise | JetTortoise |
 | cmd.commitPanel.commit | Commit | 提交 |
 | cmd.commitPanel.commitAndPush | Commit and Push | 提交并推送 |
 | cmd.commitPanel.refresh | Refresh Changes | 刷新变更 |

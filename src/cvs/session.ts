@@ -539,8 +539,8 @@ export class CvsRepositorySession {
       changed: vscode.l10n.t(
         "The file changed during rollback. Your file and its backup were preserved.",
       ),
-      entriesLog: vscode.l10n.t(
-        "CVS recovery metadata is pending. Run CVS status in a terminal, then refresh.",
+      inventoryLimit: vscode.l10n.t(
+        "The CVS inventory exceeds 20,000 files or 10,000 directories. Use a smaller working copy.",
       ),
       outputLimit: vscode.l10n.t(
         "The operation exceeded the output or working copy size limit. Use a smaller working copy.",

@@ -4,7 +4,7 @@ const path = require("node:path");
 const { promisify } = require("node:util");
 
 const exec = promisify(execFile);
-const LIMIT = 5000;
+const LIMIT = 10000;
 function within(root, target) {
   const relative = path.relative(root, target);
   return (
@@ -40,7 +40,7 @@ async function readCvs(directory) {
   if ((await fs.lstat(admin)).isSymbolicLink())
     throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
   const values = {};
-  for (const name of ["Root", "Repository", "Entries"]) {
+  for (const name of ["Root", "Repository"]) {
     const file = path.join(admin, name);
     const stat = await fs.lstat(file).catch(() => {
       throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
@@ -49,6 +49,7 @@ async function readCvs(directory) {
       throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
     values[name] = await fs.readFile(file, "utf8");
   }
+  values.Entries = await readCvsEntries(directory);
   values.Root = values.Root.trim();
   values.Repository = values.Repository.trim().replace(/\/$/, "");
   if (
@@ -59,6 +60,40 @@ async function readCvs(directory) {
     throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
   return values;
 }
+async function readCvsEntries(directory) {
+  const admin = path.join(directory, "CVS");
+  const records = new Map();
+  for (const name of ["Entries", "Entries.Log"]) {
+    const file = path.join(admin, name);
+    let stat;
+    try {
+      stat = await fs.lstat(file);
+    } catch (error) {
+      if (name === "Entries.Log" && error.code === "ENOENT") continue;
+      throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+    }
+    if (!stat.isFile() || stat.size > 4 * 1024 * 1024)
+      throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+    for (const line of (await fs.readFile(file, "utf8")).split(/\r?\n/)) {
+      if (!line) continue;
+      const logged = name === "Entries.Log";
+      if (logged && !/^[AR] /.test(line))
+        throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+      const record = logged ? line.slice(2) : line;
+      if (record === "D") continue;
+      const match = record.match(/^(D?)\/([^/]+)\//);
+      if (!match) {
+        if (logged) throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+        continue;
+      }
+      const key = `${match[1]}/${match[2]}`;
+      // 日志按顺序覆盖同名记录；R 删除，后续 A 可以重新加入。
+      if (logged && line.startsWith("R ")) records.delete(key);
+      else records.set(key, record);
+    }
+  }
+  return [...records.values()];
+}
 async function isCvsContinuation(parent, child) {
   if (path.dirname(child) !== parent) return false;
   const a = await readCvs(parent),
@@ -67,7 +102,7 @@ async function isCvsContinuation(parent, child) {
   const name = path.basename(child);
   return (
     b.Repository === `${a.Repository}/${name}` &&
-    a.Entries.split(/\r?\n/).some((line) => line.startsWith(`D/${name}/`))
+    a.Entries.some((line) => line.startsWith(`D/${name}/`))
   );
 }
 async function rootsAt(directory) {
@@ -238,6 +273,7 @@ exports.NestedRepositoryError = NestedRepositoryError;
 exports.containingRepositories = containingRepositories;
 exports.nearestRepositories = nearestRepositories;
 exports.isCvsContinuation = isCvsContinuation;
+exports.readCvsEntries = readCvsEntries;
 exports.boundariesForPaths = boundariesForPaths;
 exports.assertOwnedPath = assertOwnedPath;
 exports.listNestedRepositories = listNestedRepositories;

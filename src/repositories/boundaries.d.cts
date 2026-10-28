@@ -18,6 +18,7 @@ export function isCvsContinuation(
   parent: string,
   child: string,
 ): Promise<boolean>;
+export function readCvsEntries(directory: string): Promise<string[]>;
 export function boundariesForPaths(
   root: string,
   kind: "git" | "cvs",

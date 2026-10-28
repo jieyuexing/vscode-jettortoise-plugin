@@ -8,6 +8,7 @@ import {
   assertOwnedPath,
   isCvsContinuation,
   listNestedRepositories,
+  readCvsEntries,
 } from "../repositories/boundaries.cjs";
 
 export class CvsError extends Error {
@@ -158,7 +159,10 @@ export class CvsProcess {
         killTimer ??= setTimeout(() => kill("SIGKILL"), 1000);
       };
       const abort = () => stop("cancelled");
-      const timer = setTimeout(() => stop("timeout"), this.timeoutMs);
+      const timer = setTimeout(
+        () => stop("timeout"),
+        options.timeoutMs ?? this.timeoutMs,
+      );
       signal?.addEventListener("abort", abort, { once: true });
       const clean = () => {
         clearTimeout(timer);
@@ -305,6 +309,37 @@ export function parseStatus(text) {
       }[state] || "",
   };
 }
+export function parseUpdateStatus(text) {
+  const states = {
+    M: "Locally Modified",
+    A: "Locally Added",
+    R: "Locally Removed",
+    C: "Needs Merge",
+    U: "Needs Checkout",
+    P: "Needs Patch",
+    "?": "Unknown",
+  };
+  const result = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^([MARCUP?]) (.+)$/);
+    const notice = line.match(
+      /^cvs(?:\.exe)? (?:update|server): (?:warning: )?(?:conflicts found in (.+)|[`'](.+)['`] (?:was lost|is no longer in the repository))$/,
+    );
+    const name = match?.[2] ?? notice?.[1] ?? notice?.[2];
+    if (!name) continue;
+    const state = match
+      ? states[match[1]]
+      : notice[1]
+        ? "Needs Merge"
+        : "Needs Checkout";
+    // 复用逐文件状态映射，避免只读刷新与提交校验的显示语义分叉。
+    result.set(
+      name.replace(/\\/g, "/").replace(/^\.\//, ""),
+      parseStatus(`Status: ${state}`),
+    );
+  }
+  return result;
+}
 export class CvsAdapter {
   constructor(root, process = new CvsProcess()) {
     this.root = root;
@@ -319,7 +354,7 @@ export class CvsAdapter {
     const files = [];
     let directories = 0;
     const visit = async (directory, relative = "") => {
-      if (++directories > 2000) fail("outputLimit");
+      if (++directories > 10000) fail("inventoryLimit");
       const admin = path.join(directory, "CVS");
       await noSymlinks(admin);
       for (const metadata of await fs.readdir(admin, { withFileTypes: true }))
@@ -365,21 +400,13 @@ export class CvsAdapter {
           }
         }
       }
-      try {
-        await fs.access(path.join(admin, "Entries.Log"));
-        fail("entriesLog");
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-      for (const line of (
-        await fs.readFile(path.join(admin, "Entries"), "utf8")
-      ).split("\n"))
+      for (const line of await readCvsEntries(directory))
         if (line.startsWith("/")) {
           const fields = line.split("/"),
             name = relativeFile(relative + fields[1]);
           await contained(this.root, name);
           files.push({ newPath: name, entryRevision: fields[2] });
-          if (files.length > 2000) fail("outputLimit");
+          if (files.length > 20000) fail("inventoryLimit");
         }
     };
     await visit(this.root);
@@ -403,17 +430,15 @@ export class CvsAdapter {
     return this.process.run(args, this.root, signal, allowed, options);
   }
   async status(signal) {
-    const result = [];
-    for (const file of await this.inventory())
-      result.push({
-        ...file,
-        ...parseStatus(
-          (
-            await this.run(["status", "./" + file.newPath], signal)
-          ).stdout.toString("utf8"),
-        ),
-      });
-    return result;
+    const files = await this.inventory();
+    const output = await this.run(["-n", "-q", "update"], signal, [0], {
+      timeoutMs: 180000,
+    });
+    const states = parseUpdateStatus(output.stdout.toString("utf8"));
+    return files.map((file) => ({
+      ...file,
+      ...(states.get(file.newPath) ?? parseStatus("Status: Up-to-date")),
+    }));
   }
   async log(name, signal) {
     await this.file(name);
@@ -456,15 +481,20 @@ export class CvsAdapter {
       message.includes("\0")
     )
       fail("message");
-    const files = await this.status(signal);
+    const files = await this.inventory();
     for (const name of names) {
       relativeFile(name);
       await assertOwnedPath(this.root, "cvs", name);
       const file = files.find((file) => file.newPath === name);
+      if (!file) fail("commitState");
+      const { state } = parseStatus(
+        (await this.run(["status", "./" + name], signal)).stdout.toString(
+          "utf8",
+        ),
+      );
       if (
-        !file ||
         !["Locally Modified", "Locally Added", "Locally Removed"].includes(
-          file.state,
+          state,
         )
       )
         fail("commitState");

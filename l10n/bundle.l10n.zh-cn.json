@@ -71,7 +71,7 @@
   "Unsupported CVS root. Use a local repository or pserver without an embedded password.": "不支持此 CVS 根地址。请使用本地仓库或不含内嵌密码的 pserver 地址。",
   "Some selected files cannot be committed. Refresh, resolve conflicts or update first.": "部分所选文件无法提交，请先刷新、解决冲突或更新。",
   "The file changed during rollback. Your file and its backup were preserved.": "文件在回滚期间发生变化，文件及其备份已保留。",
-  "CVS recovery metadata is pending. Run CVS status in a terminal, then refresh.": "CVS 恢复元数据尚未处理，请在终端运行 CVS status 后刷新。",
+  "The CVS inventory exceeds 20,000 files or 10,000 directories. Use a smaller working copy.": "CVS 清单超出 20,000 个文件或 10,000 个目录限制，请使用较小的工作副本。",
   "The operation exceeded the output or working copy size limit. Use a smaller working copy.": "操作超出输出量或工作副本大小限制，请使用较小的工作副本。",
   "CVS failed. Check repository access and working copy state in a terminal, then refresh.": "CVS 执行失败，请在终端检查仓库访问及工作副本状态，然后刷新。",
   "Save or close unsaved editors in this working copy before modifying files.": "修改文件前，请保存或关闭此工作副本中尚未保存的编辑器。",

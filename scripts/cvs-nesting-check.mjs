@@ -1,19 +1,245 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import * as fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { build } from "esbuild";
+import {
+  isCvsContinuation,
+  listNestedRepositories,
+  nearestRepositories,
+} from "../src/repositories/boundaries.cjs";
 import {
   CvsAdapter,
   CvsProcess,
   checkout,
   findWorkingCopy,
+  parseStatus,
+  parseUpdateStatus,
 } from "../src/cvs/core.mjs";
 
 const execFile = promisify(execFileCallback);
 const cvsExecutable = process.env.JETTORTOISE_TEST_CVS || "/opt/homebrew/bin/cvs";
+
+async function metadata(directory, repository, entries = "") {
+  await fs.mkdir(path.join(directory, "CVS"), { recursive: true });
+  for (const [name, content] of Object.entries({
+    Root: ":local:/synthetic-repository\n",
+    Repository: `${repository}\n`,
+    Entries: entries,
+  })) await fs.writeFile(path.join(directory, "CVS", name), content);
+}
+
+test("Entries.Log A directory continues its parent checkout", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-log-add-"));
+  try {
+    await metadata(base, "demo");
+    await metadata(path.join(base, "x"), "demo/x", "/child.txt/1.1///\n");
+    await fs.writeFile(path.join(base, "x", "child.txt"), "child\n");
+    await fs.writeFile(path.join(base, "CVS", "Entries.Log"), "A D/x////\n");
+    assert.equal(await isCvsContinuation(base, path.join(base, "x")), true);
+    assert.deepEqual(await listNestedRepositories(base, "cvs"), []);
+    assert.deepEqual((await new CvsAdapter(base).inventory()).map(f => f.newPath), ["x/child.txt"]);
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("Entries.Log merges file replacements and R records in order", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-log-remove-"));
+  try {
+    await metadata(base, "demo", "D/x////\n/removed.txt/1.1///\n/changed.txt/1.1///\n");
+    await metadata(path.join(base, "x"), "demo/x");
+    await fs.writeFile(path.join(base, "changed.txt"), "changed\n");
+    await fs.writeFile(path.join(base, "added.txt"), "added\n");
+    await fs.writeFile(path.join(base, "CVS", "Entries.Log"),
+      "R D/x////\nR /removed.txt/1.1///\nA /changed.txt/1.2///\nA /added.txt/0///\nR /added.txt/0///\nA /added.txt/0///\n");
+    assert.equal(await isCvsContinuation(base, path.join(base, "x")), false);
+    assert.deepEqual((await new CvsAdapter(base).inventory()).map(f => [f.newPath, f.entryRevision]),
+      [["added.txt", "0"], ["changed.txt", "1.2"]]);
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("Entries.Log inventory works without rewriting metadata", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-log-files-"));
+  try {
+    await metadata(base, "demo", "/removed.txt/1.1///\n");
+    const log = "R /removed.txt/1.1///\nA /added.txt/0///\n";
+    await fs.writeFile(path.join(base, "added.txt"), "added\n");
+    await fs.writeFile(path.join(base, "CVS", "Entries.Log"), log);
+    assert.deepEqual((await new CvsAdapter(base).inventory()).map(f => f.newPath), ["added.txt"]);
+    assert.equal(await fs.readFile(path.join(base, "CVS", "Entries.Log"), "utf8"), log);
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("inventory accepts more than 3000 file records", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-large-files-"));
+  try {
+    // 跟踪文件暂时缺失时仍应列入清单，覆盖中断检出的形态。
+    await metadata(base, "demo", Array.from({ length: 3089 }, (_, i) => `/file-${i}.txt/1.1///\n`).join(""));
+    assert.equal((await new CvsAdapter(base).inventory()).length, 3089);
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("dry-run update parses local, added, remote and unknown files without changing the checkout", async () => {
+  const f = await fixture();
+  try {
+    const second = await checkout(f.process, f.root, "demo", path.join(f.base, "second"));
+    await fs.writeFile(path.join(second, "remote.txt"), "base\n");
+    await f.process.run(["add", "remote.txt"], second);
+    await new CvsAdapter(second, f.process).commit(["remote.txt"], "add remote fixture");
+    await f.parent.update();
+    await fs.writeFile(path.join(second, "remote.txt"), "remote change\n");
+    await new CvsAdapter(second, f.process).commit(["remote.txt"], "change remote fixture");
+    await fs.writeFile(path.join(f.wc, "ordinary.txt"), "local change\n");
+    await fs.writeFile(path.join(f.wc, "added.txt"), "added\n");
+    await f.process.run(["add", "added.txt"], f.wc);
+    await fs.writeFile(path.join(f.wc, "unknown.txt"), "unknown\n");
+    const entries = await fs.readFile(path.join(f.wc, "CVS", "Entries"));
+    const output = await f.process.run(["-n", "-q", "update"], f.wc);
+    const parsed = parseUpdateStatus(output.stdout.toString("utf8"));
+    assert.equal(parsed.get("ordinary.txt").state, "Locally Modified");
+    assert.equal(parsed.get("added.txt").state, "Locally Added");
+    assert.ok(["Needs Checkout", "Needs Patch"].includes(parsed.get("remote.txt").state));
+    assert.equal(parsed.get("unknown.txt").state, "Unknown");
+    let calls = 0;
+    const adapter = new CvsAdapter(f.wc, {
+      run: async (args, cwd, signal, allowed, options) => {
+        calls++;
+        assert.deepEqual(args, ["-n", "-q", "update"]);
+        assert.equal(cwd, f.wc);
+        assert.equal(options.timeoutMs, 180000);
+        return f.process.run(args, cwd, signal, allowed, options);
+      },
+    });
+    const files = await adapter.status();
+    assert.equal(calls, 1);
+    assert.deepEqual(files.map(file => [file.newPath, file.status]),
+      [["added.txt", "added"], ["ordinary.txt", "modified"], ["remote.txt", "modified"]]);
+    assert.equal(await fs.readFile(path.join(f.wc, "remote.txt"), "utf8"), "base\n");
+    assert.deepEqual(await fs.readFile(path.join(f.wc, "CVS", "Entries")), entries);
+    await fs.writeFile(path.join(f.wc, "remote.txt"), "conflicting local change\n");
+    assert.equal((await f.parent.status()).find(file => file.newPath === "remote.txt").status, "conflicts");
+    await fs.rm(path.join(f.wc, "ordinary.txt"));
+    await f.process.run(["remove", "ordinary.txt"], f.wc);
+    assert.equal((await f.parent.status()).find(file => file.newPath === "ordinary.txt").state, "Locally Removed");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("update status maps CVSNT paths, conflicts and diagnostics using existing state semantics", () => {
+  const parsed = parseUpdateStatus([
+    "M modified.txt", "A added.txt", "R removed.txt", "C conflict.txt", "U checkout.txt", "P patch.txt", "? unknown.txt",
+    "M folder\\file.txt", "cvs update: Updating folder",
+    "cvs update: warning: `lost.txt' was lost",
+    "cvs update: conflicts found in merge.txt",
+  ].join("\r\n"));
+  for (const [name, state] of Object.entries({
+    "modified.txt": "Locally Modified", "added.txt": "Locally Added", "removed.txt": "Locally Removed",
+    "conflict.txt": "Needs Merge", "checkout.txt": "Needs Checkout", "patch.txt": "Needs Patch", "unknown.txt": "Unknown",
+    "folder/file.txt": "Locally Modified", "lost.txt": "Needs Checkout", "merge.txt": "Needs Merge",
+  })) assert.deepEqual(parsed.get(name), parseStatus(`Status: ${state}`));
+  assert.equal(parsed.size, 10);
+});
+
+test("status excludes nested and unlisted output and leaves silent files clean", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-status-filter-"));
+  try {
+    await metadata(base, "demo", "/clean.txt/1.1///\n/modified.txt/1.1///\n");
+    // 缺少 D/child/ 时，即使 Repository 路径相接也仍是独立子仓。
+    await metadata(path.join(base, "child"), "demo/child", "/nested.txt/1.1///\n");
+    const adapter = new CvsAdapter(base, {
+      run: async () => ({ stdout: Buffer.from("M modified.txt\nM child/nested.txt\nM unlisted.txt\n? unknown.txt\nM ../escape.txt\n") }),
+    });
+    assert.deepEqual((await adapter.status()).map(file => [file.newPath, file.state]),
+      [["clean.txt", "Up-to-date"], ["modified.txt", "Locally Modified"]]);
+    assert.equal(adapter.getNestedBoundaries()[0].root, path.join(base, "child"));
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("large directory preflight remains bounded at 10000 directories", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-large-tree-"));
+  try {
+    await metadata(base, "demo");
+    // 普通子目录也计入边界预检，确保大树不会被旧 5000 上限误拒。
+    for (let start = 0; start < 9999; start += 100)
+      await Promise.all(Array.from({ length: Math.min(100, 9999 - start) }, (_, i) =>
+        fs.mkdir(path.join(base, `directory-${start + i}`))));
+    assert.deepEqual(await listNestedRepositories(base, "cvs"), []);
+    assert.deepEqual(await new CvsAdapter(base).inventory(), []);
+    await fs.mkdir(path.join(base, "one-too-many"));
+    await assert.rejects(listNestedRepositories(base, "cvs"), { code: "BOUNDARY_UNAVAILABLE" });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("inventory accepts 20000 files and rejects the next record explicitly", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-file-limit-"));
+  try {
+    const records = Array.from({ length: 20000 }, (_, i) => `/file-${i}.txt/1.1///\n`).join("");
+    await metadata(base, "demo", records);
+    assert.equal((await new CvsAdapter(base).inventory()).length, 20000);
+    await fs.appendFile(path.join(base, "CVS", "Entries"), "/extra.txt/1.1///\n");
+    await assert.rejects(new CvsAdapter(base).inventory(), { code: "inventoryLimit" });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("selected-file commits validate each selected status without a tree update", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.wc, "ordinary.txt"), "selected change\n");
+    const commands = [];
+    const adapter = new CvsAdapter(f.wc, {
+      run: (...args) => { commands.push(args[0]); return f.process.run(...args); },
+    });
+    await adapter.commit(["ordinary.txt"], "selected fixture");
+    assert.deepEqual(commands.map(args => args[0]), ["status", "commit"]);
+    await assert.rejects(adapter.commit(["ordinary.txt"], "reject unchanged"), { code: "commitState" });
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("missing CVS client is missingClient while broken metadata is BOUNDARY_UNAVAILABLE", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-missing-client-"));
+  try {
+    await metadata(base, "demo", "/ordinary.txt/1.1///\n");
+    await assert.rejects(new CvsAdapter(base, new CvsProcess(path.join(base, "missing-cvs"))).status(), { code: "missingClient" });
+    await fs.rm(path.join(base, "CVS", "Repository"));
+    await assert.rejects(nearestRepositories(base), { code: "BOUNDARY_UNAVAILABLE" });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+test("CVS session refresh distinguishes missing client from unavailable boundaries", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-session-errors-"));
+  try {
+    const wc = path.join(base, "checkout");
+    await metadata(wc, "demo", "/ordinary.txt/1.1///\n");
+    const project = path.resolve(import.meta.dirname, "..");
+    const bundle = path.join(base, "session.cjs");
+    await build({
+      entryPoints: [path.join(project, "src/cvs/session.ts")],
+      bundle: true, platform: "node", format: "cjs", outfile: bundle,
+      plugins: [{ name: "vscode-fixture", setup(build) {
+        build.onResolve({ filter: /^vscode$/ }, () => ({ path: "vscode", namespace: "fixture" }));
+        build.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: `
+          exports.workspace = { isTrusted: true, getConfiguration: () => ({get: () => ${JSON.stringify(path.join(base, "missing-cvs"))}}) };
+          exports.l10n = { t: text => text };
+          exports.ProgressLocation = { Notification: 1 };
+          exports.window = { withProgress: (_options, run) => run({}, {onCancellationRequested: () => ({dispose() {}})}) };
+        ` }));
+      } }],
+    });
+    const { CvsRepositorySession } = createRequire(import.meta.url)(bundle);
+    let checks = 0;
+    const session = new CvsRepositorySession({}, { id: "fixture", kind: "cvs", root: wc, title: "fixture" }, async () => {
+      checks++;
+      assert.ok((await nearestRepositories(wc)).some(root => root.root === wc));
+    });
+    await assert.rejects(session.refresh(), /CVS was not found/);
+    assert.ok(checks >= 2);
+    await fs.rm(path.join(wc, "CVS", "Repository"));
+    await assert.rejects(session.refresh(), /Repository boundaries could not be fully verified/);
+    session.dispose();
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
 
 async function makeRepository(base, name, contents = "initial\n") {
   const repository = path.join(base, `${name}-repo`);

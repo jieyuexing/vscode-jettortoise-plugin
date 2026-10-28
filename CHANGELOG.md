@@ -2,6 +2,11 @@
 
 # Changelog / 更新日志
 
+## [0.5.1] - 2026-10-28
+
+### Fixed / 修复
+- **Large CVS working copies** — merge `Entries.Log` additions/removals when identifying continuous directories and listing files; refresh status with one read-only `cvs -f -n -q update`, allow 20,000 files and 10,000 directories, and retain nested repository write protection / 合并 `Entries.Log` 的增删记录以识别连续子目录和文件；刷新状态只运行一次只读 CVS 命令，支持 20,000 个文件和 10,000 个目录，保留嵌套子仓写保护
+
 ## [0.5.0] - 2026-10-15
 
 ### Changed / 变更

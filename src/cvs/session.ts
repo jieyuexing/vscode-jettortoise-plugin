@@ -17,6 +17,8 @@ import {
   boundaryErrorText,
   type RepositoryNavigation,
 } from "../repositories/navigation";
+import { ignorePaths } from "../scm/ignore";
+import type { ScmAdapter, ScmChange } from "../scm/types";
 import { getWebviewHtml } from "../views/html";
 
 // The CLI core remains JavaScript so its process and filesystem behavior is the
@@ -30,7 +32,9 @@ interface CvsFile {
 }
 interface CvsAdapter {
   getNestedBoundaries(): Array<{ kind: "git" | "cvs"; root: string }>;
-  status(signal?: AbortSignal): Promise<CvsFile[]>;
+  status(signal?: AbortSignal, local?: CvsFile[]): Promise<CvsFile[]>;
+  localStatus(names?: string[]): Promise<CvsFile[]>;
+  add(names: string[], signal?: AbortSignal): Promise<void>;
   log(name: string, signal?: AbortSignal): Promise<unknown[]>;
   file(name: string): Promise<CvsFile>;
   content(
@@ -81,6 +85,8 @@ export class CvsRepositorySession {
   }>();
   private readonly queue = new cvs.SerialQueue();
   private readonly boundaryNavigation: BoundaryNavigation;
+  private readonly scmChanged = new vscode.EventEmitter<void>();
+  private readonly scmRefreshed = new vscode.EventEmitter<ScmChange[]>();
   private readonly snapshots = new Map<string, Buffer>();
   private panel: vscode.WebviewPanel | undefined;
   private panelReady = false;
@@ -98,6 +104,101 @@ export class CvsRepositorySession {
     private readonly workbench?: WorkbenchConnection,
   ) {
     this.boundaryNavigation = new BoundaryNavigation(repository, navigation);
+  }
+
+  readonly scm: ScmAdapter = {
+    onDidChange: this.scmChanged.event,
+    onDidRefresh: this.scmRefreshed.event,
+    refresh: async (request, publish) => {
+      try {
+        const adapter = await this.getAdapter();
+        const local = await adapter.localStatus(request.paths);
+        await this.ensureAvailable();
+        publish(
+          local.filter((file) => file.state !== "Up-to-date").map(scmCvsChange),
+        );
+        if (request.network)
+          await this.queue.run(async (signal) => {
+            await this.ensureAvailable();
+            const files = await adapter.status(signal, local);
+            await this.ensureAvailable();
+            publish(
+              files
+                .filter((file) => file.state !== "Up-to-date")
+                .map(scmCvsChange),
+            );
+          });
+      } catch (error) {
+        throw new Error(this.errorText(error));
+      }
+    },
+    diff: async (change) => {
+      await this.operate(async (signal) => {
+        await this.openDiff(
+          await this.getAdapter(),
+          change.path,
+          undefined,
+          signal,
+        );
+      }, true);
+    },
+    baseline: async (uri) => {
+      if (uri.scheme !== "file") return;
+      const name = path
+        .relative(this.repository.root, uri.fsPath)
+        .split(path.sep)
+        .join("/");
+      try {
+        const file = await (await this.getAdapter()).file(name);
+        if (!file.entryRevision || file.entryRevision === "0") return;
+        return this.baseUri(name, file.entryRevision.replace(/^-/, ""));
+      } catch {
+        return;
+      }
+    },
+    commit: async (paths, message) => {
+      await this.operate(async (signal) => {
+        const adapter = await this.getAdapter();
+        await this.checkDirty();
+        await adapter.commit(paths, message, signal);
+        this.post({ type: "committed" });
+      }, true);
+      this.scmChanged.fire();
+      return true;
+    },
+    rollback: async (paths) => {
+      await this.operate(async (signal) => {
+        const adapter = await this.getAdapter();
+        for (const name of paths) await this.rollback(adapter, name, signal);
+      }, true);
+    },
+    add: async (paths) => {
+      await this.operate(async (signal) => {
+        await this.checkDirty();
+        await (await this.getAdapter()).add(paths, signal);
+      }, true);
+      this.scmChanged.fire();
+    },
+    ignore: async (paths) => {
+      await this.operate(async () => {
+        await this.checkDirty();
+        await ignorePaths(
+          this.repository.root,
+          "cvs",
+          paths,
+          this.ensureAvailable,
+        );
+      }, true);
+      this.scmChanged.fire();
+    },
+  };
+  private baseUri(file: string, revision: string): vscode.Uri {
+    return vscode.Uri.from({
+      scheme: "jettortoise",
+      authority: this.repository.id,
+      path: `/${file}`,
+      query: new URLSearchParams({ ref: revision }).toString(),
+    });
   }
 
   open(file?: string, commit = false): void {
@@ -148,22 +249,35 @@ export class CvsRepositorySession {
     this.queue.cancel();
   }
 
-  async provideContent(uri: vscode.Uri): Promise<string> {
+  private async content(uri: vscode.Uri): Promise<Buffer> {
     await this.ensureAvailable();
     if (uri.scheme !== "jettortoise" || uri.authority !== this.repository.id)
       throw vscode.FileSystemError.NoPermissions();
-    const content = this.snapshots.get(uri.toString());
+    let content = this.snapshots.get(uri.toString());
+    if (content === undefined && uri.query) {
+      const revision = new URLSearchParams(uri.query).get("ref");
+      if (revision)
+        content = await (await this.getAdapter()).content(
+          uri.path.slice(1),
+          revision,
+        );
+    }
     if (content === undefined) throw vscode.FileSystemError.FileNotFound();
-    return content.toString("utf8");
+    return content;
+  }
+
+  async provideContent(uri: vscode.Uri): Promise<string> {
+    return (await this.content(uri)).toString("utf8");
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    await this.provideContent(uri);
-    return this.snapshots.get(uri.toString())!;
+    return this.content(uri);
   }
 
   dispose(): void {
     this.queue.cancel();
+    this.scmChanged.dispose();
+    this.scmRefreshed.dispose();
     this.panel?.dispose();
     this.snapshots.clear();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
@@ -367,7 +481,7 @@ export class CvsRepositorySession {
     const resolved = await new CvsComparisonResolver(
       adapter,
       this.repository.root,
-    ).working(file, revision);
+    ).working(file, revision, (await adapter.localStatus([file]))[0]);
     const content =
       resolved.left.source === "empty"
         ? Buffer.alloc(0)
@@ -458,9 +572,17 @@ export class CvsRepositorySession {
   private async sendState(signal: AbortSignal): Promise<void> {
     const adapter = await this.getAdapter();
     await this.workbench?.refreshReference?.();
+    const local = await adapter.localStatus();
+    this.scmRefreshed.fire(
+      local.filter((file) => file.state !== "Up-to-date").map(scmCvsChange),
+    );
+    const files = await adapter.status(signal, local);
+    this.scmRefreshed.fire(
+      files.filter((file) => file.state !== "Up-to-date").map(scmCvsChange),
+    );
     this.post({
       type: "state",
-      files: await adapter.status(signal),
+      files,
       boundaries: await this.boundaryNavigation.list(
         await adapter.getNestedBoundaries(),
       ),
@@ -654,4 +776,42 @@ export async function checkoutCvs(
       ),
     );
   }
+}
+
+export function scmCvsChange(file: CvsFile): ScmChange {
+  const state = file.state;
+  const status: ScmChange["status"] =
+    state === "Unknown"
+      ? "untracked"
+      : ["Needs Checkout", "Needs Patch"].includes(state)
+        ? "remote"
+        : state === "File had conflicts on merge"
+          ? "conflicted"
+          : state === "Locally Added"
+            ? "added"
+            : ["Locally Removed", "Missing"].includes(state)
+              ? "deleted"
+              : "modified";
+  return {
+    path: file.newPath,
+    status,
+    detail:
+      state === "Needs Merge"
+        ? vscode.l10n.t("Local changes need merging with remote updates.")
+        : cvsStateLabel(state),
+  };
+}
+function cvsStateLabel(state: string): string {
+  const labels: Record<string, string> = {
+    Unknown: vscode.l10n.t("Unversioned Files"),
+    "Up-to-date": vscode.l10n.t("Up to date"),
+    "Needs Checkout": vscode.l10n.t("Remote Updates"),
+    "Needs Patch": vscode.l10n.t("Remote Updates"),
+    "File had conflicts on merge": vscode.l10n.t("Conflicts"),
+    "Locally Modified": vscode.l10n.t("Modified"),
+    "Locally Added": vscode.l10n.t("Added"),
+    "Locally Removed": vscode.l10n.t("Deleted"),
+    Missing: vscode.l10n.t("Missing from disk"),
+  };
+  return labels[state] ?? state;
 }

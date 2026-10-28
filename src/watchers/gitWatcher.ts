@@ -19,8 +19,9 @@ export class GitWatcher implements vscode.Disposable {
     private readonly messageRouter: MessageRouter,
     private readonly cache: GitCache,
     private readonly ensureAvailable?: () => Promise<void>,
+    watchFiles = true,
   ) {
-    this.setupFileWatchers();
+    if (watchFiles) this.setupFileWatchers();
     this.setupEditorWatchers();
   }
 

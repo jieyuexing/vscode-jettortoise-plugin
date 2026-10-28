@@ -19,6 +19,8 @@ import type {
   RepositoryDescriptor,
   RepositorySession,
 } from "../repositories/types";
+import { ignorePaths } from "../scm/ignore";
+import type { ScmAdapter, ScmChange } from "../scm/types";
 import { ConflictsManager } from "../views/conflictsManager";
 import { DiffEditorManager } from "../views/diffEditorManager";
 import {
@@ -64,6 +66,8 @@ export function createGitRepositorySession(
     extensionUri: extensionContext.extensionUri,
     subscriptions: [] as vscode.Disposable[],
   };
+  const scmChanged = new vscode.EventEmitter<void>();
+  context.subscriptions.push(scmChanged);
   const shelfDiffContent = new Map<string, string>();
   let mutationTail: Promise<void> = Promise.resolve();
   const updates = new Set<AbortController>();
@@ -71,7 +75,14 @@ export function createGitRepositorySession(
     _command: string,
     action: () => Promise<unknown>,
   ): Promise<unknown> => {
-    const run = mutationTail.then(action, action);
+    const wrapped = async () => {
+      try {
+        return await action();
+      } finally {
+        scmChanged.fire();
+      }
+    };
+    const run = mutationTail.then(wrapped, wrapped);
     mutationTail = run.then(
       () => undefined,
       () => undefined,
@@ -1730,18 +1741,122 @@ export function createGitRepositorySession(
     return { success: true };
   });
 
-  // 7. GitWatcher (only if GitService is available)
-  if (gitService && workspaceRoot) {
-    const watcher = new GitWatcher(
+  context.subscriptions.push(
+    new GitWatcher(
       workspaceRoot,
       messageRouter,
       gitService.cache,
       ensureAvailable,
-    );
-    context.subscriptions.push(watcher);
-  }
+      false,
+    ),
+  );
+  const scm: ScmAdapter = {
+    onDidChange: scmChanged.event,
+    async refresh(request, publish) {
+      await ensureAvailable();
+      gitService.invalidateCache();
+      const changes = await gitService.getWorkingTreeChanges(request.paths);
+      const merged = new Map<string, ScmChange>();
+      for (const change of changes) {
+        const previous = merged.get(change.path);
+        merged.set(change.path, {
+          path: change.path,
+          oldPath: change.oldPath ?? previous?.oldPath,
+          status: change.status,
+        });
+      }
+      await ensureAvailable();
+      publish([...merged.values()]);
+      messageRouter.broadcastEvent("gitStateChanged", {
+        scope: request.paths ? "status" : "all",
+      });
+    },
+    async diff(change) {
+      await ensureAvailable();
+      const changes = await gitService.getWorkingTreeChanges([change.path]);
+      const current = changes.find((file) => !file.staged) ?? changes[0];
+      if (!current) return;
+      const resolved = await comparisonResolver.working(
+        current.path,
+        current.staged,
+        {
+          oldPath: current.oldPath ?? current.path,
+          newPath: current.path,
+          status:
+            current.status === "untracked"
+              ? "added"
+              : current.status === "conflicted"
+                ? "modified"
+                : current.status,
+          isBinary: false,
+        },
+      );
+      // SCM 的右侧始终为磁盘；旧工作台继续保留 HEAD/index 的比较表。
+      resolved.right =
+        current.status === "deleted"
+          ? { source: "empty", path: current.path, label: "empty" }
+          : { source: "worktree", path: current.path, label: "worktree" };
+      await ensureAvailable();
+      await diffManager.openResolvedComparison(resolved);
+    },
+    async baseline(uri) {
+      if (uri.scheme !== "file") return;
+      const relative = path
+        .relative(workspaceRoot, uri.fsPath)
+        .split(path.sep)
+        .join("/");
+      try {
+        await ensureAvailable();
+        await resolveWorktreePath(workspaceRoot, relative);
+        if (!(await gitService.hasBaseline(relative))) return;
+        return gitRevisionUri(repository.id, relative, "HEAD");
+      } catch {
+        return;
+      }
+    },
+    async commit(paths, message) {
+      await runMutation("scmCommit", async () => {
+        await ensureAvailable();
+        if (await hasDirtyEditors(workspaceRoot))
+          throw new Error(
+            vscode.l10n.t(
+              "Save or close unsaved editors in this repository before committing.",
+            ),
+          );
+        await gitService.assertCanCommit();
+        await gitService.commitPaths(message, paths);
+        messageRouter.broadcastEvent("commitStateChanged", {});
+      });
+      return true;
+    },
+    async rollback(paths) {
+      await runMutation("rollbackFiles", async () => {
+        await ensureAvailable();
+        if (
+          !(await confirmDestructiveAction("rollbackFiles", {
+            filePaths: paths,
+          }))
+        )
+          return;
+        await ensureAvailable();
+        for (const file of paths) await gitService.rollbackFile(file);
+      });
+    },
+    async add(paths) {
+      await runMutation("scmAdd", async () => {
+        await ensureAvailable();
+        await gitService.stageFiles(paths);
+      });
+    },
+    async ignore(paths) {
+      await runMutation("scmIgnore", async () => {
+        await ignorePaths(workspaceRoot, "git", paths, ensureAvailable);
+      });
+    },
+  };
 
   return {
+    scm,
     open(file, commit) {
       if (file) logProvider.showFileHistory(file);
       else logProvider.open();
@@ -1751,6 +1866,7 @@ export function createGitRepositorySession(
     refresh() {
       gitService.invalidateCache();
       messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
+      scmChanged.fire();
     },
     async update() {
       await runMutation("catalogUpdate", async () => {

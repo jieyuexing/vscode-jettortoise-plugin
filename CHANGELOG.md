@@ -2,6 +2,13 @@
 
 # Changelog / 更新日志
 
+## Unreleased / 未发布
+
+### Added / 新增
+- **Native SCM for Git and CVS** — one provider per repository, shared changelists, path-based commit, diff, quickDiff, themed file decorations and confirmed context actions; keep the editor workbench available / 每仓一个原生源代码管理提供者，支持更改、暂不提交、未纳入版本控制、冲突及 CVS 远端更新，复用既有会话、队列与安全边界，旧工作台继续可用
+- **Local-first CVS refresh** — publish Entries/Entries.Log and disk state before background network status; merge refresh requests and refresh saved files locally without calling CVS; reuse metadata during bounded tree traversal / CVS 先显示本地结果，再后台补网络状态；合并刷新请求，保存只做本地查询，有界遍历复用元数据；网络错误保留列表并显示原因
+- **Built-in Git handoff** — ask once per repository before adding a workspace ignoredRepositories entry, explain reload and Git API impact; retain both providers when declined / 首次接管 Git 仓库时询问是否在工作区忽略内置 Git，说明重载及 API 影响，拒绝后保留两者且不再询问
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed / 修复

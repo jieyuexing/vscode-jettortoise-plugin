@@ -37,3 +37,7 @@ export function assertNoNestedRepositories(
   root: string,
   kind: "git" | "cvs",
 ): Promise<void>;
+
+export function setBoundaryDiagnostic(
+  listener?: (item: { stage: string; path: string }) => void,
+): void;

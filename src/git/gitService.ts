@@ -434,6 +434,15 @@ export class GitService {
     }
   }
 
+  async hasBaseline(file: string): Promise<boolean> {
+    try {
+      await this.execGit(["cat-file", "-e", `HEAD:${safeRelativePath(file)}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getFileContentBuffer(ref: string, filePath: string): Promise<Buffer> {
     if (!ref) {
       return Buffer.alloc(0);
@@ -1233,12 +1242,15 @@ export class GitService {
 
   // ─── Commit Panel Operations ───────────────────────────────────────
 
-  async getWorkingTreeChanges(): Promise<import("./types").WorkingTreeFile[]> {
+  async getWorkingTreeChanges(
+    paths?: string[],
+  ): Promise<import("./types").WorkingTreeFile[]> {
     const output = await this.execGit([
       "status",
       "--porcelain=v1",
       "-z",
       "-uall",
+      ...(paths ? ["--", ...paths.map(safeRelativePath)] : []),
     ]);
     const files: import("./types").WorkingTreeFile[] = [];
 
@@ -1338,6 +1350,17 @@ export class GitService {
     const args = ["commit", "-m", message];
     if (amend) args.push("--amend");
     await this.execGit(args);
+    this.invalidateCache();
+  }
+
+  async commitPaths(message: string, paths: string[]): Promise<void> {
+    if (!message.trim() || message.includes("\0") || !paths.length)
+      throw new Error(
+        vscode.l10n.t("Enter a commit message and select changed files."),
+      );
+    await this.assertCanCommit();
+    const checked = await this.checkedPaths([...new Set(paths)]);
+    await this.execGit(["commit", "-m", message, "--", ...checked]);
     this.invalidateCache();
   }
 

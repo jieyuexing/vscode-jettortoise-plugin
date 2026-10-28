@@ -7,8 +7,8 @@ import {
   assertNoNestedRepositories,
   assertOwnedPath,
   isCvsContinuation,
-  listNestedRepositories,
   readCvsEntries,
+  repositoryTree,
 } from "../repositories/boundaries.cjs";
 
 export class CvsError extends Error {
@@ -344,73 +344,186 @@ export class CvsAdapter {
   constructor(root, process = new CvsProcess()) {
     this.root = root;
     this.process = process;
+    this.cleanSizes = new Map();
+    this.remoteStates = new Map();
   }
   async inventory() {
+    const { files } = await this.localInventory();
+    return files.map(({ timestamp, ...file }) => file);
+  }
+  async localInventory() {
     this.root = await fs.realpath(this.root);
     await noSymlinks(this.root);
-    const nested = await listNestedRepositories(this.root, "cvs");
-    this.lastNestedBoundaries = nested;
-    const nestedRoots = new Set(nested.map((boundary) => boundary.root));
-    const files = [];
-    let directories = 0;
-    const visit = async (directory, relative = "") => {
-      if (++directories > 10000) fail("inventoryLimit");
-      const admin = path.join(directory, "CVS");
-      await noSymlinks(admin);
-      for (const metadata of await fs.readdir(admin, { withFileTypes: true }))
-        if (metadata.isSymbolicLink()) fail("symlink");
-      for (const file of ["Root", "Repository", "Entries"])
-        await noSymlinks(path.join(admin, file));
-      const root = cvsRoot(
-        (await fs.readFile(path.join(admin, "Root"), "utf8")).trim(),
-      );
+    const tree = await repositoryTree(this.root);
+    this.lastNestedBoundaries = tree.nested;
+    const files = [],
+      unknown = [];
+    for (const { directory, entries, cvs } of tree.directories) {
+      if (!cvs) {
+        const relative = path
+          .relative(this.root, directory)
+          .split(path.sep)
+          .join("/");
+        for (const entry of entries)
+          if (entry.isFile())
+            unknown.push(relativeFile(`${relative}/${entry.name}`));
+        continue;
+      }
+      const root = cvsRoot(cvs.Root);
       this.repositoryRoot ??= root;
       if (root !== this.repositoryRoot) fail("root");
-      const repository = (
-        await fs.readFile(path.join(admin, "Repository"), "utf8")
-      ).trim();
-      if (
-        !repository ||
-        /[\x00-\x1f]/.test(repository) ||
-        repository.split("/").includes("..")
-      )
-        fail("path");
-      for (const entry of await fs.readdir(directory, {
-        withFileTypes: true,
-      })) {
-        if (entry.isSymbolicLink()) fail("symlink");
-        if (entry.isDirectory() && entry.name !== "CVS") {
-          const sub = path.join(directory, entry.name);
-          let realSub;
-          try {
-            realSub = await fs.realpath(sub);
-          } catch (error) {
-            if (error.code === "ENOENT") continue;
-            throw error;
-          }
-          // A nested CVS checkout or Git repository is a separate operation
-          // boundary.  It is intentionally absent from the parent inventory.
-          if (nestedRoots.has(realSub)) continue;
-          try {
-            await fs.access(path.join(sub, "CVS"));
-            if (await isCvsContinuation(directory, sub))
-              await visit(sub, `${relative + entry.name}/`);
-          } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-          }
-        }
-      }
-      for (const line of await readCvsEntries(directory))
-        if (line.startsWith("/")) {
-          const fields = line.split("/"),
-            name = relativeFile(relative + fields[1]);
-          await contained(this.root, name);
-          files.push({ newPath: name, entryRevision: fields[2] });
+      if (/[\x00-\x1f]/.test(cvs.Repository)) fail("path");
+      const relative = path
+        .relative(this.root, directory)
+        .split(path.sep)
+        .join("/");
+      const prefix = relative ? relative + "/" : "";
+      const names = new Set();
+      for (const record of cvs.Entries)
+        if (record.startsWith("/")) {
+          const fields = record.split("/"),
+            newPath = relativeFile(prefix + fields[1]);
+          names.add(fields[1]);
+          files.push({
+            newPath,
+            entryRevision: fields[2],
+            timestamp: fields[3],
+          });
           if (files.length > 20000) fail("inventoryLimit");
         }
+      // 管理文件及目录必须仍为普通文件；树遍历已排除管理树和子仓。
+      for (const entry of await fs.readdir(path.join(directory, "CVS"), {
+        withFileTypes: true,
+      }))
+        if (entry.isSymbolicLink()) fail("symlink");
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) fail("symlink");
+        if (entry.isFile() && !names.has(entry.name))
+          unknown.push(relativeFile(prefix + entry.name));
+      }
+    }
+    files.sort((a, b) => a.newPath.localeCompare(b.newPath));
+    return { files, unknown };
+  }
+  async entriesAt(directory) {
+    const admin = path.join(directory, "CVS");
+    await noSymlinks(path.join(admin, "Root"));
+    const root = cvsRoot(
+      (await fs.readFile(path.join(admin, "Root"), "utf8")).trim(),
+    );
+    this.repositoryRoot ??= root;
+    if (root !== this.repositoryRoot) fail("root");
+    return readCvsEntries(directory);
+  }
+  async localStatus(names) {
+    if (names) {
+      const result = [];
+      for (const name of names) {
+        relativeFile(name);
+        await contained(this.root, name);
+        await assertOwnedPath(this.root, "cvs", name);
+        const directory = path.dirname(path.join(this.root, name));
+        const hasAdmin = await fs
+          .lstat(path.join(directory, "CVS"))
+          .catch((error) => {
+            if (error.code !== "ENOENT") throw error;
+          });
+        const records = hasAdmin ? await this.entriesAt(directory) : [];
+        const entry = records.find((line) =>
+          line.startsWith(`/${path.basename(name)}/`),
+        );
+        if (entry) {
+          const fields = entry.split("/");
+          result.push(
+            this.withRemote(
+              await this.localFile({
+                newPath: name,
+                entryRevision: fields[2],
+                timestamp: fields[3],
+              }),
+            ),
+          );
+        } else {
+          const stat = await fs
+            .lstat(path.join(this.root, name))
+            .catch((error) => {
+              if (error.code !== "ENOENT") throw error;
+            });
+          if (stat?.isFile())
+            result.push({
+              newPath: name,
+              entryRevision: "",
+              state: "Unknown",
+              status: "untracked",
+            });
+        }
+      }
+      return result;
+    }
+    const { files, unknown } = await this.localInventory();
+    const result = [];
+    for (let start = 0; start < files.length; start += 32)
+      result.push(
+        ...(await Promise.all(
+          files
+            .slice(start, start + 32)
+            .map(async (file) => this.withRemote(await this.localFile(file))),
+        )),
+      );
+    return [
+      ...result,
+      ...unknown.map((newPath) => ({
+        newPath,
+        entryRevision: "",
+        state: "Unknown",
+        status: "untracked",
+      })),
+    ];
+  }
+  withRemote(file) {
+    const remote = this.remoteStates.get(file.newPath);
+    if (!remote) return file;
+    if (file.state === "Up-to-date") return { ...file, ...remote };
+    if (
+      file.state === "Locally Modified" &&
+      ["Needs Checkout", "Needs Patch", "Needs Merge"].includes(remote.state)
+    )
+      return { ...file, ...parseStatus("Status: Needs Merge") };
+    return file;
+  }
+  async localFile({ timestamp, ...file }) {
+    const stat = await fs
+      .lstat(path.join(this.root, file.newPath))
+      .catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    if (stat && !stat.isFile()) fail("symlink");
+    let state;
+    if (file.entryRevision === "0") state = "Locally Added";
+    else if (file.entryRevision.startsWith("-")) state = "Locally Removed";
+    else if (!stat) state = "Missing";
+    else if (timestamp?.includes("+")) state = "File had conflicts on merge";
+    else {
+      // CVS Entries 使用 UTC asctime，时间精度为秒；无可证明基线时保守列为修改。
+      const recorded = Date.parse(`${timestamp} GMT`);
+      const key = `${file.newPath}\0${file.entryRevision}\0${timestamp}`;
+      const sizeMatches =
+        !this.cleanSizes.has(key) || this.cleanSizes.get(key) === stat.size;
+      const unchanged =
+        sizeMatches &&
+        Number.isFinite(recorded) &&
+        Math.floor(stat.mtimeMs / 1000) === Math.floor(recorded / 1000);
+      if (unchanged) this.cleanSizes.set(key, stat.size);
+      state = unchanged ? "Up-to-date" : "Locally Modified";
+    }
+    return {
+      ...file,
+      ...parseStatus(`Status: ${state}`),
+      status:
+        state === "Missing"
+          ? "deleted"
+          : parseStatus(`Status: ${state}`).status,
     };
-    await visit(this.root);
-    return files.sort((a, b) => a.newPath.localeCompare(b.newPath));
   }
   getNestedBoundaries() {
     // Inventory already performs the bounded operation-time walk.  Returning
@@ -422,23 +535,89 @@ export class CvsAdapter {
     relativeFile(name);
     await contained(this.root, name);
     await assertOwnedPath(this.root, "cvs", name);
-    const file = (await this.inventory()).find((file) => file.newPath === name);
-    if (!file) fail("path");
-    return file;
+    const records = await this.entriesAt(
+      path.dirname(path.join(this.root, name)),
+    );
+    const entry = records.find((line) =>
+      line.startsWith(`/${path.basename(name)}/`),
+    );
+    if (!entry) fail("path");
+    return { newPath: name, entryRevision: entry.split("/")[2] };
   }
   async run(args, signal, allowed, options) {
     return this.process.run(args, this.root, signal, allowed, options);
   }
-  async status(signal) {
-    const files = await this.inventory();
+  async status(signal, local) {
+    const files = local ?? (await this.localStatus());
     const output = await this.run(["-n", "-q", "update"], signal, [0], {
       timeoutMs: 180000,
     });
     const states = parseUpdateStatus(output.stdout.toString("utf8"));
-    return files.map((file) => ({
-      ...file,
-      ...(states.get(file.newPath) ?? parseStatus("Status: Up-to-date")),
-    }));
+    const result = files
+      .filter((file) => file.state !== "Unknown")
+      .map((file) => ({
+        ...file,
+        ...(states.get(file.newPath)?.state === "Needs Merge" &&
+        file.state === "File had conflicts on merge"
+          ? parseStatus("Status: File had conflicts on merge")
+          : (states.get(file.newPath) ?? parseStatus("Status: Up-to-date"))),
+      }));
+    const known = new Set(result.map((file) => file.newPath));
+    for (const [name, state] of states) {
+      if (known.has(name) || state.state !== "Unknown") continue;
+      try {
+        relativeFile(name);
+        await contained(this.root, name);
+        await assertOwnedPath(this.root, "cvs", name);
+        const stat = await fs.lstat(path.join(this.root, name));
+        const candidates = stat.isFile()
+          ? [name]
+          : stat.isDirectory()
+            ? files
+                .filter(
+                  (file) =>
+                    file.state === "Unknown" &&
+                    file.newPath.startsWith(name + "/"),
+                )
+                .map((file) => file.newPath)
+            : [];
+        for (const file of candidates)
+          result.push({
+            newPath: file,
+            entryRevision: "",
+            ...state,
+            status: "untracked",
+          });
+      } catch (error) {
+        if (error.code === "BOUNDARY_UNAVAILABLE") throw error;
+        if (
+          !["NESTED_REPOSITORY", "path", "symlink", "ENOENT"].includes(
+            error.code,
+          )
+        )
+          throw error;
+      }
+    }
+    this.remoteStates = new Map(
+      result
+        .filter((file) =>
+          [
+            "Needs Checkout",
+            "Needs Patch",
+            "Needs Merge",
+            "File had conflicts on merge",
+          ].includes(file.state),
+        )
+        .map((file) => [file.newPath, parseStatus(`Status: ${file.state}`)]),
+    );
+    return result.sort((a, b) => a.newPath.localeCompare(b.newPath));
+  }
+  async add(names, signal) {
+    for (const name of names) {
+      await contained(this.root, relativeFile(name), false);
+      await assertOwnedPath(this.root, "cvs", name);
+      await this.run(["add", "./" + name], signal);
+    }
   }
   async log(name, signal) {
     await this.file(name);

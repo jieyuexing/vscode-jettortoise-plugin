@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { CvsRepositorySession, checkoutCvs } from "./cvs/session";
 import { safeRelativePath } from "./git/security";
 import { createGitRepositorySession } from "./git/session";
+import { setBoundaryDiagnostic } from "./repositories/boundaries.cjs";
 import type {
   CatalogAction,
   WorkbenchConnection,
@@ -14,6 +15,7 @@ import type {
   RepositoryDescriptor,
   RepositoryKind,
 } from "./repositories/types";
+import { ScmManager } from "./scm/manager";
 
 function resourceUri(value: unknown): vscode.Uri | undefined {
   if (value instanceof vscode.Uri) return value;
@@ -26,6 +28,19 @@ function resourceUri(value: unknown): vscode.Uri | undefined {
   return undefined;
 }
 export function activate(context: vscode.ExtensionContext) {
+  const output = vscode.window.createOutputChannel("JetTortoise");
+  setBoundaryDiagnostic(({ stage, path: target }) =>
+    output.appendLine(
+      `[BOUNDARY_UNAVAILABLE] ${stage}: ${target
+        .replace(/[\r\n]/g, " ")
+        .replace(/(:pserver:)[^@\s]*@/gi, "$1[redacted]@")
+        .slice(0, 4096)}`,
+    ),
+  );
+  context.subscriptions.push(output, {
+    dispose: () => setBoundaryDiagnostic(undefined),
+  });
+
   const registry: RepositoryRegistry = new RepositoryRegistry(
     (repository, guard, onActive) =>
       repository.kind === "git"
@@ -437,6 +452,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }),
     );
+  context.subscriptions.push(new ScmManager(registry, context));
   void scan(false).catch(report);
 }
 export function deactivate() {}

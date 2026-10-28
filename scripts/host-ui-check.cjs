@@ -72,7 +72,12 @@ async function main() {
       EventEmitter: class EventEmitter { constructor() { this.event = () => new vscodeStub.Disposable(() => {}); } fire() {} },
       FileType: { File: 0 },
       FileSystemError: { NoPermissions: (message) => new Error(message) },
+      scm: { createSourceControl: (id,label,rootUri) => ({id,label,rootUri,inputBox:{value:""},createResourceGroup: (id,label) => ({id,label,resourceStates:[],dispose(){}}),dispose(){}}) },
+      ThemeColor: class {constructor(id){this.id=id;}}, ThemeIcon: class {constructor(id){this.id=id;}},
       window: {
+        createOutputChannel: () => ({appendLine(){},dispose(){}}),
+        registerFileDecorationProvider: () => ({dispose(){}}),
+        onDidChangeWindowState: () => ({dispose(){}}),
         registerWebviewViewProvider: () => {
           webviewViewProviderCount++;
           return { dispose() {} };
@@ -86,6 +91,7 @@ async function main() {
         createStatusBarItem: () => ({ show() {}, dispose() {} }),
       },
       workspace: {
+        onDidGrantWorkspaceTrust: () => ({dispose(){}}),
         workspaceFolders: [{ uri: { fsPath: workspace } }],
         registerTextDocumentContentProvider: () => ({ dispose() {} }),
         registerFileSystemProvider: () => ({ dispose() {} }),

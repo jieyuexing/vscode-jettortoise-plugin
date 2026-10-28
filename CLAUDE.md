@@ -23,6 +23,8 @@ Registration is workspace-local: automatic recursive metadata discovery is enabl
 
 The repository-first workbench places a read-only diff above history/details and keeps Commit mounted during history loading/errors and column collapse. Git's single webview state writer merges repository identity, history, layout and diff selection/mode (never file bodies); its drafts stay in memory. CVS retains its existing draft state strategy. Do not read legacy extension storage or register `git-brains.*` / `jetcvs.*` aliases.
 
+SCM providers share the existing repository session and mutation queue with the editor workbench: one registered, visible, available root owns one SourceControl. Commit includes all Changes paths (Git commits disk contents by explicit paths after full-index checks); Do Not Commit persists per repository, while unversioned files, conflicts and CVS Remote Updates remain excluded. File events refresh only owned paths; CVS publishes a local Entries/Entries.Log snapshot before one background network status, and focus refreshes only local state. Hiding/removing a root or losing workspace access disposes its provider without changing physical child protection.
+
 Language follows `vscode.env.language`. Maintain English and Simplified Chinese only; `zh`, `zh-cn`, `zh-tw` select Simplified Chinese, other locales select English. Host uses `vscode.l10n.t`, manifest uses package.nls and webview dictionaries initialize from Host data.
 
 ## Build and checks

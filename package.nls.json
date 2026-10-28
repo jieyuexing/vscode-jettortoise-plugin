@@ -19,5 +19,13 @@
   "cmd.removeRepository": "Remove Repository from List...",
   "cmd.scanRepositories": "Rescan Repositories",
   "cmd.updateRepository": "Update Repository Files",
-  "config.autoDiscoverRepositories": "Recursively discover Git/CVS repositories inside trusted workspace folders without scanning ancestors or performing network operations. Disabling this retains the saved list; manual scanning remains available."
+  "config.autoDiscoverRepositories": "Recursively discover Git/CVS repositories inside trusted workspace folders without scanning ancestors or performing network operations. Disabling this retains the saved list; manual scanning remains available.",
+  "cmd.scm.refresh": "Refresh",
+  "cmd.scm.commit": "Commit",
+  "cmd.scm.diff": "Open Diff",
+  "cmd.scm.defer": "Move to Do Not Commit",
+  "cmd.scm.include": "Move to Changes",
+  "cmd.scm.rollback": "Rollback",
+  "cmd.scm.add": "Add to Version Control",
+  "cmd.scm.ignore": "Ignore"
 }

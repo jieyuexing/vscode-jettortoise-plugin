@@ -31,17 +31,81 @@ async function main() {
     const entry = path.join(temp, "entry.ts"), bundle = path.join(temp, "extension.cjs"), stub = path.join(temp, "vscode.cjs");
     await fs.writeFile(stub, `
 const state=global.__jettortoiseHostMock||(global.__jettortoiseHostMock={commands:new Map(),panels:[],listeners:[]});
-class D{constructor(f){this.dispose=f||(()=>{});}} class E{constructor(){this.event=()=>new D();}fire(){}dispose(){}} const U=global.__jettortoiseUri||(global.__jettortoiseUri=class U{constructor(v){Object.assign(this,v);this.fsPath=v.fsPath||v.path||"";}static file(fsPath){return new U({scheme:"file",fsPath,path:fsPath,authority:"",query:""});}static from(v){return new U(v);}static joinPath(b,...s){return U.file(require("node:path").join(b.fsPath,...s));}toString(){return this.scheme+"://"+(this.authority||"")+(this.path||"")+(this.query?"?"+this.query:"");}});
+class D{constructor(f){this.dispose=f||(()=>{});}} class E{constructor(){this.listeners=new Set();this.event=cb=>{this.listeners.add(cb);return new D(()=>this.listeners.delete(cb));};}fire(value){for(const cb of [...this.listeners])cb(value);}dispose(){this.listeners.clear();}} const U=global.__jettortoiseUri||(global.__jettortoiseUri=class U{constructor(v){Object.assign(this,v);this.fsPath=v.fsPath||v.path||"";}static file(fsPath){return new U({scheme:"file",fsPath,path:fsPath,authority:"",query:""});}static from(v){return new U(v);}static joinPath(b,...s){return U.file(require("node:path").join(b.fsPath,...s));}toString(){return this.scheme+"://"+(this.authority||"")+(this.path||"")+(this.query?"?"+this.query:"");}});
 function panel(title){const received=[];const callbacks=new Set();const disposeCallbacks=new Set();const webview={cspSource:"test",options:{},asWebviewUri:u=>u.toString(),postMessage:async m=>{received.push(m);},receive:async msg=>{await Promise.all([...callbacks].map(cb=>cb(msg)));},onDidReceiveMessage:cb=>{callbacks.add(cb);return new D(()=>callbacks.delete(cb));}};const p={title,webview,active:true,reveal(){p.revealCount=(p.revealCount||0)+1;},onDidDispose:cb=>{disposeCallbacks.add(cb);return new D(()=>disposeCallbacks.delete(cb));},onDidChangeViewState:()=>new D(),dispose(){for(const cb of [...disposeCallbacks])cb();p.closed=true;},received,revealCount:0};state.panels.push(p);return p;}
-exports.Uri=U;exports.Disposable=D;exports.EventEmitter=E;exports.ViewColumn={Active:1};exports.StatusBarAlignment={Left:1};exports.ProgressLocation={Notification:1};exports.FileType={File:1};exports.FileSystemError={NoPermissions:()=>new Error("NoPermissions"),FileNotFound:()=>new Error("FileNotFound")};exports.l10n={t:(m,...a)=>a.reduce((x,v,i)=>x.replace("{"+i+"}",String(v)),m)};exports.env={language:"en",clipboard:{writeText:async()=>{},readText:async()=>""}};exports.workspace=global.__jettortoiseWorkspace||(global.__jettortoiseWorkspace={isTrusted:true,workspaceFolders:[],textDocuments:[],getConfiguration:()=>({get:(_k,d)=>d}),registerFileSystemProvider:()=>new D(),registerTextDocumentContentProvider:()=>new D(),onDidChangeWorkspaceFolders:()=>new D(),createFileSystemWatcher:()=>({onDidChange:()=>new D(),onDidCreate:()=>new D(),onDidDelete:()=>new D(),dispose(){}})});exports.window={activeTextEditor:undefined,createWebviewPanel:(_t,title)=>panel(title),registerWebviewPanelSerializer:()=>new D(),createStatusBarItem:()=>({show(){},dispose(){}}),onDidChangeActiveTextEditor:()=>new D(),showErrorMessage:async message=>{console.error("HOST_ERROR",message);},showInformationMessage:async(message,...items)=>{if(message.startsWith("This repository has not been added:")){state.addPrompts=(state.addPrompts||0)+1;return items[0];}},showWarningMessage:async(_m,_o,label)=>{if(state.beforeConfirm)await state.beforeConfirm();return state.confirm ? label : undefined;},showQuickPick:async()=>undefined,showOpenDialog:async()=>undefined,withProgress:async(_o,fn)=>fn({report(){}}, {onCancellationRequested:()=>new D()})};exports.commands={registerCommand:(id,cb)=>{state.commands.set(id,cb);return new D(()=>state.commands.delete(id));},executeCommand:async()=>{}};exports.Range=class{};exports.RelativePattern=class{};exports.__state=state;
+state.sourceControls=[];state.watchers=[];state.gitPrompts=[];
+exports.scm={createSourceControl(id,label,rootUri){const groups=[];const source={id,label,rootUri,groups,inputBox:{value:""},createResourceGroup(id,label){const group={id,label,resourceStates:[],dispose(){}};groups.push(group);return group;},dispose(){source.disposed=true;}};state.sourceControls.push(source);return source;}};
+exports.ThemeColor=class{constructor(id){this.id=id;}};exports.ThemeIcon=class{constructor(id,color){this.id=id;this.color=color;}};exports.ConfigurationTarget={Workspace:2};
+exports.Uri=U;exports.Disposable=D;exports.EventEmitter=E;exports.ViewColumn={Active:1};exports.StatusBarAlignment={Left:1};exports.ProgressLocation={Notification:1};exports.FileType={File:1};exports.FileSystemError={NoPermissions:()=>new Error("NoPermissions"),FileNotFound:()=>new Error("FileNotFound")};exports.l10n={t:(m,...a)=>a.reduce((x,v,i)=>x.replace("{"+i+"}",String(v)),m)};exports.env={language:"en",clipboard:{writeText:async()=>{},readText:async()=>""}};exports.workspace=global.__jettortoiseWorkspace||(global.__jettortoiseWorkspace={isTrusted:true,workspaceFolders:[],textDocuments:[],getConfiguration:()=>({get:(_k,d)=>d}),registerFileSystemProvider:()=>new D(),registerTextDocumentContentProvider:()=>new D(),onDidChangeWorkspaceFolders:()=>new D(),createFileSystemWatcher:()=>({onDidChange:()=>new D(),onDidCreate:()=>new D(),onDidDelete:()=>new D(),dispose(){}})});exports.window={createOutputChannel:()=>({appendLine:line=>{(state.diagnostics??=[]).push(line);},dispose(){}}),registerFileDecorationProvider:provider=>{state.decorations=provider;return new D();},onDidChangeWindowState:cb=>{state.windowState=cb;return new D();},activeTextEditor:undefined,createWebviewPanel:(_t,title)=>panel(title),registerWebviewPanelSerializer:()=>new D(),createStatusBarItem:()=>({show(){},dispose(){}}),onDidChangeActiveTextEditor:()=>new D(),showErrorMessage:async message=>{console.error("HOST_ERROR",message);},showInformationMessage:async(message,...items)=>{if(message.startsWith("This repository has not been added:")){state.addPrompts=(state.addPrompts||0)+1;return items[0];}if(message.startsWith("Ignore built-in")){state.gitPrompts.push(message);return state.ignoreGit || message.endsWith(state.ignoreGitRoot) ? items[0] : items[1];}},showWarningMessage:async(_m,_o,label)=>{if(state.beforeConfirm)await state.beforeConfirm();return state.confirm ? label : undefined;},showQuickPick:async()=>undefined,showOpenDialog:async()=>undefined,withProgress:async(_o,fn)=>fn({report(){}}, {onCancellationRequested:()=>new D()})};exports.commands={registerCommand:(id,cb)=>{state.commands.set(id,cb);return new D(()=>state.commands.delete(id));},executeCommand:async(...args)=>{(state.executed??=[]).push(args);}};exports.Range=class{};exports.RelativePattern=class{};exports.__state=state;
 `);
-    await fs.writeFile(entry, `export {activate} from ${JSON.stringify(path.join(project,"src/extension.ts"))};\n`);
+    await fs.writeFile(entry, `export {activate} from ${JSON.stringify(path.join(project,"src/extension.ts"))};\nexport {RepositoryScm} from ${JSON.stringify(path.join(project,"src/scm/provider.ts"))};\nexport {scmCvsChange} from ${JSON.stringify(path.join(project,"src/cvs/session.ts"))};\n`);
     global.__jettortoiseHostMock = { commands: new Map(), panels: [], listeners: [] };
-    global.__jettortoiseWorkspace = { isTrusted: true, workspaceFolders: [], textDocuments: [], getConfiguration: () => ({ get: (key, fallback) => key === "cvsPath" ? cvsClient : key === "autoDiscoverRepositories" ? false : fallback }), registerFileSystemProvider: () => ({ dispose() {} }), registerTextDocumentContentProvider: () => ({ dispose() {} }), onDidChangeWorkspaceFolders: () => ({ dispose() {} }), onDidSaveTextDocument: () => ({ dispose() {} }), fs: { delete: uri => fs.rm(uri.fsPath,{recursive:true,force:true}) }, createFileSystemWatcher: () => ({ onDidChange: () => ({ dispose() {} }), onDidCreate: () => ({ dispose() {} }), onDidDelete: () => ({ dispose() {} }), dispose() {} }) };
+    global.__jettortoiseWorkspace = { isTrusted: true, workspaceFolders: [], textDocuments: [], getConfiguration: () => ({ get: (key, fallback) => key === "cvsPath" ? cvsClient : key === "autoDiscoverRepositories" ? false : key === "ignoredRepositories" ? (global.__jettortoiseHostMock.ignored || ["/synthetic-existing"]) : fallback,update:async(key,value,target)=>{assert.equal(key,"ignoredRepositories");assert.equal(target,2);global.__jettortoiseHostMock.ignored=value;} }), registerFileSystemProvider: () => ({ dispose() {} }), registerTextDocumentContentProvider: () => ({ dispose() {} }), onDidChangeWorkspaceFolders: () => ({ dispose() {} }), onDidGrantWorkspaceTrust: () => ({ dispose() {} }), onDidSaveTextDocument: cb => { (global.__jettortoiseHostMock.saveListeners??=[]).push(cb);return {dispose(){}}; }, fs: { delete: uri => fs.rm(uri.fsPath,{recursive:true,force:true}) }, createFileSystemWatcher: () => {const watcher={onDidChange:cb=>{watcher.changed=cb;return {dispose(){}};},onDidCreate:cb=>{watcher.created=cb;return {dispose(){}};},onDidDelete:cb=>{watcher.deleted=cb;return {dispose(){}};},dispose(){watcher.disposed=true;}};global.__jettortoiseHostMock.watchers.push(watcher);return watcher;} };
     await esbuild.build({ entryPoints:[entry], bundle:true, platform:"node", format:"cjs", outfile:bundle, plugins:[{name:"vscode",setup(build){build.onResolve({filter:/^vscode$/},()=>({path:stub}));}}] });
-    const { activate } = require(bundle), vscode = require(stub); vscode.workspace.workspaceFolders = [a,b,c].map(fsPath=>({uri:vscode.Uri.file(fsPath)})); const context={extensionUri:vscode.Uri.file(project),subscriptions:[]}; activate(context);
-    const manifest=require(path.join(project,"package.json")); const declared=manifest.contributes.commands.map(item=>item.command); assert.equal(declared.length,16); const missing=declared.filter(id=>!vscode.__state.commands.has(id)); assert.deepEqual(missing,[]);
+    const { activate, RepositoryScm, scmCvsChange } = require(bundle), vscode = require(stub); vscode.workspace.workspaceFolders = [a,b,c].map(fsPath=>({uri:vscode.Uri.file(fsPath)})); const saved=new Map(); const context={extensionUri:vscode.Uri.file(project),subscriptions:[],workspaceState:{get:(key,fallback)=>saved.has(key)?saved.get(key):fallback,update:async(key,value)=>{saved.set(key,value);}}}; activate(context);
+    vscode.__state.ignoreGitRoot=b; const manifest=require(path.join(project,"package.json")); const declared=manifest.contributes.commands.map(item=>item.command); assert.ok(declared.length>=16); const missing=declared.filter(id=>!vscode.__state.commands.has(id)); assert.deepEqual(missing,[]);
     await vscode.__state.commands.get("jettortoise.openHistory")(vscode.Uri.file(path.join(a,"tracked.txt"))); await vscode.__state.commands.get("jettortoise.openHistory")(vscode.Uri.file(path.join(b,"tracked.txt"))); await vscode.__state.commands.get("jettortoise.openHistory")(vscode.Uri.file(path.join(c,"tracked.txt"))); assert.equal(vscode.__state.addPrompts,3); assert.equal(vscode.__state.panels.length,3); assert.equal(new Set(vscode.__state.panels.map(p=>p.title)).size,3);
+    async function until(check,label){const end=Date.now()+10000;while(!check()){if(Date.now()>end)throw new Error("Timed out: "+label);await new Promise(resolve=>setTimeout(resolve,10));}}
+    await until(()=>vscode.__state.sourceControls.filter(s=>!s.disposed).length===3,"three native providers");
+    const scmA=vscode.__state.sourceControls.find(s=>s.rootUri.fsPath===a),scmC=vscode.__state.sourceControls.find(s=>s.rootUri.fsPath===c);
+    const scmCommand=(name,...args)=>vscode.__state.commands.get("jettortoise.scm."+name)(...args);
+    const group=(source,id)=>source.groups.find(g=>g.id===id);
+    await fs.writeFile(path.join(a,"deferred.txt"),"base\n");git(a,["add","deferred.txt"]);git(a,["commit","-m","prepare SCM"]);
+    await fs.writeFile(path.join(a,"tracked.txt"),"SCM worktree\n");await fs.writeFile(path.join(a,"deferred.txt"),"deferred\n");await fs.writeFile(path.join(a,"unknown.txt"),"unknown\n");
+    await scmCommand("refresh",scmA);
+    assert.equal(group(scmA,"changes").resourceStates.length,2);
+    assert.equal(group(scmA,"untracked").resourceStates.length,1);
+    const deferredState=group(scmA,"changes").resourceStates.find(s=>s.change.path==="deferred.txt");
+    await scmCommand("diff",scmA,"tracked.txt");
+    const diskDiff=vscode.__state.executed.filter(call=>call[0]==="vscode.diff").at(-1);
+    assert.equal(diskDiff[2].scheme,"file");assert.equal(diskDiff[2].fsPath,path.join(a,"tracked.txt"));
+    await scmCommand("defer",deferredState);
+    assert.equal(group(scmA,"deferred").resourceStates.length,1);
+    assert.ok([...saved.values()].some(value=>Array.isArray(value)&&value.includes("deferred.txt")));
+    scmA.inputBox.value="SCM paths only";await scmCommand("commit",scmA);
+    assert.equal(scmA.inputBox.value,"");assert.equal(git(a,["show","HEAD:tracked.txt"]),"SCM worktree\n");assert.equal(git(a,["show","HEAD:deferred.txt"]),"base\n");
+    const quick=await scmA.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(a,"tracked.txt")));
+    assert.match(quick.query,/HEAD/);
+    assert.equal(await scmA.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(a,"unknown.txt"))),undefined);
+    await fs.writeFile(path.join(a,"deferred.txt"),"base\n");await scmCommand("refresh",scmA);assert.equal(group(scmA,"deferred").resourceStates.length,0);
+    await until(()=>vscode.__state.gitPrompts.length===2,"Git prompt once per repository");
+    assert.ok(vscode.__state.ignored.includes(b));assert.ok(vscode.__state.ignored.includes("/synthetic-existing"));assert.ok(!vscode.__state.ignored.includes(a));
+    const prompts=vscode.__state.gitPrompts.length;await scmCommand("refresh",scmA);assert.equal(vscode.__state.gitPrompts.length,prompts);
+    assert.equal(scmC.groups.some(g=>g.id==="remote"),true);
+    await fs.writeFile(path.join(c,"unknown.txt"),"unknown\n");await scmCommand("refresh",scmC);
+    assert.ok(group(scmC,"untracked").resourceStates.some(state=>state.change.path==="unknown.txt"));
+    await scmCommand("diff",scmC,"unknown.txt");
+    const cvsUnknownDiff=vscode.__state.executed.filter(call=>call[0]==="vscode.diff").at(-1);assert.equal(cvsUnknownDiff[1].scheme,"jettortoise");assert.equal(cvsUnknownDiff[2].fsPath,path.join(c,"unknown.txt"));
+    const cvsQuick=await scmC.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(c,"tracked.txt")));assert.match(cvsQuick.query,/ref=1/);
+    assert.equal(await scmC.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(c,"unknown.txt"))),undefined);
+    await fs.rm(path.join(c,"unknown.txt"));
+    await fs.rm(path.join(a,"unknown.txt"));
+    // 同一套 provider 验证 CVS 状态映射、组优先级、持久化及刷新合并。
+    const fixtureChanges=["Locally Modified","Locally Added","Locally Removed","Unknown","File had conflicts on merge","Needs Checkout","Needs Patch","Needs Merge"].map((state,i)=>scmCvsChange({newPath:`fixture-${i}.txt`,entryRevision:"1.1",state}));
+    let refreshCalls=0,activeRefresh=0,maxRefresh=0,release;
+    const fakeAdapter={onDidChange:new vscode.EventEmitter().event,refresh:async(_request,publish)=>{refreshCalls++;maxRefresh=Math.max(maxRefresh,++activeRefresh);publish(fixtureChanges);await new Promise(resolve=>{release=resolve;});activeRefresh--;},commit:async()=>true,rollback:async()=>{},add:async()=>{},ignore:async()=>{},diff:async()=>{},baseline:async()=>undefined};
+    const descriptor={id:"synthetic-scm",root:a,kind:"cvs"};
+    const fake=new RepositoryScm(descriptor,fakeAdapter,context,new vscode.EventEmitter());
+    assert.equal(fake.groups.get("changes").resourceStates.length,4);
+    assert.equal(fake.groups.get("untracked").resourceStates.length,1);
+    assert.equal(fake.groups.get("remote").resourceStates.length,2);
+    assert.equal(fake.groups.get("conflicts").resourceStates.length,1);
+    await fake.move(["fixture-0.txt"],true);
+    const queued=[fake.refresh(true),fake.refresh(true),fake.refresh(false)];
+    release();await until(()=>refreshCalls===2,"coalesced refresh");release();await Promise.all(queued);
+    assert.equal(refreshCalls,2);assert.equal(maxRefresh,1);
+    fake.dispose();
+    const persisted=new RepositoryScm(descriptor,{...fakeAdapter,refresh:async(_request,publish)=>{publish(fixtureChanges);throw new Error("synthetic network failure");}},context,new vscode.EventEmitter());
+    await persisted.refresh(false);assert.equal(persisted.groups.get("deferred").resourceStates.length,1);assert.match(persisted.groups.get("changes").label,/synthetic network failure/);assert.equal(persisted.groups.get("changes").hideWhenEmpty,false);persisted.dispose();
+    let finishNetwork,networkDone=false,localSaves=0;
+    const fresh={path:"fixture-live.txt",status:"deleted"};
+    const live=new RepositoryScm({...descriptor,id:"synthetic-live"},{...fakeAdapter,refresh:async(request,publish)=>{
+      if(request.paths){localSaves++;assert.deepEqual(request.paths,["fixture-live.txt"]);publish([fresh]);return;}
+      publish([{...fresh,status:"modified"}]);await new Promise(resolve=>{finishNetwork=resolve;});publish([{...fresh,status:"modified"}]);networkDone=true;
+    }},context,new vscode.EventEmitter());
+    vscode.__state.watchers.at(-1).changed(vscode.Uri.file(path.join(a,"fixture-live.txt")));
+    await until(()=>localSaves===1,"single-file refresh while network running");
+    assert.equal(live.changes.get("fixture-live.txt").status,"deleted");finishNetwork();await until(()=>networkDone,"late network snapshot");assert.equal(live.changes.get("fixture-live.txt").status,"deleted");live.dispose();
     const before=vscode.__state.panels.length; await vscode.__state.commands.get("jettortoise.openCommit")(vscode.Uri.file(path.join(a,"tracked.txt"))); assert.equal(vscode.__state.panels.length,before); const aPanel=vscode.__state.panels.find(p=>p.webview.html.includes('data-mode="panel"')); await aPanel.webview.receive({type:"jettortoiseHistoryReady"}); assert.ok(aPanel.received.some(m=>m.event==="showFileHistory")); assert.ok(aPanel.received.some(m=>m.event==="showCommitPanel"));
     const bPanel=vscode.__state.panels.find(p=>p !== aPanel && p.webview.html.includes('data-mode="panel"'));
     assert.ok([...vscode.__state.commands.keys()].every(id=>id.startsWith('jettortoise.')));
@@ -152,8 +216,20 @@ exports.Uri=U;exports.Disposable=D;exports.EventEmitter=E;exports.ViewColumn={Ac
     const lateDelete=await request(reopen,'deleteFiles',{filePaths:['late-child/sentinel.txt']});
     assert.equal(lateDelete.success,false);
     assert.equal(await fs.readFile(path.join(late,'sentinel.txt'),'utf8'),'late sentinel\n');
+    const beforeHidden=vscode.__state.sourceControls.filter(source=>!source.disposed).length;
+    await catalogRequest(reopen,"remove",bId);
+    await until(()=>vscode.__state.sourceControls.filter(source=>!source.disposed).length===beforeHidden-1,"hidden SourceControl disposed");
+    const bScm=vscode.__state.sourceControls.find(source=>source.rootUri.fsPath===b);assert.equal(bScm.disposed,true);
+    const promptsBeforeRestore=vscode.__state.gitPrompts.length;
+    await vscode.__state.commands.get("jettortoise.addRepository")(vscode.Uri.file(b));
+    await until(()=>vscode.__state.sourceControls.some(source=>source.rootUri.fsPath===b&&!source.disposed),"restored provider");
+    assert.equal(vscode.__state.gitPrompts.length,promptsBeforeRestore);
+    // 失去信任时在窗口事件同步释放全部提供者。
+    vscode.workspace.isTrusted=false;vscode.__state.windowState({focused:true});
+    await until(()=>vscode.__state.sourceControls.every(source=>source.disposed),"trust loss disposed providers");
+    assert.equal(vscode.__state.gitPrompts.length,promptsBeforeRestore);
     for(const d of context.subscriptions)d.dispose();
-    console.log(JSON.stringify({declaredCommands:declared.length,addAndOpenBeforePanel:true,threeRepositoryPanels:true,perRepositorySingleton:true,readyQueue:true,workingChangesIsolated:true,hostConfirmCancel:true,mutationTargetIsolated:true,eventsIsolated:true,closeReopenListeners:true,realGitHostCommit:true,realCvsHostCommit:true,cvsTraversalRejected:true,cvsDirtyAliasUpdateRejected:true,cvsDirtyAliasCommitRejected:true,nestedHostDeleteRejected:true,commitRejectedBeforeStaging:true,boundaryCreatedDuringConfirmationRejected:true,catalogOtherRepositoryFastForward:true,catalogUpdateDidNotFocusOtherPanel:true,catalogSuccessFeedbackTargeted:true,dirtyEditorGuardRejected:true,catalogRetryAfterCleanSuccess:true}));
+    console.log(JSON.stringify({nativeScmProviders:true,sharedCvsGroups:true,deferredPersistent:true,realScmCommitExcludesDeferredAndUntracked:true,fullRefreshCoalesced:true,failedNetworkRetainsLocal:true,hiddenAndTrustDisposal:true,gitPromptOnceAndPreservesConfig:true,declaredCommands:declared.length,addAndOpenBeforePanel:true,threeRepositoryPanels:true,perRepositorySingleton:true,readyQueue:true,workingChangesIsolated:true,hostConfirmCancel:true,mutationTargetIsolated:true,eventsIsolated:true,closeReopenListeners:true,realGitHostCommit:true,realCvsHostCommit:true,cvsTraversalRejected:true,cvsDirtyAliasUpdateRejected:true,cvsDirtyAliasCommitRejected:true,nestedHostDeleteRejected:true,commitRejectedBeforeStaging:true,boundaryCreatedDuringConfirmationRejected:true,catalogOtherRepositoryFastForward:true,catalogUpdateDidNotFocusOtherPanel:true,catalogSuccessFeedbackTargeted:true,dirtyEditorGuardRejected:true,catalogRetryAfterCleanSuccess:true}));
 
   } finally { await fs.rm(temp,{recursive:true,force:true}); }
 }

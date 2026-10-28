@@ -28,7 +28,9 @@ export interface CvsFile {
 export class CvsAdapter {
   constructor(root: string, process?: CvsProcess);
   root: string;
-  status(signal?: AbortSignal): Promise<CvsFile[]>;
+  status(signal?: AbortSignal, local?: CvsFile[]): Promise<CvsFile[]>;
+  localStatus(names?: string[]): Promise<CvsFile[]>;
+  add(names: string[], signal?: AbortSignal): Promise<void>;
   getNestedBoundaries(): Array<{ kind: "git" | "cvs"; root: string }>;
   log(
     name: string,

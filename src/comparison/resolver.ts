@@ -320,14 +320,15 @@ export class CvsComparisonResolver {
   async working(
     filePath: string,
     selectedRevision?: string,
+    metadata?: { entryRevision: string },
   ): Promise<ResolvedComparison> {
     const checkedRight = await checkedCvsWorktreeSide(this.root, filePath);
-    const metadata = await this.cvs.file(checkedRight.path);
-    const revision = selectedRevision ?? metadata.entryRevision;
+    const file = metadata ?? (await this.cvs.file(checkedRight.path));
+    const revision = (selectedRevision ?? file.entryRevision).replace(/^-/, "");
     // CVS writes revision `0` into Entries after `cvs add`; it has no base
     // content until commit, so model it as an explicit empty side.
     const left: ComparisonSide =
-      revision === "0"
+      !revision || revision === "0"
         ? emptySide(checkedRight.path)
         : {
             source: "cvs",

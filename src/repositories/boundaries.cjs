@@ -5,6 +5,15 @@ const { promisify } = require("node:util");
 
 const exec = promisify(execFile);
 const LIMIT = 10000;
+let diagnostic;
+function setBoundaryDiagnostic(listener) {
+  diagnostic = listener;
+}
+function diagnose(stage, target, error) {
+  if (error?.code === "BOUNDARY_UNAVAILABLE")
+    diagnostic?.({ stage, path: target });
+  return error;
+}
 function within(root, target) {
   const relative = path.relative(root, target);
   return (
@@ -34,7 +43,7 @@ async function present(file) {
     throw error;
   }
 }
-async function readCvs(directory) {
+async function readCvsUnchecked(directory) {
   const admin = path.join(directory, "CVS");
   if (!(await present(admin))) return undefined;
   if ((await fs.lstat(admin)).isSymbolicLink())
@@ -59,6 +68,13 @@ async function readCvs(directory) {
   )
     throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
   return values;
+}
+async function readCvs(directory) {
+  try {
+    return await readCvsUnchecked(directory);
+  } catch (error) {
+    throw diagnose("readCvs", directory, error);
+  }
 }
 async function readCvsEntries(directory) {
   const admin = path.join(directory, "CVS");
@@ -118,7 +134,11 @@ async function rootsAt(directory) {
       if (root !== directory) throw new Error("Invalid marker");
       result.push({ kind: "git", root });
     } catch {
-      throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+      throw diagnose(
+        "rootsAt.git",
+        directory,
+        new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE"),
+      );
     }
   }
   if (await readCvs(directory)) {
@@ -230,33 +250,80 @@ async function assertOwnedPath(root, kind, relative) {
     if (nested.length) throw new NestedRepositoryError(nested);
   }
 }
-async function walkNested(start, ownerRoot) {
-  const result = [];
+// 每次验证独立缓存；父子连续性复用同一份元数据，不跨操作复用。
+async function repositoryTree(start, ownerRoot = start) {
+  const nested = [],
+    directories = [],
+    pending = [start];
+  const metadata = new Map();
+  const read = (directory) => {
+    if (!metadata.has(directory)) metadata.set(directory, readCvs(directory));
+    return metadata.get(directory);
+  };
   let visited = 0;
-  async function visit(directory) {
-    if (++visited > LIMIT)
-      throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
-    if (directory !== ownerRoot) {
-      const roots = await rootsAt(directory);
-      if (roots.length) {
-        result.push(...roots);
-        return;
+  try {
+    while (pending.length) {
+      const batch = pending.splice(0, 8);
+      const results = await Promise.all(
+        batch.map(async (directory) => {
+          if (++visited > LIMIT)
+            throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+          const cvs = await read(directory);
+          const roots = [];
+          if (directory !== ownerRoot) {
+            if (await present(path.join(directory, ".git"))) {
+              const git = (await rootsAt(directory)).filter(
+                (root) => root.kind === "git",
+              );
+              roots.push(...git);
+            }
+            if (cvs) {
+              const parent = await read(path.dirname(directory));
+              if (
+                !parent ||
+                parent.Root !== cvs.Root ||
+                cvs.Repository !==
+                  `${parent.Repository}/${path.basename(directory)}` ||
+                !parent.Entries.some((line) =>
+                  line.startsWith(`D/${path.basename(directory)}/`),
+                )
+              )
+                roots.push({ kind: "cvs", root: directory });
+            }
+          }
+          if (roots.length) return { roots };
+          const entries = await fs.readdir(directory, { withFileTypes: true });
+          return { directory, entries, cvs };
+        }),
+      );
+      for (const item of results) {
+        if (item.roots) {
+          nested.push(...item.roots);
+          continue;
+        }
+        directories.push(item);
+        for (const entry of item.entries)
+          if (
+            entry.isDirectory() &&
+            entry.name !== ".git" &&
+            entry.name !== "CVS"
+          )
+            pending.push(path.join(item.directory, entry.name));
       }
     }
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      // Never follow symlinks or read VCS administration internals as a tree.
-      if (entry.isDirectory() && entry.name !== ".git" && entry.name !== "CVS")
-        await visit(path.join(directory, entry.name));
-    }
-  }
-  try {
-    await visit(start);
   } catch (error) {
-    if (error instanceof NestedRepositoryError) throw error;
-    throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+    throw diagnose(
+      "repositoryTree",
+      start,
+      error instanceof NestedRepositoryError
+        ? error
+        : new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE"),
+    );
   }
-  return result;
+  return { nested, directories };
+}
+async function walkNested(start, ownerRoot) {
+  return (await repositoryTree(start, ownerRoot)).nested;
 }
 /** Only used to preflight an explicit whole-worktree operation, never startup. */
 async function listNestedRepositories(root, _kind) {
@@ -268,13 +335,37 @@ async function assertNoNestedRepositories(root, kind) {
   if (boundaries.length) throw new NestedRepositoryError(boundaries);
 }
 
+function traced(stage, action) {
+  return async (...args) => {
+    try {
+      return await action(...args);
+    } catch (error) {
+      throw diagnose(stage, String(args[0]), error);
+    }
+  };
+}
 exports.within = within;
 exports.NestedRepositoryError = NestedRepositoryError;
-exports.containingRepositories = containingRepositories;
-exports.nearestRepositories = nearestRepositories;
-exports.isCvsContinuation = isCvsContinuation;
-exports.readCvsEntries = readCvsEntries;
-exports.boundariesForPaths = boundariesForPaths;
-exports.assertOwnedPath = assertOwnedPath;
-exports.listNestedRepositories = listNestedRepositories;
-exports.assertNoNestedRepositories = assertNoNestedRepositories;
+exports.containingRepositories = traced(
+  "containingRepositories",
+  containingRepositories,
+);
+exports.nearestRepositories = traced(
+  "nearestRepositories",
+  nearestRepositories,
+);
+exports.isCvsContinuation = traced("isCvsContinuation", isCvsContinuation);
+exports.readCvsEntries = traced("readCvsEntries", readCvsEntries);
+exports.boundariesForPaths = traced("boundariesForPaths", boundariesForPaths);
+exports.assertOwnedPath = traced("assertOwnedPath", assertOwnedPath);
+exports.listNestedRepositories = traced(
+  "listNestedRepositories",
+  listNestedRepositories,
+);
+exports.assertNoNestedRepositories = traced(
+  "assertNoNestedRepositories",
+  assertNoNestedRepositories,
+);
+
+exports.repositoryTree = traced("repositoryTree", repositoryTree);
+exports.setBoundaryDiagnostic = setBoundaryDiagnostic;

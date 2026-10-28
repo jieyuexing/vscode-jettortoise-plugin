@@ -65,6 +65,20 @@ async function main() {
       plugins: [{ name: "vscode-stub", setup(build) { build.onResolve({ filter: /^vscode$/ }, () => ({ path: vscodeStub })); } }],
     });
     const { GitService, resolveShelfEntry } = require(bundle);
+    const selected = path.join(tempRoot,"selected");
+    await createGitRepository(selected,"selected@example.invalid");
+    for(const name of ["partial.txt","deleted.txt","old.txt","deferred.txt"]) await fs.writeFile(path.join(selected,name),"base\n");
+    git(selected,["add","."]);git(selected,["commit","-m","base"]);
+    await fs.writeFile(path.join(selected,"partial.txt"),"staged\n");git(selected,["add","partial.txt"]);
+    await fs.writeFile(path.join(selected,"partial.txt"),"worktree\n");
+    await fs.writeFile(path.join(selected,"deferred.txt"),"excluded staged\n");git(selected,["add","deferred.txt"]);
+    await fs.rm(path.join(selected,"deleted.txt"));git(selected,["mv","old.txt","new.txt"]);
+    await new GitService(selected).commitPaths("selected paths",["partial.txt","deleted.txt","old.txt","new.txt"]);
+    assert.equal(git(selected,["show","HEAD:partial.txt"]),"worktree\n");
+    assert.equal(git(selected,["show","HEAD:deferred.txt"]),"base\n");
+    assert.equal(git(selected,["diff","--cached","--name-only"]).trim(),"deferred.txt");
+    assert.equal(git(selected,["ls-tree","--name-only","HEAD"]).includes("deleted.txt"),false);
+    assert.equal(git(selected,["ls-tree","--name-only","HEAD"]).includes("old.txt"),false);
     const parentService = new GitService(parent);
     const childService = new GitService(child);
 

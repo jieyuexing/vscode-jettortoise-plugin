@@ -52,7 +52,7 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
 
 ## 改版设计
 
-> 用户决定（2026-10-28）：交互参照 IntelliJ IDEA 的 Git，不以编辑器面板为主；Git 与 CVS 采用同一套交互，由 JetTortoise 接管 Git 的「源代码管理」视图。S1 上线时本节并入正文并重写 `CLAUDE.md` 的 Contracts 段。
+> 用户决定（2026-10-28）：交互参照 IntelliJ IDEA 的 Git，不以编辑器面板为主；Git 与 CVS 采用同一套交互，由 JetTortoise 接管 Git 的「源代码管理」视图。S1 已实现原生 SCM；本节整体并入正文及 `CLAUDE.md` Contracts 整段重写留到 S3。
 
 ### 0.5.1 实测基线（2026-10-28）
 
@@ -79,8 +79,8 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
 | Commit 工具窗口（变更列表、提交说明、Commit / Commit and Push） | 每个仓库一个 SourceControl：资源组按 IDEA changelist 分为「更改」「暂不提交」「未纳入版本控制」「冲突」；`inputBox` 写提交说明；接受按钮提交「更改」组 | `vscode.scm.createSourceControl` |
 | 双击文件看 diff | 单击资源打开 `vscode.diff`（基线 ↔ 工作区） | resource `command` |
 | 编辑器行号旁的改动标记 | `quickDiffProvider` 返回基线 URI（Git 为 HEAD，CVS 为 Entries 修订），沿用现有内容提供者 | SourceControl.quickDiffProvider |
-| 资源管理器里文件变色 | 资源 decorations（颜色、删除线、提示） | SourceControlResourceDecorations |
-| 本地改动自动刷新 | 每个已登记仓根一个 FileSystemWatcher：保存时只刷新单个文件（Git 用 `status --porcelain -- <path>`，CVS 用单文件 `status`）；每次操作后和窗口获得焦点时全量刷新；`scm/title` 保留手动刷新 | workspace.createFileSystemWatcher |
+| 资源管理器里文件变色 | SCM 行装饰（图标、删除线、提示）与资源管理器主题色 | SourceControlResourceDecorations + FileDecorationProvider |
+| 本地改动自动刷新 | 每个已登记仓根一个 FileSystemWatcher：保存时只刷新单个文件（Git 用 `status --porcelain=v1 -z -uall -- <path>`，CVS 只读本地 Entries）；操作后刷新，焦点只跑本地段；`scm/title` 保留手动刷新 | workspace.createFileSystemWatcher |
 | Git 工具窗口的 Log 页（分支栏、提交图、详情、变更文件） | 底部面板容器「JetTortoise」里的 Log 视图，复用 `packages/vcs-ui` 的历史、图与详情组件；Git 和 CVS 共用一个视图 | `viewsContainers.panel` + `WebviewViewProvider` |
 | 右键 Git ▸ Show History / Compare with Revision / Rollback / Annotate | 编辑器、资源管理器、SCM 资源的右键菜单「JetTortoise ▸ 显示历史／与修订比较／回滚／更新」；文件历史在 Log 视图里按路径过滤打开 | `menus`：`editor/context`、`explorer/context`、`scm/resourceState/context` |
 | Update Project、Push 对话框、冲突对话框 | 「更新」放在 `scm/title`；推送、冲突、回滚确认仍按需打开现有的对话式页面（`pushPanel`、`conflictsManager`、`rollbackPanel`），这和 IDEA 弹对话框一致 | 现有 views |
@@ -95,7 +95,11 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
   - 「暂不提交」的成员保存在 workspaceState。
 - **与内置 Git 共存**：不静默关闭 `git.enabled`，因为 GitHub PR、Copilot 生成提交说明等扩展依赖内置 Git 的 API。
   - 每个工作区首次接管某个 Git 仓库时，在流程里提示一次：「在本工作区忽略内置 Git 对该仓库的管理」，确认后写入工作区设置 `git.ignoredRepositories`。拒绝则两者并存，文档写明。
-  - 实现前在 VS Code 1.143 核实两点：被忽略的仓库是否也从 Git API 中消失（会影响上述扩展）；内置 Git 与本扩展两个 quickDiffProvider 同时存在时，行号标记是否会重复。核实结论写进 RECORD。
+  - 已核对 VS Code 1.143.1 源码（e646868227c3e3a9e3f24277c8c7220be42c0be7）：`extensions/git/src/model.ts:626` 在打开仓库前检查忽略，`:740` 读取配置；`:201` 的 API 来源仅是 openRepositories，`extensions/git/src/api/api1.ts:447` 直接映射该列表。因此重载后被忽略的仓库不会进入内置 Git API，依赖该 API 的扩展也无法获取它。
+  - 对已打开的仓库，配置变更处理 `model.ts:516` 仅按 `git.enabled` 关闭仓库，并不按 ignoredRepositories 关闭；写入忽略配置后需重载窗口生效。JetTortoise 的一次性提示说明这一影响，不自动重载。重复行号标记仅由协调者在真实窗口验收。
+- **CVS 远端与刷新**：「Needs Checkout」「Needs Patch」进「远端更新」，「Needs Merge」进「更改」并提示需要合并；已有合并冲突进「冲突」。全量先只读 Entries/Entries.Log 与文件时间戳（同会话再比大小）立即显示本地状态，再后台运行一次 `cvs -f -n -q update` 校正远端/未知路径。首次接管、手动刷新与写操作后跑网络；焦点只跑本地，保留最近网络确认的远端状态。网络失败保留本地结果，在 SCM 的更改组标题显示错误。
+- **文件装饰**：SCM 行使用 SourceControlResourceDecorations；资源管理器颜色通过 `registerFileDecorationProvider`，使用 `gitDecoration.*` 主题色并重新验证物理归属。
+- **本地未知文件**：本地段的未知文件先作为候选显示；网络段以 CVS 的 `?` 输出（含客户端忽略规则）校正，不自行实现第二套忽略表。根外、符号链接、嵌套仓路径不放行。
 - **旧编辑器标签页**：保留 `jettortoise.workspace` 的 `WebviewPanelSerializer`。重载窗口时恢复出来的旧标签页直接关闭，并聚焦 SCM 视图，避免出现报错页。`docs/migration.md` 写明这一点。
 - **保持不变**：
   - 仓库登记（自动发现、手动添加、隐藏）、子仓边界保护、每仓串行队列、破坏性操作二次确认、Webview 不能指定 cwd、中英两种语言；
@@ -112,10 +116,15 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
 
 ### 切片（顺序执行，各自一份任务书）
 
-1. **S1：两种仓库的 SCM 提供者**
+1. **S1：两种仓库的 SCM 提供者（已实现，真实窗口验收待做）**
    - 内容：资源组、单击看 diff、quickDiff、decorations、提交、右键回滚／加入版本控制／忽略、自动刷新、内置 Git 提示。
-   - 同时把 `src/repositories/discovery.ts` 中重复的 `isCvsContinuation` 并入 `boundaries.cjs`。
+   - `isCvsContinuation` 已由 2ec7d54 统一到 `boundaries.cjs`；本片核对后未重复改动。
    - 旧工作台暂时保留可用。
+   - 实际实现：共享 `src/scm/` 提供资源组、菜单、持久化与刷新调度，Git/CVS 适配器留在各自 session，写入继续进入原串行队列。SCM 右侧比较磁盘文件，左侧复用 comparison resolver（Git 为 HEAD/index，CVS 为 Entries revision）；新增、删除使用空侧。quickDiff 分别返回 HEAD/Entries 的现有 jettortoise URI。
+   - 每仓一个根 watcher，150ms 合并文件事件；排除 .git/CVS 管理路径与物理子仓。全量请求不重启，期间请求合并为下一次；网络期间单文件本地读取可以继续，迟到的整树快照不覆盖该文件的新状态。
+   - 清单合并为一次有界并发 8 的边界遍历，操作内复用父子元数据，不跨操作缓存边界；文件状态分批并发 32，单文件查询只读所在目录的 Entries。仍保留 20,000 文件与 10,000 目录上限、180 秒只读网络超时及取消。
+   - M3 合成夹具 3089 文件/2500 目录的本地段初次测得 668.15ms、单文件 2.45ms；这不是 141 Windows/CVSNT 的实测，60 秒指标待协调者在目标工作副本验证。
+   - 结构、真实临时 Git/CVS、模拟 VS Code 验证见本片 RECORD；旧工作台、serializer、状态栏入口均保留。
 2. **S2：底部 Log 视图**
    - 内容：Log 视图、文件历史、「更新」「推送」入口、状态栏分支 QuickPick。
    - 从旧工作台删除提交栏和 diff 栏。

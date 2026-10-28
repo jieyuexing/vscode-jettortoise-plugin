@@ -142,6 +142,54 @@
         "title": "%cmd.cvs.cancel%",
         "category": "%category.jettortoise%",
         "icon": "$(close)"
+      },
+      {
+        "command": "jettortoise.scm.refresh",
+        "title": "%cmd.scm.refresh%",
+        "category": "%category.jettortoise%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "jettortoise.scm.commit",
+        "title": "%cmd.scm.commit%",
+        "category": "%category.jettortoise%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "jettortoise.scm.diff",
+        "title": "%cmd.scm.diff%",
+        "category": "%category.jettortoise%",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "jettortoise.scm.defer",
+        "title": "%cmd.scm.defer%",
+        "category": "%category.jettortoise%",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "jettortoise.scm.include",
+        "title": "%cmd.scm.include%",
+        "category": "%category.jettortoise%",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "jettortoise.scm.rollback",
+        "title": "%cmd.scm.rollback%",
+        "category": "%category.jettortoise%",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "jettortoise.scm.add",
+        "title": "%cmd.scm.add%",
+        "category": "%category.jettortoise%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "jettortoise.scm.ignore",
+        "title": "%cmd.scm.ignore%",
+        "category": "%category.jettortoise%",
+        "icon": "$(exclude)"
       }
     ],
     "menus": {
@@ -150,6 +198,16 @@
           "command": "jettortoise.git.openConflicts",
           "when": "scmProvider == git",
           "group": "navigation"
+        },
+        {
+          "command": "jettortoise.scm.refresh",
+          "when": "scmProvider == jettortoise",
+          "group": "navigation@0"
+        },
+        {
+          "command": "jettortoise.scm.commit",
+          "when": "scmProvider == jettortoise",
+          "group": "navigation@1"
         }
       ],
       "scm/resourceState/context": [
@@ -157,6 +215,31 @@
           "command": "jettortoise.git.openMergeEditorFromSCM",
           "when": "scmProvider == git && scmResourceGroup == merge",
           "group": "inline@10"
+        },
+        {
+          "command": "jettortoise.scm.defer",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == changes)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.include",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == deferred)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.rollback",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == changes || scmResourceGroup == deferred || scmResourceGroup == conflicts)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.add",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == untracked)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.ignore",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == untracked)",
+          "group": "jettortoise"
         }
       ],
       "editor/context": [
@@ -194,6 +277,65 @@
         {
           "command": "jettortoise.git.prevDiff",
           "when": "isInDiffEditor && jettortoise.activeProvider == git"
+        },
+        {
+          "command": "jettortoise.scm.refresh",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.commit",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.diff",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.defer",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.include",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.rollback",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.add",
+          "when": "false"
+        },
+        {
+          "command": "jettortoise.scm.ignore",
+          "when": "false"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "jettortoise.scm.defer",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == changes)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.include",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == deferred)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.rollback",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == changes || scmResourceGroup == deferred || scmResourceGroup == conflicts)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.add",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == untracked)",
+          "group": "jettortoise"
+        },
+        {
+          "command": "jettortoise.scm.ignore",
+          "when": "scmProvider == jettortoise && (scmResourceGroup == untracked)",
+          "group": "jettortoise"
         }
       ]
     },

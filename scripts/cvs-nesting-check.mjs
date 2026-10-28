@@ -116,7 +116,7 @@ test("dry-run update parses local, added, remote and unknown files without chang
     const files = await adapter.status();
     assert.equal(calls, 1);
     assert.deepEqual(files.map(file => [file.newPath, file.status]),
-      [["added.txt", "added"], ["ordinary.txt", "modified"], ["remote.txt", "modified"]]);
+      [["added.txt", "added"], ["ordinary.txt", "modified"], ["remote.txt", "modified"], ["unknown.txt", "untracked"]]);
     assert.equal(await fs.readFile(path.join(f.wc, "remote.txt"), "utf8"), "base\n");
     assert.deepEqual(await fs.readFile(path.join(f.wc, "CVS", "Entries")), entries);
     await fs.writeFile(path.join(f.wc, "remote.txt"), "conflicting local change\n");
@@ -220,6 +220,7 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
       plugins: [{ name: "vscode-fixture", setup(build) {
         build.onResolve({ filter: /^vscode$/ }, () => ({ path: "vscode", namespace: "fixture" }));
         build.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: `
+          exports.EventEmitter=class {constructor(){this.event=()=>({dispose(){}});}fire(){}dispose(){}};
           exports.workspace = { isTrusted: true, getConfiguration: () => ({get: () => ${JSON.stringify(path.join(base, "missing-cvs"))}}) };
           exports.l10n = { t: text => text };
           exports.ProgressLocation = { Notification: 1 };
@@ -345,4 +346,44 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
   } finally {
     await fs.rm(f.base, { recursive: true, force: true });
   }
+});
+
+// S1: 本地刷新不能启动客户端，未知文件也需要进入 SCM。
+test("SCM local status reads Entries.Log, timestamps and unknown files without CVS", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-scm-local-"));
+  try {
+    await metadata(base, "demo", "/changed.txt/1.1/invalid timestamp//\n/added.txt/0///\n/removed.txt/-1.1///\n/missing.txt/1.1///\n");
+    await fs.writeFile(path.join(base,"changed.txt"),"changed\n");
+    await fs.writeFile(path.join(base,"added.txt"),"added\n");
+    await fs.writeFile(path.join(base,"unknown.txt"),"unknown\n");
+    const adapter = new CvsAdapter(base, {run(){throw new Error("local refresh called CVS");}});
+    const files = await adapter.localStatus();
+    assert.equal(files.find(f=>f.newPath==="changed.txt").state,"Locally Modified");
+    assert.equal(files.find(f=>f.newPath==="added.txt").state,"Locally Added");
+    assert.equal(files.find(f=>f.newPath==="removed.txt").state,"Locally Removed");
+    assert.equal(files.find(f=>f.newPath==="missing.txt").state,"Missing");
+    assert.equal(files.find(f=>f.newPath==="unknown.txt").state,"Unknown");
+    await fs.writeFile(path.join(base,"unknown.txt"),"saved\n");
+    assert.deepEqual((await adapter.localStatus(["unknown.txt"])).map(f=>f.newPath),["unknown.txt"]);
+  } finally {await fs.rm(base,{recursive:true,force:true});}
+});
+
+// 约 2500 个连续目录与原有 3089 文件规模，客户端不得介入本地段。
+test("SCM local scale benchmark has 3089 files in 2500 directories", async () => {
+  const base=await fs.mkdtemp(path.join(tmpdir(),"cvs-scm-scale-"));
+  try {
+    const count=2499;
+    await metadata(base,"demo",Array.from({length:count},(_,i)=>`D/d-${i}////\n`).join("")+Array.from({length:590},(_,i)=>`/root-${i}.txt/1.1///\n`).join(""));
+    for(let start=0;start<count;start+=32)await Promise.all(Array.from({length:Math.min(32,count-start)},async(_,i)=>{
+      const n=start+i,directory=path.join(base,`d-${n}`);
+      await metadata(directory,`demo/d-${n}`,"/file.txt/1.1///\n");
+      await fs.writeFile(path.join(directory,"file.txt"),"fixture\n");
+    }));
+    const adapter=new CvsAdapter(base,{run(){throw new Error("local benchmark called CVS");}});
+    const start=performance.now();const files=await adapter.localStatus();const elapsed=performance.now()-start;
+    assert.equal(files.length,3089);
+    console.log(JSON.stringify({benchmark:"localStatus",files:3089,directories:2500,milliseconds:Number(elapsed.toFixed(2)),platform:process.platform}));
+    const targeted=performance.now();assert.equal((await adapter.localStatus(["d-7/file.txt"])).length,1);
+    console.log(JSON.stringify({benchmark:"localStatusOneFile",milliseconds:Number((performance.now()-targeted).toFixed(2))}));
+  }finally{await fs.rm(base,{recursive:true,force:true});}
 });

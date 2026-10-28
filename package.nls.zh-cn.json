@@ -19,5 +19,13 @@
   "cmd.removeRepository": "从列表移除仓库...",
   "cmd.scanRepositories": "重新扫描仓库",
   "cmd.updateRepository": "更新仓库文件",
-  "config.autoDiscoverRepositories": "在受信任的当前工作区内递归发现 Git/CVS 仓库，不向上级目录扩展，不执行网络操作。关闭后保留已有列表，仍可手动扫描。"
+  "config.autoDiscoverRepositories": "在受信任的当前工作区内递归发现 Git/CVS 仓库，不向上级目录扩展，不执行网络操作。关闭后保留已有列表，仍可手动扫描。",
+  "cmd.scm.refresh": "刷新",
+  "cmd.scm.commit": "提交",
+  "cmd.scm.diff": "打开差异",
+  "cmd.scm.defer": "移到暂不提交",
+  "cmd.scm.include": "移回更改",
+  "cmd.scm.rollback": "回滚",
+  "cmd.scm.add": "加入版本控制",
+  "cmd.scm.ignore": "忽略"
 }

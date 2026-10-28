@@ -32,6 +32,7 @@ export interface RepositoryCatalogSnapshot {
   scannedAt?: number;
 }
 export interface RepositorySession {
+  readonly scm?: import("../scm/types").ScmAdapter;
   open(file?: string, commit?: boolean): void;
   restore(panel: vscode.WebviewPanel): void | Promise<void>;
   refresh(): void | Promise<void>;

@@ -79,6 +79,11 @@ exports.Uri=U;exports.Disposable=D;exports.EventEmitter=E;exports.ViewColumn={Ac
     const cvsQuick=await scmC.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(c,"tracked.txt")));assert.match(cvsQuick.query,/ref=1/);
     assert.equal(await scmC.quickDiffProvider.provideOriginalResource(vscode.Uri.file(path.join(c,"unknown.txt"))),undefined);
     await fs.rm(path.join(c,"unknown.txt"));
+    await fs.mkdir(path.join(c,"out","sub"),{recursive:true});await fs.writeFile(path.join(c,"out","sub","x.txt"),"build\n");await scmCommand("refresh",scmC);
+    const unmanagedState=group(scmC,"untracked").resourceStates.find(state=>state.change.path==="out/sub/x.txt");assert.ok(unmanagedState);
+    vscode.__state.confirm=true;await scmCommand("ignore",unmanagedState);delete vscode.__state.confirm;
+    assert.equal(await fs.readFile(path.join(c,".cvsignore"),"utf8"),"out\n");await assert.rejects(fs.access(path.join(c,"out","sub",".cvsignore")));
+    await fs.rm(path.join(c,"out"),{recursive:true});await fs.rm(path.join(c,".cvsignore"));
     await fs.rm(path.join(a,"unknown.txt"));
     // 同一套 provider 验证 CVS 状态映射、组优先级、持久化及刷新合并。
     const fixtureChanges=["Locally Modified","Locally Added","Locally Removed","Unknown","File had conflicts on merge","Needs Checkout","Needs Patch","Needs Merge"].map((state,i)=>scmCvsChange({newPath:`fixture-${i}.txt`,entryRevision:"1.1",state}));

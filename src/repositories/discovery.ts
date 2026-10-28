@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { isCvsContinuation } from "./boundaries.cjs";
 import type { RepositoryKind } from "./types";
 
 export interface DiscoveredRoot {
@@ -92,7 +93,6 @@ async function validGitDirectory(directory: string): Promise<boolean> {
 interface CvsMeta {
   root: string;
   repository: string;
-  entries: string;
   tag?: string;
 }
 async function cvsMeta(directory: string): Promise<CvsMeta | undefined> {
@@ -107,7 +107,7 @@ async function cvsMeta(directory: string): Promise<CvsMeta | undefined> {
         throw new Error("invalid CVS metadata");
       return fs.readFile(file, "utf8");
     };
-    const [root, repository, entries] = await Promise.all([
+    const [root, repository] = await Promise.all([
       read("Root"),
       read("Repository"),
       read("Entries"),
@@ -129,7 +129,6 @@ async function cvsMeta(directory: string): Promise<CvsMeta | undefined> {
     return {
       root: normalizedRoot,
       repository: normalizedRepository,
-      entries,
       tag: tag.trim() || undefined,
     };
   } catch (error) {
@@ -137,22 +136,6 @@ async function cvsMeta(directory: string): Promise<CvsMeta | undefined> {
     throw error;
   }
 }
-async function isCvsContinuation(
-  parent: string,
-  directory: string,
-  child: CvsMeta,
-): Promise<boolean> {
-  const parentMeta = await cvsMeta(parent);
-  if (!parentMeta || parentMeta.root !== child.root) return false;
-  const name = path.basename(directory);
-  return (
-    child.repository === `${parentMeta.repository}/${name}` &&
-    parentMeta.entries
-      .split(/\r?\n/)
-      .some((line) => line.startsWith(`D/${name}/`))
-  );
-}
-
 /** Read a current display reference from local VCS metadata only. */
 export async function readRepositoryReference(
   kind: RepositoryKind,
@@ -224,10 +207,7 @@ export async function discoverRepositoryRoots(
           ref: await gitRef(git),
         });
       const cvs = await cvsMeta(directory);
-      if (
-        cvs &&
-        !(await isCvsContinuation(path.dirname(directory), directory, cvs))
-      )
+      if (cvs && !(await isCvsContinuation(path.dirname(directory), directory)))
         roots.set(`cvs\0${directory}`, {
           kind: "cvs",
           root: directory,

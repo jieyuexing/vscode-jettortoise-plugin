@@ -26,12 +26,14 @@ async function main() {
     await fs.writeFile(path.join(worktree, ".git"), `gitdir: ${path.relative(worktree, path.join(temp, "pointer-store"))}\n`);
     const cvsRoot = path.join(outer, "legacy");
     const cvsChild = path.join(cvsRoot, "same-copy");
-    for (const [dir, repository, entries] of [[cvsRoot, "legacy", "D/same-copy////\n"], [cvsChild, "legacy/same-copy", ""]]) {
+    const cvsLogged = path.join(cvsRoot, "logged-copy");
+    for (const [dir, repository, entries] of [[cvsRoot, "legacy", "D/same-copy////\n"], [cvsChild, "legacy/same-copy", ""], [cvsLogged, "legacy/logged-copy", ""]]) {
       await fs.mkdir(path.join(dir, "CVS"), { recursive: true });
       await fs.writeFile(path.join(dir, "CVS", "Root"), ":local:/fixture\n");
       await fs.writeFile(path.join(dir, "CVS", "Repository"), `${repository}\n`);
       await fs.writeFile(path.join(dir, "CVS", "Entries"), entries);
       if (dir === cvsRoot) await fs.writeFile(path.join(dir, "CVS", "Tag"), "Trelease-1\n");
+      if (dir === cvsRoot) await fs.writeFile(path.join(dir, "CVS", "Entries.Log"), "A D/logged-copy////\n");
     }
     const independent = path.join(outer, "other-copy");
     await fs.mkdir(path.join(independent, "CVS"), { recursive: true });
@@ -55,6 +57,7 @@ async function main() {
     assert(discovered.has(`cvs:${await fs.realpath(cvsRoot)}`));
     assert(discovered.has(`cvs:${await fs.realpath(independent)}`));
     assert(!discovered.has(`cvs:${await fs.realpath(cvsChild)}`), "continuous CVS directory became an independent root");
+    assert(!discovered.has(`cvs:${await fs.realpath(cvsLogged)}`), "CVS directory recorded only in Entries.Log became an independent root");
     assert.equal(result.incomplete, false);
     const refs = new Map(result.roots.map((item) => [`${item.kind}:${item.root}`, item.ref]));
     assert.equal(refs.get(`git:${outer}`), "main");

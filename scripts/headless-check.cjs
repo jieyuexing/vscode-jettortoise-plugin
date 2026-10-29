@@ -1,5 +1,6 @@
 const { spawnSync } = require("node:child_process");
 const checks = [
+  ["scripts/manifest-check.cjs"],
   ["scripts/grouping-check.cjs"],
   ["scripts/cvs-core-check.cjs"],
   ["scripts/catalog-discovery-check.cjs"],

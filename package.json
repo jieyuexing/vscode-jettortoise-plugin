@@ -44,28 +44,28 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "jettortoise.panel",
+          "id": "jettortoise-panel",
           "title": "JetTortoise",
           "icon": "$(git-branch)"
         }
       ],
       "activitybar": [
         {
-          "id": "jettortoise.commit",
+          "id": "jettortoise-commit",
           "title": "Commit",
           "icon": "images/commit-icon.svg"
         }
       ]
     },
     "views": {
-      "jettortoise.panel": [
+      "jettortoise-panel": [
         {
           "type": "webview",
           "id": "jettortoise.gitLog",
           "name": "Log"
         }
       ],
-      "jettortoise.commit": [
+      "jettortoise-commit": [
         {
           "type": "webview",
           "id": "jettortoise.commitPanel",

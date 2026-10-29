@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+  isCvsSameProject,
   nearestRepositories,
   type RepositoryBoundary,
   within,
@@ -31,9 +32,15 @@ export class BoundaryNavigation {
     const candidates = [...snapshot, ...registered];
     this.targets.clear();
     for (const candidate of candidates) {
+      const added = registered.some(
+        (root) => root.root === candidate.root && root.kind === candidate.kind,
+      );
       if (
         candidate.root === this.repository.root ||
-        !within(this.repository.root, candidate.root)
+        !within(this.repository.root, candidate.root) ||
+        (!added &&
+          candidate.kind === "cvs" &&
+          (await isCvsSameProject(candidate.root, this.repository.root)))
       )
         continue;
       const roots = await nearestRepositories(candidate.root);

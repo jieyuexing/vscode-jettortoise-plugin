@@ -121,6 +121,30 @@ async function isCvsContinuation(parent, child) {
     a.Entries.some((line) => line.startsWith(`D/${name}/`))
   );
 }
+// 父 Entries 未登记、但 Root 相同且 Repository 正好位于所在工作副本之下的目录，
+// 属于同一项目：仍是写边界，只是不作为独立仓库列出。container 以上不再查找。
+async function isCvsSameProject(directory, container) {
+  if (directory === container || !within(container, directory)) return false;
+  const cvs = await readCvs(directory);
+  if (!cvs || (await isCvsContinuation(path.dirname(directory), directory)))
+    return false;
+  let owner = path.dirname(directory);
+  while (!(await readCvs(owner))) {
+    if (owner === container) return false;
+    owner = path.dirname(owner);
+  }
+  while (
+    owner !== container &&
+    (await isCvsContinuation(path.dirname(owner), owner))
+  )
+    owner = path.dirname(owner);
+  const parent = await readCvs(owner);
+  const relative = path.relative(owner, directory).split(path.sep).join("/");
+  return (
+    parent.Root === cvs.Root &&
+    cvs.Repository === `${parent.Repository}/${relative}`
+  );
+}
 async function rootsAt(directory) {
   const result = [];
   if (await present(path.join(directory, ".git"))) {
@@ -355,6 +379,7 @@ exports.nearestRepositories = traced(
   nearestRepositories,
 );
 exports.isCvsContinuation = traced("isCvsContinuation", isCvsContinuation);
+exports.isCvsSameProject = traced("isCvsSameProject", isCvsSameProject);
 exports.readCvsEntries = traced("readCvsEntries", readCvsEntries);
 exports.boundariesForPaths = traced("boundariesForPaths", boundariesForPaths);
 exports.assertOwnedPath = traced("assertOwnedPath", assertOwnedPath);

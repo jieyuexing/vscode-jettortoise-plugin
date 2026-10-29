@@ -35,6 +35,22 @@ async function main() {
       if (dir === cvsRoot) await fs.writeFile(path.join(dir, "CVS", "Tag"), "Trelease-1\n");
       if (dir === cvsRoot) await fs.writeFile(path.join(dir, "CVS", "Entries.Log"), "A D/logged-copy////\n");
     }
+    // 同项目目录：Root 相同、Repository 在父工作副本之下，只是父 Entries 未登记。
+    const sameProject = [
+      [path.join(cvsRoot, "build"), ":local:/fixture", "legacy/build"],
+      [path.join(cvsRoot, "build", "classes"), ":local:/fixture", "legacy/build/classes"],
+      [path.join(cvsRoot, "generated", "stub"), ":local:/fixture", "legacy/generated/stub"],
+    ];
+    const separate = [
+      [path.join(cvsRoot, "build", "foreign"), ":local:/elsewhere", "legacy/build/foreign"],
+      [path.join(cvsRoot, "moved"), ":local:/fixture", "elsewhere/moved"],
+    ];
+    for (const [dir, root, repository] of [...sameProject, ...separate]) {
+      await fs.mkdir(path.join(dir, "CVS"), { recursive: true });
+      await fs.writeFile(path.join(dir, "CVS", "Root"), `${root}\n`);
+      await fs.writeFile(path.join(dir, "CVS", "Repository"), `${repository}\n`);
+      await fs.writeFile(path.join(dir, "CVS", "Entries"), "");
+    }
     const independent = path.join(outer, "other-copy");
     await fs.mkdir(path.join(independent, "CVS"), { recursive: true });
     await fs.writeFile(path.join(independent, "CVS", "Root"), ":local:/other\n");
@@ -58,6 +74,13 @@ async function main() {
     assert(discovered.has(`cvs:${await fs.realpath(independent)}`));
     assert(!discovered.has(`cvs:${await fs.realpath(cvsChild)}`), "continuous CVS directory became an independent root");
     assert(!discovered.has(`cvs:${await fs.realpath(cvsLogged)}`), "CVS directory recorded only in Entries.Log became an independent root");
+    for (const [dir] of sameProject)
+      assert(!discovered.has(`cvs:${await fs.realpath(dir)}`), `same-project CVS directory became an independent root: ${dir}`);
+    for (const [dir] of separate)
+      assert(discovered.has(`cvs:${await fs.realpath(dir)}`), `separate CVS checkout was not listed: ${dir}`);
+    // 工作区文件夹本身不是嵌套目录：单独打开 build 时仍是一个仓库。
+    const buildWindow = await discoverRepositoryRoots(sameProject[0][0]);
+    assert(buildWindow.roots.some((item) => item.kind === "cvs" && item.root === sameProject[0][0]), "workspace root was hidden by an ancestor outside the window");
     assert.equal(result.incomplete, false);
     const refs = new Map(result.roots.map((item) => [`${item.kind}:${item.root}`, item.ref]));
     assert.equal(refs.get(`git:${outer}`), "main");
@@ -86,7 +109,7 @@ async function main() {
       assert.equal(denied.incomplete, true, "metadata permission failure was treated as an absent repository");
       assert(denied.errors.some((item) => item.includes(outer)), "permission failure did not identify its unreadable subtree");
     } finally { fsPromises.lstat = originalLstat; }
-    console.log(JSON.stringify({ checks: 14, roots: result.roots.length, metadataOnly: true, cancellation: true, permissionIncomplete: true }));
+    console.log(JSON.stringify({ checks: 20, sameProjectHidden: true, roots: result.roots.length, metadataOnly: true, cancellation: true, permissionIncomplete: true }));
   } finally { await fs.rm(temp, { recursive: true, force: true }); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

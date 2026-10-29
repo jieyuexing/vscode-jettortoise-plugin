@@ -59,7 +59,62 @@ async function main() {
     assert.equal(hiddenRegistry.snapshot().entries[0].hidden, true, "unavailable restored root could not be hidden again");
     hiddenRegistry.dispose();
     registry.dispose();
-    console.log(JSON.stringify({ checks: 10, v1Migration: true, unavailableRetained: true, hiddenUnavailableReversible: true }));
+
+    // 修正 A：完整扫描删除没再发现的自动登记，手动登记只标不可用，不完整扫描不动。
+    const workspace = await fs.realpath(await fs.mkdtemp(path.join(temp, "scan-")));
+    vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(workspace) }];
+    const gitInit = (root) => childProcess.execFileSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    gitInit(workspace);
+    const autoRoot = path.join(workspace, "auto"), manualRoot = path.join(workspace, "manual");
+    for (const root of [autoRoot, manualRoot]) { await fs.mkdir(root); gitInit(root); }
+    const copy = path.join(workspace, "copy"), build = path.join(copy, "build");
+    for (const [dir, repository] of [[copy, "proj"], [build, "proj/build"]]) {
+      await fs.mkdir(path.join(dir, "CVS"), { recursive: true });
+      await fs.writeFile(path.join(dir, "CVS", "Root"), ":local:/fixture\n");
+      await fs.writeFile(path.join(dir, "CVS", "Repository"), `${repository}\n`);
+      await fs.writeFile(path.join(dir, "CVS", "Entries"), "");
+    }
+    const cancelled = [];
+    let savedState;
+    const scanRegistry = new api.RepositoryRegistry((repository) => ({ open(){}, restore(){}, refresh(){}, async provideContent(){return "";}, cancel(){ cancelled.push(repository.id); }, dispose(){} }), {
+      save(value) { savedState = value; },
+    });
+    await scanRegistry.ready();
+    const autoId = api.repositoryDescriptor("git", autoRoot).id;
+    const manual = api.repositoryDescriptor("git", manualRoot);
+    const buildManual = api.repositoryDescriptor("cvs", build);
+    await scanRegistry.scanWorkspace();
+    const entryOf = (id) => scanRegistry.snapshot().entries.find((item) => item.repository.id === id);
+    assert.equal(entryOf(autoId)?.origin, "auto");
+    assert.equal(entryOf(buildManual.id), undefined, "same-project CVS directory was auto-registered");
+    await scanRegistry.register(manual);
+    await scanRegistry.register(buildManual);
+    await scanRegistry.session(scanRegistry.repositories.get(autoId));
+    await fs.rm(path.join(autoRoot, ".git"), { recursive: true });
+    await fs.rm(path.join(manualRoot, ".git"), { recursive: true });
+    const abort = new AbortController(); abort.abort();
+    await scanRegistry.scanWorkspace({ signal: abort.signal });
+    assert.equal(entryOf(autoId)?.availability, "available", "cancelled scan changed a stale automatic entry");
+    assert.equal(entryOf(manual.id)?.availability, "available", "cancelled scan changed a manual entry");
+    // 扫描只读元数据：PATH 前置一个记录调用的假 git，完整扫描期间不得被调用。
+    const fakeBin = path.join(temp, "fake-bin"), gitMarker = path.join(temp, "git-called");
+    await fs.mkdir(fakeBin);
+    await fs.writeFile(path.join(fakeBin, "git"), `#!/bin/sh\necho called >> ${JSON.stringify(gitMarker)}\nexit 1\n`, { mode: 0o755 });
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
+    try { await scanRegistry.scanWorkspace(); } finally { process.env.PATH = originalPath; }
+    await assert.rejects(fs.access(gitMarker), "complete scan invoked the Git CLI");
+    assert.equal(entryOf(autoId), undefined, "complete scan kept a stale automatic entry");
+    assert.ok(!savedState.repositories.some((item) => item.root === autoRoot), "stale automatic entry was persisted");
+    assert.equal(scanRegistry.hidden?.has?.(autoId) ?? false, false);
+    assert.deepEqual(cancelled, [autoId], "stale automatic entry kept its session active");
+    assert.equal(entryOf(manual.id)?.availability, "unavailable", "missing manual entry was not marked unavailable");
+    assert.equal(entryOf(buildManual.id)?.availability, "available", "manual same-project directory became unavailable after a complete scan");
+    gitInit(autoRoot);
+    await scanRegistry.scanWorkspace();
+    assert.equal(entryOf(autoId)?.origin, "auto", "rediscovered automatic entry did not return");
+    scanRegistry.dispose();
+    console.log(JSON.stringify({ checks: 24, scanWithoutGitCli: true, v1Migration: true, unavailableRetained: true, hiddenUnavailableReversible: true, staleAutoRemoved: true, manualRetained: true, incompleteScanUnchanged: true }));
   } finally { await fs.rm(temp, { recursive:true, force:true }); }
 }
 main().catch((error) => { console.error(error); process.exitCode=1; });

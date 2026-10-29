@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isCvsContinuation } from "./boundaries.cjs";
+import { isCvsContinuation, isCvsSameProject } from "./boundaries.cjs";
 import type { RepositoryKind } from "./types";
 
 export interface DiscoveredRoot {
@@ -207,7 +207,11 @@ export async function discoverRepositoryRoots(
           ref: await gitRef(git),
         });
       const cvs = await cvsMeta(directory);
-      if (cvs && !(await isCvsContinuation(path.dirname(directory), directory)))
+      if (
+        cvs &&
+        !(await isCvsContinuation(path.dirname(directory), directory)) &&
+        !(await isCvsSameProject(directory, root))
+      )
         roots.set(`cvs\0${directory}`, {
           kind: "cvs",
           root: directory,

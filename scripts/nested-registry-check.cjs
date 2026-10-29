@@ -198,6 +198,31 @@ exports.__state = state;
     await nav.list([]);
     await rejects(() => nav.open(cvsDescriptor.id), "stale boundary id");
 
+    // 同项目 CVS 目录不进「独立子仓库」；Root 不同的嵌套 checkout 仍单列；手动添加仍允许。
+    const build = path.join(cvs, "build");
+    const foreignChild = path.join(cvs, "foreign");
+    for (const [dir, root, repository] of [[build, ":local:/fixture", "legacy/client/build"], [foreignChild, ":local:/other", "legacy/client/foreign"]]) {
+      await fs.mkdir(path.join(dir, "CVS"), { recursive: true });
+      await fs.writeFile(path.join(dir, "CVS", "Root"), `${root}\n`);
+      await fs.writeFile(path.join(dir, "CVS", "Repository"), `${repository}\n`);
+      await fs.writeFile(path.join(dir, "CVS", "Entries"), "");
+    }
+    const buildDescriptor = api.repositoryDescriptor("cvs", await fs.realpath(build));
+    const foreignDescriptor = api.repositoryDescriptor("cvs", await fs.realpath(foreignChild));
+    const cvsNav = new api.BoundaryNavigation(cvsDescriptor, { children: () => [], open: async () => {} });
+    assert.deepEqual(
+      (await cvsNav.list([buildDescriptor, foreignDescriptor])).map(item => item.id),
+      [foreignDescriptor.id],
+      "same-project CVS directory was listed as an independent child",
+    );
+    const manualNav = new api.BoundaryNavigation(cvsDescriptor, { children: () => [buildDescriptor], open: async () => {} });
+    assert.equal((await manualNav.list([buildDescriptor])).find(item => item.id === buildDescriptor.id)?.added, true, "manually added same-project directory disappeared");
+    assert.deepEqual(
+      (await registry.candidates(vscode.Uri.file(build))).map(item => item.id),
+      [buildDescriptor.id],
+      "same-project directory can no longer be added manually",
+    );
+
     // Replacing the physical root between queued operations invalidates guards.
     await fs.rename(path.join(inner, ".git"), path.join(inner, ".saved-git"));
     git(inner, ["init", "-b", "main"]);
@@ -217,7 +242,8 @@ exports.__state = state;
     childWindow.dispose();
     registry.dispose();
     console.log(JSON.stringify({
-      checks: 22,
+      checks: 25,
+      sameProjectChildHidden: true,
       noAutoDiscover: true,
       nearestChildOnly: true,
       childWindowDoesNotBorrowOuterRoot: true,

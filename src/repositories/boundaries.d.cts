@@ -18,6 +18,11 @@ export function isCvsContinuation(
   parent: string,
   child: string,
 ): Promise<boolean>;
+/** Same-project CVS directory below container: still a write boundary, never listed. */
+export function isCvsSameProject(
+  directory: string,
+  container: string,
+): Promise<boolean>;
 export function readCvsEntries(directory: string): Promise<string[]>;
 export function boundariesForPaths(
   root: string,

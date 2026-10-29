@@ -348,6 +348,27 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
   }
 });
 
+// 修正 A：同项目目录不再单列，但仍是父工作副本的写边界。
+test("same-project CVS directories stay write boundaries for the parent", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-same-project-"));
+  try {
+    await metadata(base, "demo", "/tracked.txt/1.1///\n");
+    await fs.writeFile(path.join(base, "tracked.txt"), "tracked\n");
+    await metadata(path.join(base, "build"), "demo/build");
+    await metadata(path.join(base, "build", "classes"), "demo/build/classes");
+    await fs.writeFile(path.join(base, "build", "classes", "Generated.class"), "class\n");
+    await fs.writeFile(path.join(base, "build", "output.txt"), "output\n");
+    const real = await fs.realpath(base);
+    assert.deepEqual(await listNestedRepositories(base, "cvs"), [{ kind: "cvs", root: path.join(real, "build") }]);
+    const adapter = new CvsAdapter(base, { run: async () => assert.fail("nested preflight invoked CVS") });
+    const { files, unknown } = await adapter.localInventory();
+    assert.deepEqual(files.map((file) => file.newPath), ["tracked.txt"]);
+    assert.ok(unknown.every((name) => !name.startsWith("build/")), "same-project directory files became parent unversioned files");
+    await assert.rejects(adapter.update(), { code: "NESTED_REPOSITORY" });
+    await assert.rejects(adapter.commit(["build/output.txt"], "forbidden"), { code: "NESTED_REPOSITORY" });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
 // S1: 本地刷新不能启动客户端，未知文件也需要进入 SCM。
 test("SCM local status reads Entries.Log, timestamps and unknown files without CVS", async () => {
   const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-scm-local-"));

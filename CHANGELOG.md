@@ -9,6 +9,9 @@
 - **Local-first CVS refresh** — publish Entries/Entries.Log and disk state before background network status; merge refresh requests and refresh saved files locally without calling CVS; reuse metadata during bounded tree traversal / CVS 先显示本地结果，再后台补网络状态；合并刷新请求，保存只做本地查询，有界遍历复用元数据；网络错误保留列表并显示原因
 - **Built-in Git handoff** — ask once per repository before adding a workspace ignoredRepositories entry, explain reload and Git API impact; retain both providers when declined / 首次接管 Git 仓库时询问是否在工作区忽略内置 Git，说明重载及 API 影响，拒绝后保留两者且不再询问
 
+### Fixed / 修复
+- **Repository list shows real repositories only** — a complete scan deletes automatic entries it no longer finds (manual entries are only marked unavailable); a nested CVS directory with the same Root whose Repository sits under its working copy is part of that project and is no longer listed, though it stays a write boundary / 完整扫描删除没再发现的自动登记，手动登记只标为不可用；Root 相同且 Repository 位于所在工作副本之下的嵌套 CVS 目录属于同一项目，不再列为仓库，仍保留写保护
+
 ## [0.5.1] - 2026-10-28
 
 ### Fixed / 修复

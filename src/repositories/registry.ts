@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   containingRepositories,
+  isCvsSameProject,
   nearestRepositories,
   within,
 } from "./boundaries.cjs";
@@ -384,6 +385,25 @@ export class RepositoryRegistry implements vscode.Disposable {
         folder.uri.scheme === "file" && within(folder.uri.fsPath, root),
     );
   }
+  private async sameProjectMember(
+    repository: RepositoryDescriptor,
+  ): Promise<boolean> {
+    if (repository.kind !== "cvs") return false;
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      if (folder.uri.scheme !== "file") continue;
+      try {
+        const root = await fs.realpath(folder.uri.fsPath);
+        if (
+          within(root, repository.root) &&
+          (await isCvsSameProject(repository.root, root))
+        )
+          return true;
+      } catch {
+        // Unreadable metadata or a removed folder leaves the entry unavailable.
+      }
+    }
+    return false;
+  }
   private publishDiscovered(root: {
     kind: RepositoryKind;
     root: string;
@@ -505,12 +525,25 @@ export class RepositoryRegistry implements vscode.Disposable {
       this.repositories.delete(id);
       this.identities.delete(id);
     }
+    this.release(id);
+    await this.persist();
+    this.changed();
+  }
+  private release(id: string): void {
     // Keep the mounted page/draft. Its existing guard refuses all new work
     // until this exact root is explicitly added again.
     this.sessions.get(id)?.cancel?.();
     if (this.activeId === id) this.activeId = undefined;
-    await this.persist();
-    this.changed();
+  }
+  /** 删除整条登记，不留隐藏记录；以后再被发现时按新的自动登记回来。 */
+  private forget(id: string): void {
+    this.repositories.delete(id);
+    this.retained.delete(id);
+    this.origins.delete(id);
+    this.identities.delete(id);
+    this.activity.delete(id);
+    this.unavailable.delete(id);
+    this.release(id);
   }
   async restoreHidden(id?: string): Promise<void> {
     const targets = id ? [id] : [...this.hidden];
@@ -595,28 +628,41 @@ export class RepositoryRegistry implements vscode.Disposable {
         options.signal?.aborted === true ||
         results.some((result) => result.incomplete);
       this.scannedAt = Date.now();
-      // Only a complete scan is allowed to mark a persisted entry unavailable.
-      // Cancellation and unreadable directories deliberately preserve its last
-      // known state, so users can remove or restore it without it disappearing.
+      // Only a complete scan may change saved entries. Cancellation and
+      // unreadable directories deliberately preserve their last known state.
+      // A stale automatic entry is deleted; a manual one stays, and is marked
+      // unavailable unless it is a same-project CVS directory, which discovery
+      // deliberately does not list. Both checks read metadata only.
       if (!this.scanIncomplete) {
         const discoveredIds = new Set(
           results
             .flatMap((result) => result.roots)
             .map((root) => repositoryDescriptor(root.kind, root.root).id),
         );
-        for (const repository of this.repositories.values()) {
-          if (this.hidden.has(repository.id)) continue;
-          if (this.inConfiguredWorkspace(repository.root)) {
-            if (discoveredIds.has(repository.id)) {
+        const saved = new Map([
+          ...this.retained.entries(),
+          ...this.repositories.entries(),
+        ]);
+        for (const repository of saved.values()) {
+          if (
+            this.hidden.has(repository.id) ||
+            !this.inConfiguredWorkspace(repository.root)
+          )
+            continue;
+          if (discoveredIds.has(repository.id)) {
+            this.unavailable.delete(repository.id);
+          } else if (this.origins.get(repository.id) === "auto") {
+            this.forget(repository.id);
+          } else if (this.repositories.has(repository.id)) {
+            if (await this.sameProjectMember(repository))
               this.unavailable.delete(repository.id);
-            } else {
+            else
               this.unavailable.set(
                 repository.id,
                 vscode.l10n.t(
                   "The repository is no longer available in this workspace.",
                 ),
               );
-            }
           }
         }
       }

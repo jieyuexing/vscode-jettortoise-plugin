@@ -372,6 +372,79 @@ async function assertNoNestedRepositories(root, kind) {
     throw new NestedRepositoryError(boundaries, "NESTED_REPOSITORY", root);
 }
 
+// -l 更新只访问显式参数；收集与预检共用同一份已合并的目录登记。
+async function registeredCvsDirectories(root) {
+  root = await fs.realpath(root);
+  const pending = [root],
+    directories = [],
+    nested = [];
+  const metadata = new Map();
+  try {
+    for (let index = 0; index < pending.length; index++) {
+      if (pending.length > LIMIT)
+        throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+      const directory = pending[index];
+      const cvs = await readCvs(directory);
+      if (!cvs) throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+      metadata.set(directory, cvs);
+      if (directory !== root) {
+        const parent = metadata.get(path.dirname(directory));
+        const boundaries = [];
+        if (await present(path.join(directory, ".git")))
+          boundaries.push(
+            ...(await rootsAt(directory)).filter((item) => item.kind === "git"),
+          );
+        if (
+          parent.Root !== cvs.Root ||
+          cvs.Repository !== `${parent.Repository}/${path.basename(directory)}`
+        )
+          boundaries.push({ kind: "cvs", root: directory });
+        if (boundaries.length) {
+          nested.push(...boundaries);
+          continue;
+        }
+      }
+      directories.push(
+        directory === root
+          ? "."
+          : `./${path.relative(root, directory).split(path.sep).join("/")}`,
+      );
+      const names = cvs.Entries.filter((line) => line.startsWith("D/"))
+        .map((line) => line.split("/")[1])
+        .sort();
+      for (const name of names) {
+        if (
+          !name ||
+          name === "." ||
+          name === ".." ||
+          /[\\:]/.test(name) ||
+          [...name].some(
+            (character) =>
+              character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+          ) ||
+          ["cvs", ".git"].includes(name.toLowerCase())
+        )
+          throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+        const child = path.join(directory, name);
+        const stat = await fs.lstat(child).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+        if (stat?.isSymbolicLink())
+          throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+        if (stat?.isDirectory() && (await present(path.join(child, "CVS"))))
+          pending.push(child);
+      }
+    }
+  } catch (error) {
+    throw error instanceof NestedRepositoryError
+      ? error
+      : new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+  }
+  if (nested.length)
+    throw new NestedRepositoryError(nested, "NESTED_REPOSITORY", root);
+  return directories;
+}
+
 function traced(stage, action) {
   return async (...args) => {
     try {
@@ -406,4 +479,8 @@ exports.assertNoNestedRepositories = traced(
 );
 
 exports.repositoryTree = traced("repositoryTree", repositoryTree);
+exports.registeredCvsDirectories = traced(
+  "registeredCvsDirectories",
+  registeredCvsDirectories,
+);
 exports.setBoundaryDiagnostic = setBoundaryDiagnostic;

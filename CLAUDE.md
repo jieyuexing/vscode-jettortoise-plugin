@@ -25,13 +25,13 @@ Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一�
 
 CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再在后台跑一次 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络结果为权威状态；网络开始前记录文件 mtime，只有其后 mtime 变化的文件才用本地结果覆盖。网络已确认干净的文件在 mtime 和修订号未变时继续保持干净，避免焦点刷新恢复假修改。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
 
-**真实边界决定写权限，发现与展示不能解除边界。** 同项目但父 Entries 未登记的 CVS 目录不单列，也不进入父仓任何组，仍阻止父仓整树写。连续 CVS 目录合并读取 Entries.Log。发现不越出工作区，不跟随目录软链，不调用 VCS CLI。最近真实边界即使未登记也保护文件，不回落祖先；子目录窗口不借用窗口外根。
+**真实边界决定写权限，发现与展示不能解除边界。** 同项目但父 Entries 未登记的 CVS 目录不单列，也不进入父仓任何组，仍阻止父仓针对该目录的路径写入；CVS 已登记目录更新跳过它。连续 CVS 目录合并读取 Entries.Log。发现不越出工作区，不跟随目录软链，不调用 VCS CLI。最近真实边界即使未登记也保护文件，不回落祖先；子目录窗口不借用窗口外根。
 
-文件修改重新检查归属和符号链接；Git 提交验证完整索引，包括已被父仓跟踪的子仓重叠。checkout/reset、merge/rebase、全量 stash、patch 及 CVS 整树 update 沿用完整树预检，无法证明安全就拒绝。清单读取可在未管理目录停止，整树写预检不能使用这一优化。写操作在队列执行与确认后重新验证工作区可用性和信任；未保存编辑器阻止覆盖或提交。
+文件修改重新检查归属和符号链接；Git 提交验证完整索引，包括已被父仓跟踪的子仓重叠。checkout/reset、merge/rebase、全量 stash、patch 沿用完整树预检，无法证明安全就拒绝。清单读取可在未管理目录停止，整树写预检不能使用这一优化。写操作在队列执行与确认后重新验证工作区可用性和信任；未保存编辑器阻止覆盖或提交。
 
-Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`，分叉不自动合并、变基或 stash。CVS 复用整树更新和子仓预检；通知区进度可取消。取消不承诺已经应用的文件写入自动回滚。
+Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`，分叉不自动合并、变基或 stash。CVS 从根开始合并各层 Entries 与 Entries.Log 的 A/R 记录，仅收集本地存在且带 CVS 的已登记目录；只对该集合预检异 Root/Repository checkout 与 Git 边界。用 `cvs -q update -l -P . <相对目录…>` 逐层更新，不带 `-d`，服务器新目录不会创建；每批按包含可执行路径、`-f`、引号、空格及终止符的 Windows 转义上界计长，不超过 8000 字符，所有批次共用一次写队列与取消信号。通知区进度可取消。取消不承诺已经应用的文件写入自动回滚。
 
-2026-10-30 用户要求 CVS 整树更新改为 `update -P`、仅预检实际递归目录；该项按任务书停止条件暂停。本机 CVS 1.12.13 的真实 `:local:` 工作副本中，父 Entries 含 `D/src////`、父 Entries.Log 不存在，未登记的同项目 `build` 带 `CVS/Repository=demo/build`，原始 `cvs -f -n update -P` 仍输出 `Updating build` 和 `M build/sentinel.txt`。因此尚不能以“CVS 不会递归进入父 Entries 未登记的目录”为依据放行；现行完整树预检和 `update -dP` 均保持原状，待协调者确认后续处理。
+2026-10-30 用户确定用 `-l` 加显式已登记目录替代递归 update。依据两条本机 CVS 1.12.13 真实 `:local:` 实测：父 Entries 含 `D/src////`、无 Entries.Log 时，递归 `cvs -f -n update -P` 仍进入未登记的同项目 build，并输出 `M build/sentinel.txt`；`cvs -q update -l -P . ./src ./src/deep ./side` 不进入该 build，同时能取得已登记多层目录的服务器修改和新文件。真实回归也验证 Entries.Log 的 A 纳入、R 排除、服务器新目录不创建、已登记的异 Root/Git 边界拒绝，以及 8000 字符分批和批间取消。用户此前在 NsnWeb 实测 `update -d` 会拉下 WebContent、build、doc 并冲突，因此不能恢复 `-d`。更新后不另跑 `cvs -n -q update -d` 统计新目录：它需要额外遍历服务器目录，可能进入本轮明确跳过的 build 等大树，当前没有便宜且有界的计数入口。
 
 不移植 catalog、四栏编辑器工作台、`packages/vcs-ui`、原生 SCM provider 或 `git.ignoredRepositories`。界面本轮用英文，不读旧扩展存储，不注册旧命令前缀。依赖沿用 lockfile，不升级。
 

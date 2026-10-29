@@ -34,6 +34,7 @@ interface Adapter {
   update(signal?: AbortSignal): Promise<void>;
 }
 interface Process {
+  readonly executable?: string;
   run(
     args: string[],
     cwd: string,
@@ -72,6 +73,7 @@ export class CvsSession {
         .get<string>("cvsPath", "cvs"),
     );
     this.adapter = new core.CvsAdapter(root, {
+      executable: process.executable,
       run: async (...args) => {
         await guard();
         if (this.disposed) throw new Error("Repository removed.");

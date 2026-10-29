@@ -16,6 +16,7 @@ import {
 import {
   CvsAdapter,
   CvsProcess,
+  SerialQueue,
   checkout,
   findWorkingCopy,
   parseStatus,
@@ -348,6 +349,8 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
     const noBroadCommand = new CvsAdapter(f.wc, {
       run: async () => assert.fail("nested preflight invoked CVS update"),
     });
+    // 显式登记的异 Root/Repository 子仓仍须在任何命令前被拒绝。
+    await fs.appendFile(path.join(f.wc, "CVS", "Entries"), "D/same-root-child////\nD/foreign-child////\n");
     await assert.rejects(noBroadCommand.update(), {
       code: "NESTED_REPOSITORY",
     });
@@ -357,7 +360,7 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
   }
 });
 
-// 修正 A：同项目目录不再单列，但仍是父工作副本的写边界。
+// 同项目未登记目录仍保护路径操作，-l 整树更新不访问它。
 test("same-project CVS directories stay write boundaries for the parent", async () => {
   const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-same-project-"));
   try {
@@ -369,12 +372,15 @@ test("same-project CVS directories stay write boundaries for the parent", async 
     await fs.writeFile(path.join(base, "build", "output.txt"), "output\n");
     const real = await fs.realpath(base);
     assert.deepEqual(await listNestedRepositories(base, "cvs"), [{ kind: "cvs", root: path.join(real, "build") }]);
-    const adapter = new CvsAdapter(base, { run: async () => assert.fail("nested preflight invoked CVS") });
+    const calls = [];
+    const adapter = new CvsAdapter(base, { run: async args => { calls.push(args); return {stdout: Buffer.alloc(0)}; } });
     const { files, unknown } = await adapter.localInventory();
     assert.deepEqual(files.map((file) => file.newPath), ["tracked.txt"]);
     assert.ok(unknown.every((name) => !name.startsWith("build/")), "same-project directory files became parent unversioned files");
-    await assert.rejects(adapter.update(), { code: "NESTED_REPOSITORY" });
+    await adapter.update();
+    assert.deepEqual(calls, [["-q", "update", "-l", "-P", "."]]);
     await assert.rejects(adapter.commit(["build/output.txt"], "forbidden"), { code: "NESTED_REPOSITORY" });
+    await assert.rejects(adapter.rollback("build/output.txt"), { code: "NESTED_REPOSITORY" });
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
@@ -433,5 +439,180 @@ test("nested boundary errors name three relative directories and remaining count
       assert.ok(!error.message.includes(base));
       return true;
     });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
+});
+
+// 修正 3：真实本地 CVS 先验证 -l 的范围，再验证产品入口。
+test("registered update preserves unregistered build and fetches known-directory changes", async () => {
+  const f = await fixture();
+  try {
+    for (const name of ["src", "src/deep", "side"]) {
+      await fs.mkdir(path.join(f.wc, name));
+      await f.process.run(["add", name], f.wc);
+      await fs.writeFile(path.join(f.wc, name, "kept.txt"), "base\n");
+      await f.process.run(["add", `${name}/kept.txt`], f.wc);
+    }
+    await f.process.run(["commit", "-m", "seed directories"], f.wc);
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer"));
+    for (const name of ["build", "server-new"]) {
+      await fs.mkdir(path.join(peer, name));
+      await f.process.run(["add", name], peer);
+      await fs.writeFile(path.join(peer, name, "sentinel.txt"), "server base\n");
+      await f.process.run(["add", `${name}/sentinel.txt`], peer);
+    }
+    await f.process.run(["commit", "-m", "server directories"], peer);
+    const buildDir = path.join(f.wc, "build");
+    await checkout(f.process, f.root, "demo/build", buildDir);
+    await fs.writeFile(path.join(buildDir, "sentinel.txt"), "protected build edit\n");
+    const entriesFile = path.join(f.wc, "CVS", "Entries");
+    await fs.writeFile(entriesFile, (await fs.readFile(entriesFile, "utf8")).replace(/^D\/build\/.*\n?/gm, ""));
+    await fs.rm(path.join(f.wc, "CVS", "Entries.Log"), { force: true });
+    assert.match(await fs.readFile(entriesFile, "utf8"), /^D\/src\//m);
+    const before = await fs.readFile(path.join(buildDir, "CVS", "Entries"));
+    const changePeer = async text => {
+      for (const name of ["src", "src/deep", "side"])
+        await fs.writeFile(path.join(peer, name, "kept.txt"), text);
+      await fs.writeFile(path.join(peer, "build", "sentinel.txt"), text);
+      await f.process.run(["commit", "-m", text.trim()], peer);
+    };
+    const check = async text => {
+      for (const name of ["src", "src/deep", "side"])
+        assert.equal(await fs.readFile(path.join(f.wc, name, "kept.txt"), "utf8"), text);
+      assert.equal(await fs.readFile(path.join(buildDir, "sentinel.txt"), "utf8"), "protected build edit\n");
+      assert.deepEqual(await fs.readFile(path.join(buildDir, "CVS", "Entries")), before);
+      await assert.rejects(fs.access(path.join(f.wc, "server-new")), { code: "ENOENT" });
+    };
+    await changePeer("raw explicit update\n");
+    const raw = await f.process.run(["-q", "update", "-l", "-P", ".", "./src", "./src/deep", "./side"], f.wc);
+    console.log("fix3 explicit -l probe", raw.stdout.toString());
+    await check("raw explicit update\n");
+    await changePeer("product explicit update\n");
+    await fs.writeFile(path.join(peer, "src", "new.txt"), "new server file\n");
+    await f.process.run(["add", "src/new.txt"], peer);
+    await f.process.run(["commit", "-m", "new known-directory file"], peer);
+    const calls = [];
+    const adapter = new CvsAdapter(f.wc, { run: (...args) => { calls.push(args[0]); return f.process.run(...args); } });
+    await adapter.update();
+    assert.deepEqual(calls, [["-q", "update", "-l", "-P", ".", "./side", "./src", "./src/deep"]]);
+    await check("product explicit update\n");
+    assert.equal(await fs.readFile(path.join(f.wc, "src", "new.txt"), "utf8"), "new server file\n");
+    await assert.rejects(adapter.rollback("build/sentinel.txt"), { code: "NESTED_REPOSITORY" });
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("registered update rejects listed foreign CVS and Git boundaries with directory names", async () => {
+  const f = await fixture();
+  try {
+    const foreign = await makeRepository(f.base, "foreign-listed");
+    await checkout(foreign.process, foreign.root, "demo", path.join(f.wc, "foreign"));
+    const adapter = new CvsAdapter(f.wc, { run: () => assert.fail("boundary preflight invoked CVS") });
+    await fs.appendFile(path.join(f.wc, "CVS", "Entries"), "D/foreign////\n");
+    await assert.rejects(adapter.update(), error => error.code === "NESTED_REPOSITORY" && /foreign/.test(error.message));
+    await fs.writeFile(path.join(f.wc, "CVS", "Entries.Log"), "R D/foreign////\n");
+    const gitDir = path.join(f.wc, "listed-git");
+    await fs.mkdir(gitDir);
+    await f.process.run(["add", "listed-git"], f.wc);
+    await execFile("git", ["init", "--quiet"], { cwd: gitDir });
+    await assert.rejects(adapter.update(), error => error.code === "NESTED_REPOSITORY" && /listed-git/.test(error.message));
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("registered update applies Entries.Log A and R and ignores missing directories", async () => {
+  const f = await fixture();
+  try {
+    for (const name of ["included", "excluded"]) {
+      await fs.mkdir(path.join(f.wc, name));
+      await f.process.run(["add", name], f.wc);
+      await fs.writeFile(path.join(f.wc, name, "kept.txt"), "base\n");
+      await f.process.run(["add", `${name}/kept.txt`], f.wc);
+    }
+    await f.process.run(["commit", "-m", "log seed"], f.wc);
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer"));
+    for (const name of ["included", "excluded"])
+      await fs.writeFile(path.join(peer, name, "kept.txt"), "server change\n");
+    await f.process.run(["commit", "-m", "log changes"], peer);
+    await fs.writeFile(path.join(f.wc, "CVS", "Entries"), "/ordinary.txt/1.1///\nD/excluded////\nD/missing////\nD/unmanaged////\n");
+    await fs.mkdir(path.join(f.wc, "unmanaged"));
+    await fs.writeFile(path.join(f.wc, "CVS", "Entries.Log"), "A D/included////\nR D/excluded////\n");
+    const calls = [];
+    await new CvsAdapter(f.wc, {run: (...args) => { calls.push(args[0]); return f.process.run(...args); }}).update();
+    assert.deepEqual(calls, [["-q", "update", "-l", "-P", ".", "./included"]]);
+    assert.equal(await fs.readFile(path.join(f.wc, "included", "kept.txt"), "utf8"), "server change\n");
+    assert.equal(await fs.readFile(path.join(f.wc, "excluded", "kept.txt"), "utf8"), "base\n");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("registered update batches real CVS commands within 8000 characters under one queue signal", async () => {
+  const f = await fixture();
+  try {
+    const names = Array.from({length: 110}, (_, i) => `dir-${String(i).padStart(3, "0")}-${"x".repeat(80)}`);
+    for (const name of names) await fs.mkdir(path.join(f.wc, name));
+    await f.process.run(["add", ...names], f.wc);
+    for (const name of names) await fs.writeFile(path.join(f.wc, name, "file.txt"), "base\n");
+    await f.process.run(["add", ...names.map(name => `${name}/file.txt`)], f.wc);
+    await f.process.run(["commit", "-m", "batch seed"], f.wc);
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer"));
+    for (const name of names) await fs.writeFile(path.join(peer, name, "file.txt"), "server batch\n");
+    await f.process.run(["commit", "-m", "batch changes"], peer);
+    const calls = [], queue = new SerialQueue();
+    let activeSignal, queuedRan = false;
+    const adapter = new CvsAdapter(f.wc, { run: async (args, cwd, signal, ...rest) => {
+      assert.equal(signal, activeSignal); assert.equal(queuedRan, false);
+      assert.deepEqual(args.slice(0, 4), ["-q", "update", "-l", "-P"]);
+      assert.ok([cvsExecutable, "-f", ...args].map(arg => JSON.stringify(arg)).join(" ").length <= 8000);
+      calls.push(args); return f.process.run(args, cwd, signal, ...rest);
+    }});
+    const update = queue.run(signal => { activeSignal = signal; return adapter.update(signal); });
+    const after = queue.run(() => { queuedRan = true; });
+    await update; await after;
+    assert.ok(calls.length > 1);
+    assert.deepEqual(calls.flatMap(args => args.slice(4)), [".", ...names.map(name => `./${name}`)]);
+    for (const name of names) assert.equal(await fs.readFile(path.join(f.wc, name, "file.txt"), "utf8"), "server batch\n");
+    console.log("fix3 real batches", calls.map(args => ({directories: args.length - 4, characters: [cvsExecutable, "-f", ...args].map(arg => JSON.stringify(arg)).join(" ").length})));
+    let cancelledCalls = 0;
+    const cancelled = new CvsAdapter(f.wc, {run: async (...args) => {
+      cancelledCalls++;
+      const result = await f.process.run(...args);
+      queue.cancel();
+      return result;
+    }});
+    await assert.rejects(queue.run(signal => cancelled.update(signal)), {code: "cancelled"});
+    assert.equal(cancelledCalls, 1, "cancelled update started another batch");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("registered update fetches new files into an initially empty registered directory", async () => {
+  const f = await fixture();
+  try {
+    const names = ["empty", "space dir", "-option"];
+    for (const name of names) {
+      await fs.mkdir(path.join(f.wc, name));
+      await f.process.run(["add", `./${name}`], f.wc);
+    }
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer"));
+    for (const name of names) {
+      await fs.writeFile(path.join(peer, name, "new.txt"), "server new file\n");
+      await f.process.run(["add", `./${name}/new.txt`], peer);
+    }
+    await f.process.run(["commit", "-m", "empty directory additions"], peer);
+    await f.parent.update();
+    for (const name of names)
+      assert.equal(await fs.readFile(path.join(f.wc, name, "new.txt"), "utf8"), "server new file\n");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+
+test("registered update retains symlink and malformed metadata protections before commands", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-update-safety-"));
+  try {
+    await metadata(base, "demo", "/file.txt/1.1///\n");
+    const adapter = new CvsAdapter(base, {run: () => assert.fail("unsafe update invoked CVS")});
+    await fs.symlink(path.join(base, "outside.txt"), path.join(base, "file.txt"));
+    await assert.rejects(adapter.update(), {code: "symlink"});
+    await fs.rm(path.join(base, "file.txt"));
+    await fs.appendFile(path.join(base, "CVS", "Entries"), "D/../\n");
+    await assert.rejects(adapter.update(), {code: "BOUNDARY_UNAVAILABLE"});
+    await fs.writeFile(path.join(base, "CVS", "Entries"), "D/linked////\n");
+    await fs.symlink(base, path.join(base, "linked"));
+    await assert.rejects(adapter.update(), {code: "BOUNDARY_UNAVAILABLE"});
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });

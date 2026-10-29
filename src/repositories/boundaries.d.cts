@@ -28,6 +28,7 @@ export function isCvsSameProject(
   container: string,
 ): Promise<boolean>;
 export function readCvsEntries(directory: string): Promise<string[]>;
+export function registeredCvsDirectories(root: string): Promise<string[]>;
 export function boundariesForPaths(
   root: string,
   kind: "git" | "cvs",

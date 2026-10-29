@@ -4,10 +4,10 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import {
-  assertNoNestedRepositories,
   assertOwnedPath,
   isCvsContinuation,
   readCvsEntries,
+  registeredCvsDirectories,
   repositoryTree,
 } from "../repositories/boundaries.cjs";
 
@@ -638,10 +638,42 @@ export class CvsAdapter {
     ).stdout.toString("utf8");
   }
   async update(signal) {
+    if (signal?.aborted) fail("cancelled");
     this.root = await fs.realpath(this.root);
-    await assertNoNestedRepositories(this.root, "cvs");
-    await this.inventory();
-    await this.run(["update", "-dP"], signal);
+    const directories = await registeredCvsDirectories(this.root);
+    // 保留原有符号链接保护，但只检查本次更新目录及其管理文件。
+    for (const directory of directories) {
+      if (signal?.aborted) fail("cancelled");
+      const target = path.join(this.root, directory);
+      for (const location of [target, path.join(target, "CVS")])
+        for (const entry of await fs.readdir(location, { withFileTypes: true }))
+          if (entry.isSymbolicLink()) fail("symlink");
+    }
+    const flags = ["-q", "update", "-l", "-P"];
+    // 含可执行路径、-f、空格、引号及终止符；按 Windows 转义上界保守计长。
+    const size = (value) => 2 * value.length + 3;
+    const overhead = [this.process.executable ?? "cvs", "-f", ...flags].reduce(
+      (total, value) => total + size(value),
+      1,
+    );
+    const batches = [];
+    let batch = [],
+      length = overhead;
+    for (const directory of directories) {
+      if (overhead + size(directory) > 8000) fail("path");
+      if (length + size(directory) > 8000) {
+        batches.push(batch);
+        batch = [];
+        length = overhead;
+      }
+      batch.push(directory);
+      length += size(directory);
+    }
+    if (batch.length) batches.push(batch);
+    for (const args of batches) {
+      if (signal?.aborted) fail("cancelled");
+      await this.run([...flags, ...args], signal);
+    }
   }
   async commit(names, message, signal) {
     if (

@@ -22,3 +22,11 @@ CLAUDE.md
 **/.vscode-test.*
 images/assets/**
 images/*.gif
+
+release/**
+scripts/**
+l10n/**
+package.nls.zh.json
+package.nls.zh-tw.json
+AGENTS.md
+.idea/**

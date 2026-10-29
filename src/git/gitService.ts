@@ -3,8 +3,25 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import * as vscode from "vscode";
+import {
+  assertNoNestedRepositories,
+  assertOwnedPath as assertRepositoryOwnedPath,
+  boundariesForPaths,
+  NestedRepositoryError,
+} from "../repositories/boundaries.cjs";
 import { GitCache } from "./cache";
 import { computeGraphLayout } from "./graphLayout";
+import {
+  resolveShelfEntry,
+  resolveWorktreePath,
+  safeGitContentRef,
+  safeGitRef,
+  safeGitRevision,
+  safeObjectId,
+  safeRelativePath,
+  safeRemoteName,
+} from "./security";
 import type {
   BranchInfo,
   CherryPickState,
@@ -32,6 +49,14 @@ const FMT_RECORD_SEP = "%x00%x00%x01";
 const REF_FMT_FIELD_SEP = "%00";
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
 
+/** A bounded object read used by the read-only comparison workbench. */
+export class GitContentTooLargeError extends Error {
+  readonly code = "GIT_CONTENT_TOO_LARGE";
+  constructor() {
+    super("Git content exceeds the comparison preview limit");
+  }
+}
+
 const LOG_FORMAT = [
   "%H", // hash
   "%h", // shortHash
@@ -46,13 +71,101 @@ const LOG_FORMAT = [
 
 export class GitService {
   readonly cache = new GitCache();
+  private nestedBoundaries: Array<{ kind: "git" | "cvs"; root: string }> = [];
 
-  constructor(private readonly cwd: string) {}
+  constructor(
+    private readonly cwd: string,
+    private readonly ensureAvailable?: () => Promise<void>,
+  ) {}
+
+  private async checkedPath(
+    filePath: string,
+    allowMissing = true,
+  ): Promise<string> {
+    const safePath = safeRelativePath(filePath);
+    await resolveWorktreePath(this.cwd, safePath, { allowMissing });
+    await assertRepositoryOwnedPath(this.cwd, "git", safePath);
+    return safePath;
+  }
+
+  private async checkedPaths(filePaths: string[]): Promise<string[]> {
+    return Promise.all(filePaths.map((filePath) => this.checkedPath(filePath)));
+  }
+
+  /** Reject a mutating operation that could cross an unregistered child root. */
+  private async assertWholeWorktreeOwned(): Promise<void> {
+    await assertNoNestedRepositories(this.cwd, "git");
+  }
+
+  /** Commit and index-wide operations must also reject entries staged outside this repository. */
+  private async assertStagedPathsOwned(): Promise<void> {
+    const output = await this.execGit(["ls-files", "--cached", "-z"]);
+    const paths = output.split("\0").filter(Boolean);
+    if (paths.length === 0) return;
+    const boundaries = await boundariesForPaths(this.cwd, "git", paths);
+    if (boundaries.length > 0) {
+      throw new NestedRepositoryError(boundaries);
+    }
+    await Promise.all(paths.map((filePath) => this.checkedPath(filePath)));
+  }
+
+  /** Check the full existing index before a commit handler stages any files. */
+  async assertCanCommit(): Promise<void> {
+    await this.assertStagedPathsOwned();
+  }
+
+  /** Explicit status paths replace `git add -A`, so every candidate is authorized. */
+  private async workingTreePathsForStageAll(): Promise<string[]> {
+    const output = await this.execGit([
+      "ls-files",
+      "--modified",
+      "--deleted",
+      "--others",
+      "--exclude-standard",
+      "-z",
+    ]);
+    return (
+      output
+        .split("\0")
+        .filter(Boolean)
+        // `git ls-files --others` prints an embedded repository as `child/`.
+        // It is a directory marker, not a valid Git file path, so normalize it
+        // before the boundary check can identify the nested root.
+        .map((entry) => (entry.endsWith("/") ? entry.slice(0, -1) : entry))
+    );
+  }
+
+  /**
+   * The latest targeted status lookup for UI boundary notices. This is not a
+   * discovery scan: callers receive only nested roots observed in status paths.
+   */
+  getNestedBoundaries(): Array<{ kind: "git" | "cvs"; root: string }> {
+    return this.nestedBoundaries.map((boundary) => ({ ...boundary }));
+  }
+
+  private async updateNestedBoundaries(paths: string[]): Promise<void> {
+    this.nestedBoundaries = paths.length
+      ? await boundariesForPaths(this.cwd, "git", paths)
+      : [];
+  }
+
+  private async configuredRemote(remote: string): Promise<string> {
+    const safeRemote = safeRemoteName(remote);
+    const configured = (await this.execGit(["remote"]))
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (!configured.includes(safeRemote)) {
+      throw new Error("Remote is not configured for this repository");
+    }
+    return safeRemote;
+  }
 
   private async execGit(
     args: string[],
     maxBuffer = MAX_BUFFER,
   ): Promise<string> {
+    await this.ensureAvailable?.();
     const { stdout } = await execFileAsync("git", args, {
       cwd: this.cwd,
       maxBuffer,
@@ -108,7 +221,7 @@ export class GitService {
       args.push(`--until=${options.until}`);
     }
     if (options.branch) {
-      args.push(options.branch);
+      args.push(safeGitRevision(options.branch, "History ref"));
     } else {
       args.push("--all");
     }
@@ -300,9 +413,13 @@ export class GitService {
   }
 
   async getDiff(ref1: string, ref2: string, file?: string): Promise<string> {
-    const args = ["diff", ref1, ref2];
+    const args = [
+      "diff",
+      safeGitRevision(ref1, "Left revision"),
+      safeGitRevision(ref2, "Right revision"),
+    ];
     if (file) {
-      args.push("--", file);
+      args.push("--", safeRelativePath(file));
     }
     return this.execGit(args);
   }
@@ -312,9 +429,21 @@ export class GitService {
       return "";
     }
     try {
-      return await this.execGit(["show", `${ref}:${filePath}`]);
+      return await this.execGit([
+        "show",
+        `${safeGitContentRef(ref)}:${safeRelativePath(filePath)}`,
+      ]);
     } catch {
       return "";
+    }
+  }
+
+  async hasBaseline(file: string): Promise<boolean> {
+    try {
+      await this.execGit(["cat-file", "-e", `HEAD:${safeRelativePath(file)}`]);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -325,7 +454,7 @@ export class GitService {
     try {
       const { stdout } = await execFileAsync(
         "git",
-        ["show", `${ref}:${filePath}`],
+        ["show", `${safeGitContentRef(ref)}:${safeRelativePath(filePath)}`],
         {
           cwd: this.cwd,
           maxBuffer: MAX_BUFFER,
@@ -343,6 +472,51 @@ export class GitService {
     }
   }
 
+  /**
+   * Read a blob or index entry without allowing a preview request to allocate
+   * the regular 10 MiB Git command buffer.  Unlike the legacy content
+   * provider, failures are not converted into an empty document: the resolver
+   * has already represented legitimate missing sides explicitly as `empty`.
+   */
+  async getFileContentBufferLimited(
+    ref: string,
+    filePath: string,
+    maxBytes: number,
+  ): Promise<Buffer> {
+    if (!ref) return Buffer.alloc(0);
+    const limit = Math.max(1, Math.floor(maxBytes));
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["show", `${safeGitContentRef(ref)}:${safeRelativePath(filePath)}`],
+        {
+          cwd: this.cwd,
+          // One extra byte makes an exact limit valid while retaining a hard
+          // bound for an over-limit stream.
+          maxBuffer: limit + 1,
+          encoding: "buffer",
+          env: {
+            ...process.env,
+            LC_ALL: "C",
+            GIT_TERMINAL_PROMPT: "0",
+          },
+        },
+      );
+      const content = Buffer.from(stdout);
+      if (content.byteLength > limit) throw new GitContentTooLargeError();
+      return content;
+    } catch (error) {
+      if (error instanceof GitContentTooLargeError) throw error;
+      if (
+        (error as NodeJS.ErrnoException).code ===
+        "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+      ) {
+        throw new GitContentTooLargeError();
+      }
+      throw error;
+    }
+  }
+
   async getCommitFiles(hash: string): Promise<DiffFile[]> {
     const output = await this.execGit([
       "diff-tree",
@@ -350,8 +524,9 @@ export class GitService {
       "--no-commit-id",
       "-r",
       "--name-status",
+      "-z",
       "-M",
-      hash,
+      safeObjectId(hash, "Commit hash"),
     ]);
     return parseDiffNameStatus(output);
   }
@@ -394,41 +569,22 @@ export class GitService {
   }
 
   async getStatus(): Promise<FileStatus[]> {
-    const output = await this.execGit(["status", "--porcelain=v1"]);
-    const files: FileStatus[] = [];
-
-    for (const line of output.split("\n")) {
-      if (line.length < 4) {
-        continue;
-      }
-      const indexStatus = line[0];
-      const workTreeStatus = line[1];
-      const rest = line.substring(3);
-
-      // Handle renames: "R  old -> new"
-      const arrowIdx = rest.indexOf(" -> ");
-      if (arrowIdx !== -1) {
-        files.push({
-          path: rest.substring(arrowIdx + 4),
-          oldPath: rest.substring(0, arrowIdx),
-          indexStatus,
-          workTreeStatus,
-        });
-      } else {
-        files.push({
-          path: rest,
-          indexStatus,
-          workTreeStatus,
-        });
-      }
-    }
+    const output = await this.execGit(["status", "--porcelain=v1", "-z"]);
+    const files: FileStatus[] = parsePorcelainV1Z(output).map((entry) => ({
+      path: entry.path,
+      oldPath: entry.oldPath,
+      indexStatus: entry.indexStatus,
+      workTreeStatus: entry.workTreeStatus,
+    }));
+    await this.updateNestedBoundaries(files.map((file) => file.path));
     return files;
   }
 
   async getCommitParents(hash: string): Promise<string[]> {
-    const output = await this.execGit(["rev-parse", `${hash}^@`]).catch(
-      () => "",
-    );
+    const output = await this.execGit([
+      "rev-parse",
+      `${safeObjectId(hash, "Commit hash")}^@`,
+    ]).catch(() => "");
     return output
       .trim()
       .split("\n")
@@ -467,6 +623,7 @@ export class GitService {
   }
 
   async cherryPickAction(action: "continue" | "abort" | "skip"): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     if (action === "continue") {
       // Stage all resolved files before continuing (like IntelliJ IDEA behavior)
       await this.execGit(["add", "-u"]);
@@ -580,25 +737,33 @@ export class GitService {
   }
 
   async saveMergedContent(filePath: string, content: string): Promise<void> {
-    await fs.writeFile(path.join(this.cwd, filePath), content, "utf-8");
+    const safePath = await this.checkedPath(filePath, true);
+    const target = await resolveWorktreePath(this.cwd, safePath, {
+      allowMissing: true,
+    });
+    await fs.writeFile(target, content, "utf-8");
   }
 
   async stageFile(filePath: string): Promise<void> {
-    await this.execGit(["add", filePath]);
+    const safePath = await this.checkedPath(filePath);
+    await this.execGit(["add", "--", safePath]);
   }
 
   async acceptOurs(filePath: string): Promise<void> {
-    await this.execGit(["checkout", "--ours", filePath]);
-    await this.execGit(["add", filePath]);
+    const safePath = await this.checkedPath(filePath);
+    await this.execGit(["checkout", "--ours", "--", safePath]);
+    await this.execGit(["add", "--", safePath]);
   }
 
   async acceptTheirs(filePath: string): Promise<void> {
-    await this.execGit(["checkout", "--theirs", filePath]);
-    await this.execGit(["add", filePath]);
+    const safePath = await this.checkedPath(filePath);
+    await this.execGit(["checkout", "--theirs", "--", safePath]);
+    await this.execGit(["add", "--", safePath]);
   }
 
   async checkout(branchName: string): Promise<void> {
-    await this.execGit(["checkout", branchName]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["checkout", safeGitRef(branchName, "Branch")]);
     this.invalidateCache();
   }
 
@@ -607,44 +772,62 @@ export class GitService {
     startPoint: string,
     force = false,
   ): Promise<void> {
+    const safeBranch = safeGitRef(newBranchName, "Branch");
+    const safeStartPoint = safeGitRevision(startPoint, "Start point");
     const args = force
-      ? ["branch", "-f", newBranchName, startPoint]
-      : ["branch", newBranchName, startPoint];
+      ? ["branch", "-f", safeBranch, safeStartPoint]
+      : ["branch", safeBranch, safeStartPoint];
     await this.execGit(args);
     this.invalidateCache();
   }
 
   async deleteBranch(branchName: string, force = false): Promise<void> {
     const flag = force ? "-D" : "-d";
-    await this.execGit(["branch", flag, branchName]);
+    await this.execGit(["branch", flag, safeGitRef(branchName, "Branch")]);
     this.invalidateCache();
   }
 
   async deleteRemoteBranch(remoteBranch: string): Promise<void> {
     // remoteBranch is like "origin/feature" → push --delete origin feature
     const slashIdx = remoteBranch.indexOf("/");
-    const remote = remoteBranch.substring(0, slashIdx);
-    const branch = remoteBranch.substring(slashIdx + 1);
+    if (slashIdx <= 0 || slashIdx === remoteBranch.length - 1) {
+      throw new Error("Remote branch is invalid");
+    }
+    const remote = await this.configuredRemote(
+      remoteBranch.substring(0, slashIdx),
+    );
+    const branch = safeGitRef(
+      remoteBranch.substring(slashIdx + 1),
+      "Remote branch",
+    );
     await this.execGit(["push", remote, "--delete", branch]);
     this.invalidateCache();
   }
 
   async renameBranch(oldName: string, newName: string): Promise<void> {
-    await this.execGit(["branch", "-m", oldName, newName]);
+    await this.execGit([
+      "branch",
+      "-m",
+      safeGitRef(oldName, "Branch"),
+      safeGitRef(newName, "Branch"),
+    ]);
     this.invalidateCache();
   }
 
   async merge(branchName: string): Promise<void> {
-    await this.execGit(["merge", branchName]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["merge", "--", safeGitRef(branchName, "Branch")]);
     this.invalidateCache();
   }
 
   async rebase(onto: string): Promise<void> {
-    await this.execGit(["rebase", onto]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["rebase", safeGitRevision(onto, "Rebase target")]);
     this.invalidateCache();
   }
 
   async rebaseAction(action: "continue" | "abort" | "skip"): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     if (action === "continue") {
       // Stage all resolved files before continuing
       await this.execGit(["add", "-u"]);
@@ -654,11 +837,13 @@ export class GitService {
   }
 
   async mergeAbort(): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     await this.execGit(["merge", "--abort"]);
     this.invalidateCache();
   }
 
   async mergeContinue(): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     // Stage all resolved files before committing
     await this.execGit(["add", "-u"]);
     await this.execGit(["commit", "--no-edit"]);
@@ -669,8 +854,12 @@ export class GitService {
     branchToCheckout: string,
     rebaseOnto: string,
   ): Promise<void> {
-    await this.execGit(["checkout", branchToCheckout]);
-    await this.execGit(["rebase", rebaseOnto]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["checkout", safeGitRef(branchToCheckout, "Branch")]);
+    await this.execGit([
+      "rebase",
+      safeGitRevision(rebaseOnto, "Rebase target"),
+    ]);
     this.invalidateCache();
   }
 
@@ -680,9 +869,12 @@ export class GitService {
     remote = "origin",
     targetBranch?: string,
   ): Promise<string> {
+    const safeBranch = safeGitRef(branchName, "Branch");
+    const safeRemote = await this.configuredRemote(remote);
+    const safeTarget = safeGitRef(targetBranch || branchName, "Target branch");
     const args = ["push"];
     if (force) args.push("--force-with-lease");
-    args.push(remote, `${branchName}:${targetBranch || branchName}`);
+    args.push(safeRemote, `${safeBranch}:${safeTarget}`);
     const output = await this.execGit(args);
     this.invalidateCache();
     return output;
@@ -696,8 +888,11 @@ export class GitService {
     branchName: string,
     remote?: string,
   ): Promise<CommitNode[]> {
-    const remoteName = remote || (await this.getDefaultRemote(branchName));
-    const upstream = `${remoteName}/${branchName}`;
+    const safeBranch = safeGitRef(branchName, "Branch");
+    const remoteName = remote
+      ? await this.configuredRemote(remote)
+      : await this.getDefaultRemote(safeBranch);
+    const upstream = `${remoteName}/${safeBranch}`;
     // Check if upstream exists
     try {
       await this.execGit(["rev-parse", "--verify", upstream]);
@@ -706,7 +901,7 @@ export class GitService {
       const args = [
         "log",
         `--format=${LOG_FORMAT}${FMT_RECORD_SEP}`,
-        branchName,
+        safeBranch,
         "--max-count=50",
       ];
       const output = await this.execGit(args);
@@ -715,47 +910,141 @@ export class GitService {
     const args = [
       "log",
       `--format=${LOG_FORMAT}${FMT_RECORD_SEP}`,
-      `${upstream}..${branchName}`,
+      `${upstream}..${safeBranch}`,
     ];
     const output = await this.execGit(args);
     return parseLogOutput(output);
   }
 
   async pull(branchName?: string): Promise<void> {
-    const args = ["pull", "--autostash"];
-    if (branchName) {
-      args.push("origin", branchName);
+    if (branchName && branchName !== (await this.getCurrentBranch()))
+      throw new Error(
+        "Update Project updates the current branch upstream only.",
+      );
+    await this.updateFastForward(this.ensureAvailable);
+  }
+
+  /** Catalog update never merges, rebases, stashes, or recurses into submodules. */
+  async updateFastForward(
+    revalidate: () => Promise<void> = async () => {},
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await revalidate();
+    await this.assertWholeWorktreeOwned();
+    const branch = (
+      await this.execGit(["symbolic-ref", "--quiet", "HEAD"]).catch(() => "")
+    ).trim();
+    if (!branch)
+      throw new Error(
+        vscode.l10n.t(
+          "Cannot update a detached HEAD. Check out a branch first.",
+        ),
+      );
+    const upstream = (
+      await this.execGit([
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ]).catch(() => "")
+    ).trim();
+    if (!upstream)
+      throw new Error(
+        vscode.l10n.t(
+          "This branch has no upstream. Configure an upstream before updating.",
+        ),
+      );
+    const dirty = await this.execGit([
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ]);
+    if (dirty)
+      throw new Error(
+        vscode.l10n.t(
+          "Commit or discard local changes before updating this repository.",
+        ),
+      );
+    for (const marker of [
+      "MERGE_HEAD",
+      "CHERRY_PICK_HEAD",
+      "REVERT_HEAD",
+      "rebase-merge",
+      "rebase-apply",
+      "sequencer",
+      "BISECT_LOG",
+    ]) {
+      const location = (
+        await this.execGit(["rev-parse", "--git-path", marker])
+      ).trim();
+      if (
+        await fs.stat(path.resolve(this.cwd, location)).then(
+          () => true,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return false;
+            throw error;
+          },
+        )
+      ) {
+        throw new Error(
+          vscode.l10n.t(
+            "Finish the current Git operation before updating this repository.",
+          ),
+        );
+      }
     }
-    await this.execGit(args);
+    // Repeat the Host identity/editor guard after all asynchronous preflight reads.
+    await revalidate();
+    await this.assertWholeWorktreeOwned();
+    await execFileAsync(
+      "git",
+      [
+        "pull",
+        "--ff-only",
+        "--no-rebase",
+        "--no-autostash",
+        "--no-recurse-submodules",
+      ],
+      {
+        cwd: this.cwd,
+        maxBuffer: MAX_BUFFER,
+        timeout: 60_000,
+        signal,
+        env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
+      },
+    );
     this.invalidateCache();
   }
 
   async pullRebase(branchName?: string): Promise<void> {
-    const args = ["pull", "--rebase", "--autostash"];
-    if (branchName) {
-      args.push("origin", branchName);
-    }
-    await this.execGit(args);
-    this.invalidateCache();
+    await this.pull(branchName);
   }
 
   async fetch(remote = "origin"): Promise<void> {
-    await this.execGit(["fetch", remote]);
+    await this.execGit(["fetch", await this.configuredRemote(remote)]);
     this.invalidateCache();
   }
 
   async cherryPick(hash: string): Promise<void> {
-    await this.execGit(["cherry-pick", hash]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["cherry-pick", safeObjectId(hash, "Commit hash")]);
     this.invalidateCache();
   }
 
   async checkoutCommit(hash: string): Promise<void> {
-    await this.execGit(["checkout", hash]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit(["checkout", safeObjectId(hash, "Commit hash")]);
     this.invalidateCache();
   }
 
   async checkoutFileFromCommit(hash: string, filePath: string): Promise<void> {
-    await this.execGit(["checkout", hash, "--", filePath]);
+    await this.execGit([
+      "checkout",
+      safeObjectId(hash, "Commit hash"),
+      "--",
+      await this.checkedPath(filePath),
+    ]);
     this.invalidateCache();
   }
 
@@ -764,31 +1053,33 @@ export class GitService {
     filePath: string,
     status?: string,
   ): Promise<void> {
+    const safePath = await this.checkedPath(filePath);
+    const safeHash = safeObjectId(hash, "Commit hash");
     if (status === "added") {
       // File was newly added in this commit, revert means removing it
       // Use --cached to handle case where file may not exist on disk
       try {
-        await this.execGit(["rm", "-f", "--", filePath]);
+        await this.execGit(["rm", "-f", "--", safePath]);
       } catch {
         // File might not exist in working tree or index, try removing from index only
         try {
-          await this.execGit(["rm", "-f", "--cached", "--", filePath]);
+          await this.execGit(["rm", "-f", "--cached", "--", safePath]);
         } catch {
           // File doesn't exist at all - nothing to revert
         }
         // Also try to remove the physical file if it exists
         try {
-          await fs.unlink(path.join(this.cwd, filePath));
+          await fs.unlink(await resolveWorktreePath(this.cwd, safePath));
         } catch {
           // File already doesn't exist on disk
         }
       }
     } else if (status === "deleted") {
       // File was deleted in this commit, revert means restoring it from parent
-      await this.execGit(["checkout", `${hash}~1`, "--", filePath]);
+      await this.execGit(["checkout", `${safeHash}~1`, "--", safePath]);
     } else {
       // File was modified/renamed/copied, revert to parent state
-      await this.execGit(["checkout", `${hash}~1`, "--", filePath]);
+      await this.execGit(["checkout", `${safeHash}~1`, "--", safePath]);
     }
     this.invalidateCache();
   }
@@ -797,16 +1088,28 @@ export class GitService {
     hash: string,
     mode: "soft" | "mixed" | "hard",
   ): Promise<void> {
-    await this.execGit(["reset", `--${mode}`, hash]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit([
+      "reset",
+      `--${mode}`,
+      safeObjectId(hash, "Commit hash"),
+    ]);
     this.invalidateCache();
   }
 
   async revertCommit(hash: string): Promise<void> {
-    await this.execGit(["revert", "--no-edit", hash]);
+    await this.assertWholeWorktreeOwned();
+    await this.execGit([
+      "revert",
+      "--no-edit",
+      safeObjectId(hash, "Commit hash"),
+    ]);
     this.invalidateCache();
   }
 
   async dropCommit(hash: string): Promise<void> {
+    await this.assertWholeWorktreeOwned();
+    hash = safeObjectId(hash, "Commit hash");
     const headHash = (await this.execGit(["rev-parse", "HEAD"])).trim();
     const isHead = hash === headHash;
 
@@ -822,7 +1125,9 @@ export class GitService {
     // Verify commit has a parent
     const parents = await this.getCommitParents(hash);
     if (parents.length === 0) {
-      throw new Error("Cannot drop the initial commit (no parent)");
+      throw new Error(
+        vscode.l10n.t("Cannot drop the initial commit (no parent)"),
+      );
     }
     await this.execGit(["reset", "--mixed", "HEAD~1"]);
   }
@@ -882,7 +1187,9 @@ export class GitService {
         await this.execGit(["apply", "--3way", tmpFile]);
       } catch {
         throw new Error(
-          "Commit was removed from history but its changes could not be applied to the working directory",
+          vscode.l10n.t(
+            "Commit was removed from history but its changes could not be applied to the working directory",
+          ),
         );
       } finally {
         try {
@@ -899,9 +1206,11 @@ export class GitService {
     hash: string,
     force = false,
   ): Promise<void> {
+    const safeBranch = safeGitRef(branchName, "Branch");
+    const safeHash = safeObjectId(hash, "Commit hash");
     const args = force
-      ? ["branch", "-f", branchName, hash]
-      : ["branch", branchName, hash];
+      ? ["branch", "-f", safeBranch, safeHash]
+      : ["branch", safeBranch, safeHash];
     await this.execGit(args);
     this.invalidateCache();
   }
@@ -911,104 +1220,149 @@ export class GitService {
     hash: string,
     message?: string,
   ): Promise<void> {
+    const safeTag = safeGitRef(tagName, "Tag");
+    const safeHash = safeObjectId(hash, "Commit hash");
     if (message) {
-      await this.execGit(["tag", "-a", tagName, hash, "-m", message]);
+      await this.execGit(["tag", "-a", safeTag, safeHash, "-m", message]);
     } else {
-      await this.execGit(["tag", tagName, hash]);
+      await this.execGit(["tag", safeTag, safeHash]);
     }
     this.invalidateCache();
   }
 
   // ─── Commit Panel Operations ───────────────────────────────────────
 
-  async getWorkingTreeChanges(): Promise<import("./types").WorkingTreeFile[]> {
-    const output = await this.execGit(["status", "--porcelain=v1", "-uall"]);
+  async getWorkingTreeChanges(
+    paths?: string[],
+    collapseUnversioned = false,
+  ): Promise<import("./types").WorkingTreeFile[]> {
+    const output = await this.execGit([
+      "status",
+      "--porcelain=v1",
+      "-z",
+      collapseUnversioned ? "-unormal" : "-uall",
+      ...(paths ? ["--", ...paths.map(safeRelativePath)] : []),
+    ]);
     const files: import("./types").WorkingTreeFile[] = [];
 
-    for (const line of output.split("\n")) {
-      if (line.length < 4) continue;
-      const indexStatus = line[0];
-      const workTreeStatus = line[1];
-
-      // Skip ignored files
-      if (indexStatus === "!" && workTreeStatus === "!") continue;
-
-      const rest = line.substring(3);
-
-      // Handle renames
-      const arrowIdx = rest.indexOf(" -> ");
-      const filePath = arrowIdx !== -1 ? rest.substring(arrowIdx + 4) : rest;
-      const oldPath = arrowIdx !== -1 ? rest.substring(0, arrowIdx) : undefined;
-
-      // Determine if file is staged
-      const staged =
-        indexStatus !== " " && indexStatus !== "?" && indexStatus !== "!";
-
-      // Determine status
-      let status: import("./types").WorkingTreeFile["status"];
-      if (indexStatus === "?" && workTreeStatus === "?") {
-        status = "untracked";
-      } else if (
-        indexStatus === "U" ||
-        workTreeStatus === "U" ||
-        (indexStatus === "A" && workTreeStatus === "A") ||
-        (indexStatus === "D" && workTreeStatus === "D")
-      ) {
-        status = "conflicted";
-      } else if (indexStatus === "A" || workTreeStatus === "A") {
-        status = "added";
-      } else if (indexStatus === "D" || workTreeStatus === "D") {
-        status = "deleted";
-      } else if (indexStatus === "R" || workTreeStatus === "R") {
-        status = "renamed";
-      } else {
-        status = "modified";
-      }
-
-      // For files that have both staged and unstaged changes, emit two entries
-      if (
-        staged &&
-        workTreeStatus !== " " &&
-        workTreeStatus !== "?" &&
-        workTreeStatus !== "!"
-      ) {
-        // Staged version
-        files.push({ path: filePath, oldPath, status, staged: true });
-        // Unstaged version
+    for (const entry of parsePorcelainV1Z(output)) {
+      const code = `${entry.indexStatus}${entry.workTreeStatus}`;
+      if (code === "!!") continue;
+      if (isUnmerged(code)) {
         files.push({
-          path: filePath,
-          oldPath,
-          status: "modified",
+          path: entry.path,
+          oldPath: entry.oldPath,
+          status: "conflicted",
+          staged: true,
+        });
+        continue;
+      }
+      if (isIndexChange(entry.indexStatus)) {
+        files.push({
+          path: entry.path,
+          oldPath:
+            entry.indexStatus === "R" || entry.indexStatus === "C"
+              ? entry.oldPath
+              : undefined,
+          status: workingStatus(entry.indexStatus),
+          staged: true,
+        });
+      }
+      if (entry.workTreeStatus === "?") {
+        files.push({ path: entry.path, status: "untracked", staged: false });
+      } else if (isWorktreeChange(entry.workTreeStatus)) {
+        // An index rename followed by a disk edit compares the index's new
+        // name with that same new worktree path; the old name belongs only to
+        // the staged rename comparison.
+        files.push({
+          path: entry.path,
+          oldPath:
+            entry.workTreeStatus === "R" || entry.workTreeStatus === "C"
+              ? entry.oldPath
+              : undefined,
+          status: workingStatus(entry.workTreeStatus),
           staged: false,
         });
-      } else {
-        files.push({ path: filePath, oldPath, status, staged });
       }
     }
-    return files;
+    await this.updateNestedBoundaries(files.map((file) => file.path));
+    return files.filter(
+      (file) =>
+        !this.nestedBoundaries.some((boundary) => {
+          const target = path.resolve(this.cwd, file.path);
+          const relative = path.relative(boundary.root, target);
+          return (
+            relative === "" ||
+            (!path.isAbsolute(relative) &&
+              relative !== ".." &&
+              !relative.startsWith(`..${path.sep}`))
+          );
+        }),
+    );
   }
 
   async stageFiles(filePaths: string[]): Promise<void> {
     if (filePaths.length === 0) return;
-    await this.execGit(["add", "--", ...filePaths]);
+    await this.execGit(["add", "--", ...(await this.checkedPaths(filePaths))]);
   }
 
   async unstageFile(filePath: string): Promise<void> {
-    await this.execGit(["reset", "HEAD", "--", filePath]);
+    await this.execGit([
+      "reset",
+      "HEAD",
+      "--",
+      await this.checkedPath(filePath),
+    ]);
   }
 
   async unstageAll(): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     await this.execGit(["reset", "HEAD"]);
   }
 
   async stageAll(): Promise<void> {
-    await this.execGit(["add", "-A"]);
+    const paths: string[] = [];
+    for (const candidate of await this.workingTreePathsForStageAll()) {
+      try {
+        paths.push(await this.checkedPath(candidate));
+      } catch (error) {
+        if (
+          !(error instanceof NestedRepositoryError) ||
+          error.code !== "NESTED_REPOSITORY"
+        )
+          throw error;
+      }
+    }
+    if (paths.length) await this.execGit(["add", "--", ...paths]);
   }
 
   async commit(message: string, amend = false): Promise<void> {
+    await this.assertStagedPathsOwned();
     const args = ["commit", "-m", message];
     if (amend) args.push("--amend");
     await this.execGit(args);
+    this.invalidateCache();
+  }
+
+  async commitPaths(
+    message: string,
+    paths: string[],
+    amend = false,
+  ): Promise<void> {
+    if (!message.trim() || message.includes("\0") || !paths.length)
+      throw new Error(
+        vscode.l10n.t("Enter a commit message and select changed files."),
+      );
+    await this.assertCanCommit();
+    const checked = await this.checkedPaths([...new Set(paths)]);
+    await this.execGit([
+      "commit",
+      "-m",
+      message,
+      ...(amend ? ["--amend"] : []),
+      "--",
+      ...checked,
+    ]);
     this.invalidateCache();
   }
 
@@ -1039,13 +1393,14 @@ export class GitService {
   async getDefaultRemote(branch?: string): Promise<string> {
     // Try to get the upstream remote for the given branch
     if (branch) {
+      branch = safeGitRef(branch, "Branch");
       try {
         const output = await this.execGit([
           "config",
           `branch.${branch}.remote`,
         ]);
         const remote = output.trim();
-        if (remote) return remote;
+        if (remote) return safeRemoteName(remote);
       } catch {
         // No upstream configured
       }
@@ -1061,7 +1416,9 @@ export class GitService {
         .filter(Boolean);
       if (remotes.length > 0) {
         // Prefer "origin" if it exists, otherwise first remote
-        return remotes.includes("origin") ? "origin" : remotes[0];
+        return safeRemoteName(
+          remotes.includes("origin") ? "origin" : remotes[0],
+        );
       }
     } catch {
       // ignore
@@ -1081,6 +1438,9 @@ export class GitService {
 
   async getRecentCommitMessages(count = 20): Promise<string[]> {
     try {
+      if (!Number.isSafeInteger(count) || count < 1 || count > 200) {
+        throw new Error("Commit message count is invalid");
+      }
       const output = await this.execGit(["log", `-${count}`, "--format=%s"]);
       return output
         .trim()
@@ -1092,10 +1452,11 @@ export class GitService {
   }
 
   async rollbackFile(filePath: string): Promise<void> {
+    const safePath = await this.checkedPath(filePath);
     // Check if file exists in HEAD (i.e., was previously committed)
     let existsInHead = false;
     try {
-      await this.execGit(["cat-file", "-e", `HEAD:${filePath}`]);
+      await this.execGit(["cat-file", "-e", `HEAD:${safePath}`]);
       existsInHead = true;
     } catch {
       existsInHead = false;
@@ -1103,15 +1464,15 @@ export class GitService {
 
     if (existsInHead) {
       // File exists in HEAD - restore to HEAD version (handles both staged and unstaged changes)
-      await this.execGit(["checkout", "HEAD", "--", filePath]);
+      await this.execGit(["checkout", "HEAD", "--", safePath]);
     } else {
       // File is new (not in HEAD) - remove from index and delete from disk
       try {
-        await this.execGit(["rm", "-f", "--cached", "--", filePath]);
+        await this.execGit(["rm", "-f", "--cached", "--", safePath]);
       } catch {
         // Not in index either, nothing to unstage
       }
-      const fullPath = path.join(this.cwd, filePath);
+      const fullPath = await resolveWorktreePath(this.cwd, safePath);
       try {
         await fs.unlink(fullPath);
       } catch {
@@ -1169,6 +1530,9 @@ export class GitService {
 
   async shelveChanges(message: string, filePaths?: string[]): Promise<void> {
     if (filePaths && filePaths.length > 0) {
+      const selectedPaths = await this.checkedPaths(filePaths);
+      // This workflow resets and reconstructs the whole index before stashing.
+      await this.assertStagedPathsOwned();
       // Strategy: to stash only specific files without pulling in other staged files,
       // we need to temporarily reset the index, stage only our target files, then stash.
 
@@ -1198,7 +1562,7 @@ export class GitService {
       }
 
       // 3. Stage only the target files
-      await this.execGit(["add", "--", ...filePaths]);
+      await this.execGit(["add", "--", ...selectedPaths]);
 
       // 4. Stash only the staged files
       await this.execGit([
@@ -1211,7 +1575,7 @@ export class GitService {
 
       // 5. Re-stage previously staged files (that weren't stashed)
       const remainingToStage = previouslyStaged.filter(
-        (f) => !filePaths.includes(f),
+        (f) => !selectedPaths.includes(f),
       );
       if (remainingToStage.length > 0) {
         try {
@@ -1221,6 +1585,7 @@ export class GitService {
         }
       }
     } else {
+      await this.assertWholeWorktreeOwned();
       // Stash all changes including untracked
       const args = ["stash", "push", "-m", message || "Shelved changes", "-u"];
       await this.execGit(args);
@@ -1229,6 +1594,8 @@ export class GitService {
   }
 
   async unshelveChanges(stashId: string, drop = true): Promise<void> {
+    await this.assertWholeWorktreeOwned();
+    await this.assertKnownStash(stashId);
     if (drop) {
       await this.execGit(["stash", "pop", stashId]);
     } else {
@@ -1238,15 +1605,38 @@ export class GitService {
   }
 
   async deleteShelve(stashId: string): Promise<void> {
+    await this.assertKnownStash(stashId);
     await this.execGit(["stash", "drop", stashId]);
+  }
+
+  private async assertKnownStash(stashId: string): Promise<void> {
+    if (!/^stash@\{\d+\}$/.test(stashId)) {
+      throw new Error("Shelf entry is invalid");
+    }
+    const known = await this.getShelves();
+    if (!known.some((entry) => entry.id === stashId)) {
+      throw new Error("Shelf entry is not available in this repository");
+    }
   }
 
   // ─── IDEA Shelf (patch-file based) Operations ─────────────────────
 
+  private async getShelfDirectory(create = false): Promise<string> {
+    await this.checkedPath(".idea/shelf", create);
+    const candidate = await resolveWorktreePath(this.cwd, ".idea/shelf", {
+      allowMissing: create,
+    });
+    if (create) {
+      await fs.mkdir(candidate, { recursive: true });
+      return resolveWorktreePath(this.cwd, ".idea/shelf");
+    }
+    return candidate;
+  }
+
   async getIdeaShelves(): Promise<IdeaShelfEntry[]> {
-    const shelfDir = path.join(this.cwd, ".idea", "shelf");
+    let shelfDir: string;
     try {
-      await fs.access(shelfDir);
+      shelfDir = await this.getShelfDirectory();
     } catch {
       return [];
     }
@@ -1256,10 +1646,15 @@ export class GitService {
 
     for (const item of dirContents) {
       if (!item.endsWith(".xml")) continue;
-      const xmlPath = path.join(shelfDir, item);
       try {
+        const xmlCandidate = path.join(shelfDir, safeRelativePath(item));
+        if ((await fs.lstat(xmlCandidate)).isSymbolicLink()) continue;
+        const xmlPath = await resolveWorktreePath(shelfDir, item);
         const xmlContent = await fs.readFile(xmlPath, "utf-8");
-        const entry = this.parseIdeaShelfXml(xmlContent, shelfDir);
+        const entry = await this.parseIdeaShelfXml(
+          xmlContent,
+          item.slice(0, -".xml".length),
+        );
         if (entry) entries.push(entry);
       } catch {
         // skip malformed entries
@@ -1273,42 +1668,38 @@ export class GitService {
     return entries;
   }
 
-  private parseIdeaShelfXml(
+  private async parseIdeaShelfXml(
     xmlContent: string,
-    shelfDir: string,
-  ): IdeaShelfEntry | null {
+    expectedName: string,
+  ): Promise<IdeaShelfEntry | null> {
     // Parse: <changelist name="..." date="..." recycled="...">
     const nameMatch = xmlContent.match(/changelist\s+name="([^"]*)"/);
     const dateMatch = xmlContent.match(/\bdate="(\d+)"/);
-    const pathMatch = xmlContent.match(
-      /option\s+name="PATH"\s+value="([^"]*)"/,
-    );
     const descMatch = xmlContent.match(
       /option\s+name="DESCRIPTION"\s+value="([^"]*)"/,
     );
 
-    if (!nameMatch || !pathMatch) return null;
+    if (!nameMatch || nameMatch[1] !== expectedName) return null;
 
     const name = nameMatch[1];
     const dateMs = dateMatch ? Number.parseInt(dateMatch[1], 10) : Date.now();
     const date = new Date(dateMs).toISOString();
     const description = descMatch?.[1] ?? "";
 
-    // Resolve $PROJECT_DIR$ to workspace root
-    const patchRelative = pathMatch[1].replace(/\$PROJECT_DIR\$/g, this.cwd);
-    const patchPath = path.isAbsolute(patchRelative)
-      ? patchRelative
-      : path.join(shelfDir, patchRelative);
+    let shelf: Awaited<ReturnType<typeof resolveShelfEntry>>;
+    try {
+      shelf = await resolveShelfEntry(this.cwd, name);
+    } catch {
+      return null;
+    }
+    const files = await this.parseFilesFromPatchPath(shelf.patch);
 
-    // Parse files from patch
-    const files = this.parseFilesFromPatchPath(patchPath);
-
-    return { name, description, date, patchPath, files };
+    return { name, description, date, patchPath: shelf.patch, files };
   }
 
-  private parseFilesFromPatchPath(patchPath: string): string[] {
+  private async parseFilesFromPatchPath(patchPath: string): Promise<string[]> {
     try {
-      const content = require("node:fs").readFileSync(patchPath, "utf-8");
+      const content = await fs.readFile(patchPath, "utf-8");
       return this.parseFilesFromPatch(content);
     } catch {
       return [];
@@ -1338,15 +1729,22 @@ export class GitService {
     message: string,
     filePaths?: string[],
   ): Promise<void> {
-    const shelfDir = path.join(this.cwd, ".idea", "shelf");
-    await fs.mkdir(shelfDir, { recursive: true });
+    if (filePaths && filePaths.length > 0) {
+      await this.checkedPaths(filePaths);
+    } else {
+      await this.assertWholeWorktreeOwned();
+    }
+    const shelfDir = await this.getShelfDirectory(true);
 
-    const sanitizedName = this.sanitizeShelfName(message || "Changes");
+    const sanitizedName =
+      this.sanitizeShelfName(message || "Changes") || "Changes";
     const uniqueName = await this.getUniqueShelfName(shelfDir, sanitizedName);
 
     // Create shelf subdirectory
     const entryDir = path.join(shelfDir, uniqueName);
+    await this.checkedPath(path.join(".idea", "shelf", uniqueName), true);
     await fs.mkdir(entryDir, { recursive: true });
+    const verifiedEntryDir = await resolveWorktreePath(shelfDir, uniqueName);
 
     // Generate patch
     let patchContent = "";
@@ -1358,18 +1756,24 @@ export class GitService {
 
     if (!patchContent.trim()) {
       // Clean up empty directory
-      await fs.rm(entryDir, { recursive: true, force: true });
-      throw new Error("No changes to shelve");
+      await fs.rm(verifiedEntryDir, { recursive: true, force: true });
+      throw new Error(vscode.l10n.t("No changes to shelve"));
     }
 
     // Write patch file
-    const patchFilePath = path.join(entryDir, "shelved.patch");
+    const patchFilePath = await resolveWorktreePath(
+      verifiedEntryDir,
+      "shelved.patch",
+      { allowMissing: true },
+    );
     await fs.writeFile(patchFilePath, patchContent, "utf-8");
 
     // Write XML metadata
     const timestamp = Date.now();
     const xmlContent = `<changelist name="${this.escapeXml(uniqueName)}" date="${timestamp}" recycled="false">\n  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/${uniqueName}/shelved.patch" />\n  <option name="DESCRIPTION" value="${this.escapeXml(message || "")}" />\n</changelist>\n`;
-    const xmlPath = path.join(shelfDir, `${uniqueName}.xml`);
+    const xmlPath = await resolveWorktreePath(shelfDir, `${uniqueName}.xml`, {
+      allowMissing: true,
+    });
     await fs.writeFile(xmlPath, xmlContent, "utf-8");
 
     // Revert the files in working tree
@@ -1383,23 +1787,25 @@ export class GitService {
   }
 
   async ideaUnshelveChanges(shelfName: string, drop?: boolean): Promise<void> {
-    const shelfDir = path.join(this.cwd, ".idea", "shelf");
-    const patchPath = path.join(shelfDir, shelfName, "shelved.patch");
+    await this.assertWholeWorktreeOwned();
+    const shelf = await resolveShelfEntry(this.cwd, shelfName);
 
     try {
-      const patchContent = await fs.readFile(patchPath, "utf-8");
+      const patchContent = await fs.readFile(shelf.patch, "utf-8");
       if (patchContent.trim()) {
         // Apply patch using git apply
         try {
-          await this.execGit(["apply", "--3way", patchPath]);
+          await this.execGit(["apply", "--3way", "--", shelf.patch]);
         } catch {
           // Try without --3way as fallback
-          await this.execGit(["apply", patchPath]);
+          await this.execGit(["apply", "--", shelf.patch]);
         }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to apply shelf "${shelfName}": ${message}`);
+      throw new Error(
+        vscode.l10n.t('Failed to apply shelf "{0}": {1}', shelfName, message),
+      );
     }
 
     if (drop) {
@@ -1410,20 +1816,20 @@ export class GitService {
   }
 
   async deleteIdeaShelf(shelfName: string): Promise<void> {
-    const shelfDir = path.join(this.cwd, ".idea", "shelf");
-    const entryDir = path.join(shelfDir, shelfName);
-    const xmlPath = path.join(shelfDir, `${shelfName}.xml`);
+    const safeShelfName = safeRelativePath(shelfName);
+    await this.checkedPath(path.join(".idea", "shelf", safeShelfName), true);
+    const shelf = await resolveShelfEntry(this.cwd, shelfName);
 
     // Delete directory
     try {
-      await fs.rm(entryDir, { recursive: true, force: true });
+      await fs.rm(shelf.directory, { recursive: true, force: true });
     } catch {
       // ignore
     }
 
     // Delete XML file
     try {
-      await fs.unlink(xmlPath);
+      await fs.unlink(shelf.xml);
     } catch {
       // ignore
     }
@@ -1439,17 +1845,20 @@ export class GitService {
   }
 
   async importPatchAsShelf(name: string, patchContent: string): Promise<void> {
-    const shelfDir = path.join(this.cwd, ".idea", "shelf");
-    await fs.mkdir(shelfDir, { recursive: true });
+    const shelfDir = await this.getShelfDirectory(true);
 
-    const sanitized = this.sanitizeShelfName(name || "Imported");
+    const sanitized = this.sanitizeShelfName(name || "Imported") || "Imported";
     const shelfName = await this.getUniqueShelfName(shelfDir, sanitized);
 
     // Create shelf directory and write patch
     const entryDir = path.join(shelfDir, shelfName);
+    await this.checkedPath(path.join(".idea", "shelf", shelfName), true);
     await fs.mkdir(entryDir, { recursive: true });
+    const verifiedEntryDir = await resolveWorktreePath(shelfDir, shelfName);
     await fs.writeFile(
-      path.join(entryDir, "shelved.patch"),
+      await resolveWorktreePath(verifiedEntryDir, "shelved.patch", {
+        allowMissing: true,
+      }),
       patchContent,
       "utf-8",
     );
@@ -1457,13 +1866,20 @@ export class GitService {
     // Write XML metadata
     const now = Date.now();
     const xml = `<changelist name="${shelfName}" date="${now}" recycled="false">\n  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/${shelfName}/shelved.patch" />\n  <option name="DESCRIPTION" value="${shelfName}" />\n</changelist>\n`;
-    await fs.writeFile(path.join(shelfDir, `${shelfName}.xml`), xml, "utf-8");
+    await fs.writeFile(
+      await resolveWorktreePath(shelfDir, `${shelfName}.xml`, {
+        allowMissing: true,
+      }),
+      xml,
+      "utf-8",
+    );
   }
 
   private async getUniqueShelfName(
     shelfDir: string,
     baseName: string,
   ): Promise<string> {
+    safeRelativePath(baseName);
     let candidate = baseName;
     let counter = 1;
     while (true) {
@@ -1487,9 +1903,9 @@ export class GitService {
     const tracked: string[] = [];
     const untracked: string[] = [];
 
-    for (const filePath of filePaths) {
+    for (const filePath of await this.checkedPaths(filePaths)) {
       try {
-        await this.execGit(["ls-files", "--error-unmatch", filePath]);
+        await this.execGit(["ls-files", "--error-unmatch", "--", filePath]);
         tracked.push(filePath);
       } catch {
         untracked.push(filePath);
@@ -1519,7 +1935,7 @@ export class GitService {
 
     // Generate patch for untracked files
     for (const filePath of untracked) {
-      const fullPath = path.join(this.cwd, filePath);
+      const fullPath = await resolveWorktreePath(this.cwd, filePath);
       try {
         const content = await fs.readFile(fullPath, "utf-8");
         const lines = content.split("\n");
@@ -1565,7 +1981,7 @@ export class GitService {
       const untrackedFiles = untrackedOutput.trim().split("\n").filter(Boolean);
 
       for (const filePath of untrackedFiles) {
-        const fullPath = path.join(this.cwd, filePath);
+        const fullPath = await resolveWorktreePath(this.cwd, filePath);
         try {
           const content = await fs.readFile(fullPath, "utf-8");
           const lines = content.split("\n");
@@ -1589,14 +2005,14 @@ export class GitService {
   }
 
   private async revertFiles(filePaths: string[]): Promise<void> {
-    for (const filePath of filePaths) {
+    for (const filePath of await this.checkedPaths(filePaths)) {
       try {
-        await this.execGit(["ls-files", "--error-unmatch", filePath]);
+        await this.execGit(["ls-files", "--error-unmatch", "--", filePath]);
         // Tracked file: checkout from HEAD
         await this.execGit(["checkout", "HEAD", "--", filePath]);
       } catch {
         // Untracked file: delete it
-        const fullPath = path.join(this.cwd, filePath);
+        const fullPath = await resolveWorktreePath(this.cwd, filePath);
         try {
           await fs.unlink(fullPath);
         } catch {
@@ -1607,6 +2023,7 @@ export class GitService {
   }
 
   private async revertAllChanges(): Promise<void> {
+    await this.assertWholeWorktreeOwned();
     // Reset tracked files
     try {
       await this.execGit(["checkout", "HEAD", "--", "."]);
@@ -1635,18 +2052,73 @@ export class GitService {
   }
 }
 
+interface PorcelainV1Entry {
+  indexStatus: string;
+  workTreeStatus: string;
+  /** In `-z` mode this is the destination/current path. */
+  path: string;
+  /** Present for a rename or copy, without quoting or arrow heuristics. */
+  oldPath?: string;
+}
+
+/**
+ * Parse Git porcelain v1's NUL-delimited form. Unlike the human-oriented
+ * newline form it preserves embedded newlines, spaces, Unicode and literal
+ * ` -> ` path text. Rename/copy records are `XY new\0old\0` in this mode.
+ */
+function parsePorcelainV1Z(output: string): PorcelainV1Entry[] {
+  const records = output.split("\0");
+  const entries: PorcelainV1Entry[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record || record.length < 4) continue;
+    const indexStatus = record[0] ?? " ";
+    const workTreeStatus = record[1] ?? " ";
+    if (record[2] !== " ") continue;
+    const path = record.slice(3);
+    if (!path) continue;
+    const renameOrCopy = [indexStatus, workTreeStatus].some(
+      (status) => status === "R" || status === "C",
+    );
+    const oldPath = renameOrCopy ? records[++index] : undefined;
+    if (renameOrCopy && !oldPath) continue;
+    entries.push({ indexStatus, workTreeStatus, path, oldPath });
+  }
+  return entries;
+}
+
+function isIndexChange(status: string): boolean {
+  return status !== " " && status !== "?" && status !== "!";
+}
+
+function isWorktreeChange(status: string): boolean {
+  return status !== " " && status !== "?" && status !== "!";
+}
+
+function isUnmerged(code: string): boolean {
+  return ["DD", "AU", "UD", "UA", "DU", "AA", "UU"].includes(code);
+}
+
+function workingStatus(
+  code: string,
+): import("./types").WorkingTreeFile["status"] {
+  if (code === "A") return "added";
+  if (code === "D") return "deleted";
+  if (code === "R" || code === "C") return "renamed";
+  return "modified";
+}
+
+/** Parse NUL-delimited `git diff --name-status -z` output. */
 function parseDiffNameStatus(output: string): DiffFile[] {
   const files: DiffFile[] = [];
-  for (const line of output.trim().split("\n")) {
-    if (!line.trim()) {
-      continue;
-    }
-    const parts = line.split("\t");
-    const statusCode = parts[0]?.trim() ?? "";
-
+  const records = output.split("\0");
+  for (let index = 0; index < records.length; index += 1) {
+    const statusCode = records[index] ?? "";
+    if (!statusCode) continue;
     if (statusCode.startsWith("R") || statusCode.startsWith("C")) {
-      const oldPath = parts[1] ?? "";
-      const newPath = parts[2] ?? "";
+      const oldPath = records[++index] ?? "";
+      const newPath = records[++index] ?? "";
+      if (!oldPath || !newPath) continue;
       files.push({
         oldPath,
         newPath,
@@ -1654,7 +2126,8 @@ function parseDiffNameStatus(output: string): DiffFile[] {
         isBinary: false,
       });
     } else {
-      const filePath = parts[1] ?? "";
+      const filePath = records[++index] ?? "";
+      if (!filePath) continue;
       let status: DiffFile["status"] = "modified";
       if (statusCode === "A") {
         status = "added";

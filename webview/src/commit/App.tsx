@@ -3,6 +3,7 @@ import { bridge } from "../shared/bridge";
 import { Tooltip } from "../shared/components/Tooltip";
 import "../shared/components/Tooltip.css";
 import { useCommitStore } from "../shared/store/commit-store";
+import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitTab } from "./components/CommitTab";
 import { IdeaShelfTab } from "./components/IdeaShelfTab";
 import { ShelfTab } from "./components/ShelfTab";
@@ -512,6 +513,12 @@ function MergeBanner() {
 }
 
 export function CommitApp() {
+  const workspace = useRepositoryStore();
+  const selectedRepository = workspace.repositories.find(
+    (item) =>
+      item.id === (workspace.commitRepositoryId ?? workspace.logRepositoryId),
+  );
+  const gitSelected = selectedRepository?.kind === "git";
   const {
     activeTab,
     setActiveTab,
@@ -540,16 +547,20 @@ export function CommitApp() {
         <button
           type="button"
           className={`commit-tab ${activeTab === "shelf" ? "active" : ""}`}
+          disabled={!gitSelected}
+          title="Git repositories only"
           onClick={() => setActiveTab("shelf")}
         >
-          Shelf
+          Shelf (Git)
         </button>
         <button
           type="button"
           className={`commit-tab ${activeTab === "stash" ? "active" : ""}`}
+          disabled={!gitSelected}
+          title="Git repositories only"
           onClick={() => setActiveTab("stash")}
         >
-          Stash
+          Stash (Git)
         </button>
       </div>
       <RebaseBanner />
@@ -558,8 +569,32 @@ export function CommitApp() {
       <ProgressBar visible={loading} />
       <div className="commit-content">
         {activeTab === "commit" && <CommitTab />}
-        {activeTab === "shelf" && <IdeaShelfTab />}
-        {activeTab === "stash" && <ShelfTab />}
+        {activeTab === "shelf" &&
+          (gitSelected ? (
+            <>
+              <div className="shelf-repository">
+                Git: {selectedRepository?.name}
+              </div>
+              <IdeaShelfTab key={selectedRepository?.id} />
+            </>
+          ) : (
+            <div className="repository-empty">
+              Shelf is available for Git repositories only.
+            </div>
+          ))}
+        {activeTab === "stash" &&
+          (gitSelected ? (
+            <>
+              <div className="shelf-repository">
+                Git: {selectedRepository?.name}
+              </div>
+              <ShelfTab key={selectedRepository?.id} />
+            </>
+          ) : (
+            <div className="repository-empty">
+              Stash is available for Git repositories only.
+            </div>
+          ))}
       </div>
     </div>
   );

@@ -1,30 +1,23 @@
 import * as vscode from "vscode";
-import type { MessageRouter } from "../messages/messageRouter";
+import type { RepositoryManager } from "../repositories/manager";
 import { getWebviewHtml } from "./html";
-
 export class GitLogViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "git-brains.gitLog";
-
+  static readonly viewType = "jettortoise.gitLog";
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly messageRouter: MessageRouter,
+    private readonly manager: RepositoryManager,
   ) {}
-
-  resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
-  ): void {
-    const webview = webviewView.webview;
-
-    webview.options = {
+  resolveWebviewView(view: vscode.WebviewView): void {
+    view.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
     };
-
-    webview.html = getWebviewHtml(webview, this.extensionUri, "panel");
-
-    const routerDisposable = this.messageRouter.registerWebview(webview);
-    webviewView.onDidDispose(() => routerDisposable.dispose());
+    view.webview.html = getWebviewHtml(
+      view.webview,
+      this.extensionUri,
+      "panel",
+    );
+    const connection = this.manager.connect(view.webview);
+    view.onDidDispose(() => connection.dispose());
   }
 }

@@ -1,3 +1,4 @@
+import { canCommit } from "../../shared/models/changes";
 import type { WorkingTreeFile } from "../../shared/store/commit-store";
 import { getCommitFileIcon } from "../utils/file-icon";
 
@@ -31,7 +32,11 @@ export function FileItem({
   return (
     <div
       className={`commit-file-item ${highlighted ? "highlighted" : ""}`}
-      onDoubleClick={onShowDiff}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onShowDiff();
+      }}
       onClick={onClick}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -42,6 +47,9 @@ export function FileItem({
       <input
         type="checkbox"
         className="commit-file-checkbox"
+        aria-label={`Commit ${file.path}`}
+        disabled={!canCommit(file)}
+        onClick={(event) => event.stopPropagation()}
         checked={selected}
         onChange={onToggle}
       />

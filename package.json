@@ -1,14 +1,14 @@
 {
-  "name": "idea-like-git-graph",
-  "displayName": "JetBrains Git - IntelliJ IDEA Git Graph, Commit & Shelf for VS Code",
-  "publisher": "autemj",
-  "description": "Bring IntelliJ IDEA / JetBrains Git experience to VS Code & Cursor: Git graph visualization, IDEA-style commit panel with shelf/stash, branch management, cherry-pick, rebase, merge, 3-way merge editor, and context menus. The best JetBrains Git alternative for Visual Studio Code.",
-  "version": "0.4.17",
+  "name": "jettortoise",
+  "displayName": "JetTortoise",
+  "publisher": "jieyuexing",
+  "description": "IDEA-style Commit and Log for Git and CVS across workspace repositories.",
+  "version": "0.6.0",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aotemj/jetbrains-git-graph"
+    "url": "https://github.com/jieyuexing/vscode-jettortoise-plugin"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -44,151 +44,151 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "git-brains-panel",
-          "title": "JetGit",
+          "id": "jettortoise.panel",
+          "title": "JetTortoise",
           "icon": "$(git-branch)"
         }
       ],
       "activitybar": [
         {
-          "id": "git-brains-commit",
+          "id": "jettortoise.commit",
           "title": "Commit",
           "icon": "images/commit-icon.svg"
         }
       ]
     },
     "views": {
-      "git-brains-panel": [
+      "jettortoise.panel": [
         {
           "type": "webview",
-          "id": "git-brains.gitLog",
-          "name": "Git Log"
+          "id": "jettortoise.gitLog",
+          "name": "Log"
         }
       ],
-      "git-brains-commit": [
+      "jettortoise.commit": [
         {
           "type": "webview",
-          "id": "git-brains.commitPanel",
+          "id": "jettortoise.commitPanel",
           "name": "Commit"
         }
       ]
     },
     "commands": [
       {
-        "command": "git-brains.refreshLog",
-        "title": "Refresh Git Log",
+        "command": "jettortoise.refreshLog",
+        "title": "Refresh Log",
         "icon": "$(refresh)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.openMergeEditor",
+        "command": "jettortoise.openMergeEditor",
         "title": "Open Merge Editor",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.openConflicts",
+        "command": "jettortoise.openConflicts",
         "title": "Conflicts",
         "icon": "$(git-merge)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.openMergeEditorFromSCM",
-        "title": "Open in JetGit Merge Editor",
+        "command": "jettortoise.openMergeEditorFromSCM",
+        "title": "Open in JetTortoise Merge Editor",
         "icon": "$(git-merge)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.showFileHistory",
-        "title": "(JetGit) Show File History",
+        "command": "jettortoise.showFileHistory",
+        "title": "(JetTortoise) Show File History",
         "icon": "$(history)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.nextDiff",
+        "command": "jettortoise.nextDiff",
         "title": "Next File Diff",
         "icon": "$(arrow-down)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.prevDiff",
+        "command": "jettortoise.prevDiff",
         "title": "Previous File Diff",
         "icon": "$(arrow-up)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.commitPanel.refresh",
+        "command": "jettortoise.commitPanel.refresh",
         "title": "Refresh Changes",
         "icon": "$(refresh)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.commitPanel.commit",
+        "command": "jettortoise.commitPanel.commit",
         "title": "Commit",
         "icon": "$(check)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.commitPanel.commitAndPush",
+        "command": "jettortoise.commitPanel.commitAndPush",
         "title": "Commit and Push",
         "icon": "$(cloud-upload)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.commitPanel.shelve",
+        "command": "jettortoise.commitPanel.shelve",
         "title": "Shelve Changes",
         "icon": "$(archive)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.commitPanel.unshelve",
+        "command": "jettortoise.commitPanel.unshelve",
         "title": "Unshelve Changes",
         "icon": "$(package)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.openPushPanel",
+        "command": "jettortoise.openPushPanel",
         "title": "Push...",
         "icon": "$(cloud-upload)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       },
       {
-        "command": "git-brains.editSource",
-        "title": "(JetGit) Edit Source",
+        "command": "jettortoise.editSource",
+        "title": "(JetTortoise) Edit Source",
         "icon": "$(go-to-file)",
-        "category": "JetGit"
+        "category": "JetTortoise"
       }
     ],
     "menus": {
       "view/title": [],
       "scm/title": [
         {
-          "command": "git-brains.openConflicts",
+          "command": "jettortoise.openConflicts",
           "when": "scmProvider == git",
           "group": "navigation"
         }
       ],
       "scm/resourceState/context": [
         {
-          "command": "git-brains.openMergeEditorFromSCM",
+          "command": "jettortoise.openMergeEditorFromSCM",
           "when": "scmProvider == git && scmResourceGroup == merge",
           "group": "inline@10"
         }
       ],
       "editor/context": [
         {
-          "command": "git-brains.showFileHistory",
+          "command": "jettortoise.showFileHistory",
           "when": "editorTextFocus",
           "group": "git@1"
         },
         {
-          "command": "git-brains.editSource",
+          "command": "jettortoise.editSource",
           "when": "isInDiffEditor && resourceScheme != file",
           "group": "git@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "git-brains.showFileHistory",
+          "command": "jettortoise.showFileHistory",
           "when": "!explorerResourceIsFolder",
           "group": "git@1"
         }
@@ -196,23 +196,33 @@
     },
     "keybindings": [
       {
-        "command": "git-brains.openPushPanel",
+        "command": "jettortoise.openPushPanel",
         "key": "ctrl+shift+k",
         "mac": "cmd+shift+k"
       },
       {
-        "command": "git-brains.nextDiff",
+        "command": "jettortoise.nextDiff",
         "key": "ctrl+f7",
         "mac": "cmd+f7",
         "when": "editorFocus"
       },
       {
-        "command": "git-brains.prevDiff",
+        "command": "jettortoise.prevDiff",
         "key": "ctrl+shift+f7",
         "mac": "cmd+shift+f7",
         "when": "editorFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "JetTortoise",
+      "properties": {
+        "jettortoise.cvsPath": {
+          "type": "string",
+          "default": "cvs",
+          "description": "Path to the CVS executable."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
@@ -222,7 +232,7 @@
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "watch:webview": "cd webview && pnpm run watch",
     "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
-    "vsce:package": "pnpm run package && pnpm run build:web && vsce package --no-dependencies",
+    "vsce:package": "pnpm run package && pnpm run build:web && vsce package --no-dependencies --out release/",
     "vsce:publish": "pnpm run package && pnpm run build:web && vsce publish --no-dependencies",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
@@ -232,7 +242,8 @@
     "test": "vscode-test",
     "build:web": "cd webview && pnpm run build",
     "build": "pnpm run compile && pnpm run build:web",
-    "dev:web": "cd webview && pnpm run dev"
+    "dev:web": "cd webview && pnpm run dev",
+    "test:headless": "node scripts/headless-check.cjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",

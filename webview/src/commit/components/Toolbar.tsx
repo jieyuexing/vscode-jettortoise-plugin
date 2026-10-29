@@ -3,12 +3,15 @@ import { bridge } from "../../shared/bridge";
 import { Tooltip } from "../../shared/components/Tooltip";
 import "../../shared/components/Tooltip.css";
 import { useCommitStore } from "../../shared/store/commit-store";
+import { useRepositoryStore } from "../../shared/store/repository-store";
 
 interface ToolbarProps {
   onRefresh: () => void;
   onShelve: () => void;
   onRollback: () => void;
   hasChanges: boolean;
+  gitSelected: boolean;
+  onDiff: () => void;
 }
 
 export function Toolbar({
@@ -16,13 +19,19 @@ export function Toolbar({
   onShelve,
   onRollback,
   hasChanges,
+  gitSelected,
+  onDiff,
 }: ToolbarProps) {
   const [showViewMenu, setShowViewMenu] = useState(false);
   const { expandedGroups, toggleGroup, expandAllDirs } = useCommitStore();
+  const repositories = useRepositoryStore((state) => state.repositories);
 
   const handleExpandAll = useCallback(() => {
     // Expand file groups
-    const groups = ["changes", "staged", "unversioned"];
+    const groups = repositories.flatMap((repository) => [
+      `unversioned:${repository.id}`,
+      `incoming:${repository.id}`,
+    ]);
     for (const g of groups) {
       if (!expandedGroups.has(g)) {
         toggleGroup(g);
@@ -30,17 +39,24 @@ export function Toolbar({
     }
     // Expand all directories in tree view
     expandAllDirs();
-  }, [expandedGroups, toggleGroup, expandAllDirs]);
+  }, [expandedGroups, toggleGroup, expandAllDirs, repositories]);
 
   const handleCollapseAll = useCallback(() => {
+    const state = useCommitStore.getState();
+    state.collapseAllDirs(
+      state.changes.map((file) => `repository:${file.repositoryId}`),
+    );
     // Collapse file groups
-    const groups = ["changes", "staged", "unversioned"];
+    const groups = repositories.flatMap((repository) => [
+      `unversioned:${repository.id}`,
+      `incoming:${repository.id}`,
+    ]);
     for (const g of groups) {
       if (expandedGroups.has(g)) {
         toggleGroup(g);
       }
     }
-  }, [expandedGroups, toggleGroup]);
+  }, [expandedGroups, toggleGroup, repositories]);
 
   return (
     <div className="commit-toolbar">
@@ -63,45 +79,57 @@ export function Toolbar({
           <RollbackIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Shelve Changes">
-        <button
-          type="button"
-          className="commit-toolbar-btn"
-          onClick={onShelve}
-          disabled={!hasChanges}
-        >
-          <ShelveIcon />
-        </button>
-      </Tooltip>
+      {gitSelected && (
+        <Tooltip text="Shelve Changes (Git only)">
+          <button
+            type="button"
+            className="commit-toolbar-btn"
+            onClick={onShelve}
+            disabled={!hasChanges || !gitSelected}
+          >
+            <ShelveIcon />
+          </button>
+        </Tooltip>
+      )}
       <Tooltip text="Show Diff">
         <button
           type="button"
           className="commit-toolbar-btn"
           disabled={!hasChanges}
+          onClick={onDiff}
         >
           <DiffIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Pull">
+      <Tooltip text="Update Project">
         <button
           type="button"
           className="commit-toolbar-btn"
           style={{ opacity: 1 }}
-          onClick={() => bridge.request("pullBranch", {})}
+          onClick={() =>
+            bridge
+              .request("updateProject", {})
+              .catch((error) =>
+                useCommitStore.setState({ error: String(error) }),
+              )
+          }
         >
           <PullIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Push...">
-        <button
-          type="button"
-          className="commit-toolbar-btn"
-          style={{ opacity: 1 }}
-          onClick={() => bridge.request("openPushPanel")}
-        >
-          <PushIcon />
-        </button>
-      </Tooltip>
+      {gitSelected && (
+        <Tooltip text="Push...">
+          <button
+            type="button"
+            className="commit-toolbar-btn"
+            style={{ opacity: 1 }}
+            disabled={!gitSelected}
+            onClick={() => bridge.request("openPushPanel")}
+          >
+            <PushIcon />
+          </button>
+        </Tooltip>
+      )}
 
       <div className="commit-toolbar-spacer" />
 

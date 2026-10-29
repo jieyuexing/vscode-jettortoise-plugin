@@ -740,3 +740,104 @@ button.commit-dropdown-item:hover:not(:disabled) {
   color: var(--vscode-textLink-activeForeground, #3794ff);
   text-decoration: none;
 }
+
+.repository-header {
+  display: flex;
+  gap: 4px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.repository-header.active {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+.repository-header button,
+.commit-directory-header button {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.repository-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repository-kind {
+  opacity: 0.65;
+  font-size: 10px;
+  margin-inline: 6px;
+}
+.commit-repository-contents {
+  padding-left: 10px;
+}
+.commit-directory-header {
+  display: flex;
+  gap: 6px;
+}
+.commit-directory-children {
+  padding-left: 14px;
+}
+.repository-error {
+  color: var(--vscode-errorForeground);
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+.repository-empty,
+.repository-progress,
+.shelf-repository {
+  padding: 6px 10px;
+  opacity: 0.75;
+}
+.commit-group-header {
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+.commit-file-checkbox,
+.repository-header input {
+  accent-color: var(--vscode-focusBorder);
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+.repository-log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.repository-log-toolbar select {
+  flex: 1;
+  min-width: 0;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+}
+.repository-log-toolbar button,
+.cvs-revision-table button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 0;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.cvs-file-history {
+  height: 100%;
+  overflow: auto;
+}
+.cvs-revision-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  text-align: left;
+}
+.cvs-revision-table th,
+.cvs-revision-table td {
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}

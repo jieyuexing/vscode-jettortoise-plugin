@@ -3,15 +3,20 @@ import { createPortal } from "react-dom";
 import { bridge } from "../../shared/bridge";
 import { Tooltip } from "../../shared/components/Tooltip";
 import "../../shared/components/Tooltip.css";
+import { fileKey } from "../../shared/models/changes";
 import { useCommitStore } from "../../shared/store/commit-store";
+import { useRepositoryStore } from "../../shared/store/repository-store";
 
 export function CommitMessageArea() {
+  const workspace = useRepositoryStore();
+  const changes = useCommitStore((state) => state.changes);
   const {
     commitMessage,
     setCommitMessage,
     amend,
     setAmend,
     commit,
+    commitAndPush,
     loading,
     selectedFiles,
   } = useCommitStore();
@@ -23,6 +28,19 @@ export function CommitMessageArea() {
   const historyBtnRef = useRef<HTMLSpanElement>(null);
   const historyDropdownRef = useRef<HTMLDivElement>(null);
 
+  const selectedRoots = new Set(
+    changes
+      .filter((file) => selectedFiles.has(fileKey(file)))
+      .map((file) => file.repositoryId),
+  );
+  const singleGit =
+    selectedRoots.size === 1 &&
+    workspace.repositories.find(
+      (repository) => repository.id === [...selectedRoots][0],
+    )?.kind === "git";
+  useEffect(() => {
+    if (!singleGit && amend) setAmend(false);
+  }, [singleGit, amend, setAmend]);
   const hasSelectedFiles = selectedFiles.size > 0;
   const canCommit =
     commitMessage.trim().length > 0 && hasSelectedFiles && !loading;
@@ -35,9 +53,8 @@ export function CommitMessageArea() {
   const handleCommitAndPush = useCallback(async () => {
     if (!canCommit) return;
     setShowDropdown(false);
-    await commit();
-    await bridge.request("openPushPanel");
-  }, [canCommit, commit]);
+    await commitAndPush();
+  }, [canCommit, commitAndPush]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -109,6 +126,8 @@ export function CommitMessageArea() {
         <label>
           <input
             type="checkbox"
+            disabled={!singleGit}
+            title="Amend is available for one selected Git repository."
             checked={amend}
             onChange={(e) => setAmend(e.target.checked)}
           />
@@ -174,54 +193,56 @@ export function CommitMessageArea() {
           Commit
         </button>
 
-        <div className="commit-dropdown" ref={dropdownRef}>
-          <button
-            type="button"
-            className="commit-btn commit-btn-secondary commit-split-main"
-            disabled={!canCommit}
-            onClick={handleCommitAndPush}
-          >
-            Commit and Push...
-          </button>
-          <button
-            type="button"
-            className="commit-btn commit-btn-secondary commit-split-arrow"
-            disabled={!canCommit}
-            onClick={() => setShowDropdown(!showDropdown)}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+        {singleGit && (
+          <div className="commit-dropdown" ref={dropdownRef}>
+            <button
+              type="button"
+              className="commit-btn commit-btn-secondary commit-split-main"
+              disabled={!canCommit}
+              onClick={handleCommitAndPush}
             >
-              <polyline points="4,6 8,10 12,6" />
-            </svg>
-          </button>
-          {showDropdown && (
-            <div className="commit-dropdown-menu">
-              <button
-                type="button"
-                className="commit-dropdown-item"
-                onClick={handleCommitAndPush}
+              Commit and Push...
+            </button>
+            <button
+              type="button"
+              className="commit-btn commit-btn-secondary commit-split-arrow"
+              disabled={!canCommit}
+              onClick={() => setShowDropdown(!showDropdown)}
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
               >
-                Commit and Push
-              </button>
-              <div className="commit-dropdown-separator" />
-              <button
-                type="button"
-                className="commit-dropdown-item"
-                onClick={() => {
-                  setShowDropdown(false);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
+                <polyline points="4,6 8,10 12,6" />
+              </svg>
+            </button>
+            {showDropdown && (
+              <div className="commit-dropdown-menu">
+                <button
+                  type="button"
+                  className="commit-dropdown-item"
+                  onClick={handleCommitAndPush}
+                >
+                  Commit and Push
+                </button>
+                <div className="commit-dropdown-separator" />
+                <button
+                  type="button"
+                  className="commit-dropdown-item"
+                  onClick={() => {
+                    setShowDropdown(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

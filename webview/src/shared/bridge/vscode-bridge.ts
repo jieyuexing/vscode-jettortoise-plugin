@@ -1,3 +1,10 @@
+let repositoryId: string | undefined;
+let repositoryKind: "git" | "cvs" | undefined;
+export function setBridgeRepository(id?: string, kind?: "git" | "cvs") {
+  repositoryId = id;
+  repositoryKind = kind;
+}
+
 import type {
   Bridge,
   EventMessage,
@@ -34,6 +41,19 @@ export function createVSCodeBridge(): Bridge {
       }
     } else if (msg.type === "event") {
       const evt = msg as EventMessage;
+      const owner = (evt.data as { repositoryId?: string } | null)
+        ?.repositoryId;
+      if (
+        [
+          "gitStateChanged",
+          "commitStateChanged",
+          "showFileHistory",
+          "operationStart",
+          "operationEnd",
+        ].includes(evt.event) &&
+        (repositoryKind === "cvs" || (owner && owner !== repositoryId))
+      )
+        return;
       for (const h of eventHandlers) {
         h(evt.event, evt.data);
       }
@@ -47,12 +67,26 @@ export function createVSCodeBridge(): Bridge {
         const timeout = setTimeout(() => {
           pendingRequests.delete(id);
           reject(new Error(`Request '${command}' timed out`));
-        }, 10_000);
+        }, 240_000);
 
+        const owner = repositoryId;
+        const globalCommand = [
+          "getRepositories",
+          "getRepositoryChanges",
+          "refreshRepositories",
+          "selectRepository",
+          "commitRepositories",
+          "expandUnversioned",
+          "ignoreUnversioned",
+          "addUnversioned",
+          "updateProject",
+        ].includes(command);
         pendingRequests.set(id, {
           resolve: (v) => {
             clearTimeout(timeout);
-            resolve(v);
+            if (!globalCommand && owner !== repositoryId)
+              reject(new Error("Repository selection changed."));
+            else resolve(v);
           },
           reject: (e) => {
             clearTimeout(timeout);
@@ -60,7 +94,12 @@ export function createVSCodeBridge(): Bridge {
           },
         });
 
-        const msg: RequestMessage = { type: "request", id, command, params };
+        const msg: RequestMessage = {
+          type: "request",
+          id,
+          command,
+          params: { ...(repositoryId ? { repositoryId } : {}), ...params },
+        };
         vscode.postMessage(msg);
       });
     },

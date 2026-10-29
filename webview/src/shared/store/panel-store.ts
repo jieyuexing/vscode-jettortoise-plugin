@@ -19,6 +19,7 @@ interface PanelFilter {
 }
 
 interface PanelStore {
+  repositoryId?: string;
   commits: Commit[];
   /** Commits filtered by search/author (client-side). Graph layout uses full `commits`. */
   visibleCommits: Commit[];

@@ -1,18 +1,15 @@
 import { create } from "zustand";
 import { bridge } from "../bridge";
 
-export interface WorkingTreeFile {
-  path: string;
-  oldPath?: string;
-  status:
-    | "added"
-    | "modified"
-    | "deleted"
-    | "renamed"
-    | "untracked"
-    | "conflicted";
-  staged: boolean;
-}
+import {
+  type ChangeFile,
+  canCommit,
+  fileKey,
+  groupChanges,
+  initialSelection,
+} from "../models/changes";
+import { useRepositoryStore, type WorkspaceState } from "./repository-store";
+export type WorkingTreeFile = ChangeFile;
 
 export interface ShelveEntry {
   id: string;
@@ -52,6 +49,7 @@ interface CommitStore {
   // UI state
   activeTab: TabType;
   loading: boolean;
+  error?: string;
   expandedGroups: Set<string>;
   groupByDirectory: boolean;
   showUnversioned: boolean;
@@ -95,7 +93,7 @@ interface CommitStore {
 
 export const useCommitStore = create<CommitStore>((set, get) => ({
   changes: [],
-  selectedFiles: new Set<string>(),
+  selectedFiles: initialSelection([]),
   highlightedFiles: new Set<string>(),
   commitMessage: "",
   amend: false,
@@ -103,42 +101,35 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   ideaShelves: [],
   activeTab: "commit",
   loading: false,
-  expandedGroups: new Set(["changes", "unversioned", "staged"]),
+  expandedGroups: new Set(["changes", "staged"]),
   groupByDirectory: true,
   showUnversioned: true,
   collapsedDirs: new Set<string>(),
 
   async fetchChanges() {
-    set({ loading: true });
-    const start = Date.now();
     try {
       const result = (await bridge.request(
-        "getWorkingTreeChanges",
-      )) as WorkingTreeFile[];
-      if (Array.isArray(result)) {
-        const newPaths = new Set(result.map((f) => `${f.path}:${f.staged}`));
-        const { selectedFiles, changes } = get();
-        if (changes.length === 0) {
-          // First load — no auto-selection (user manually selects files)
-          set({ changes: result, selectedFiles: new Set<string>() });
-        } else {
-          // Refresh — preserve user's selection state (only keep existing selections)
-          const preserved = new Set<string>();
-          for (const p of selectedFiles) {
-            if (newPaths.has(p)) preserved.add(p);
-          }
-          set({ changes: result, selectedFiles: preserved });
-        }
-      }
-    } catch (err) {
-      console.error("fetchChanges failed:", err);
-    } finally {
-      // Ensure loading bar is visible for at least 300ms
-      const elapsed = Date.now() - start;
-      if (elapsed < 300) {
-        await new Promise((r) => setTimeout(r, 300 - elapsed));
-      }
-      set({ loading: false });
+        "getRepositoryChanges",
+      )) as WorkspaceState;
+      useRepositoryStore.getState().apply(result);
+      const groups = groupChanges(result.repositories, result.snapshots);
+      const changes = groups.flatMap((group) => [
+        ...group.changes,
+        ...group.unversioned,
+        ...group.incoming,
+      ]);
+      const valid = new Set(changes.filter(canCommit).map(fileKey));
+      set({
+        changes,
+        selectedFiles: new Set(
+          [...get().selectedFiles].filter((key) => valid.has(key)),
+        ),
+      });
+    } catch (error) {
+      set({
+        error:
+          error instanceof Error ? error.message : "Unable to refresh changes.",
+      });
     }
   },
 
@@ -163,7 +154,11 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
       // Load last commit message
       void (async () => {
         try {
-          const result = (await bridge.request("getAmendMessage")) as {
+          const result = (await bridge.request("getAmendMessage", {
+            repositoryId: get().changes.find((file) =>
+              get().selectedFiles.has(fileKey(file)),
+            )?.repositoryId,
+          })) as {
             message: string;
           };
           if (result?.message) {
@@ -202,7 +197,7 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
 
   selectAllFiles() {
     const { changes } = get();
-    const allPaths = new Set(changes.map((f) => `${f.path}:${f.staged}`));
+    const allPaths = new Set(changes.filter(canCommit).map(fileKey));
     set({ selectedFiles: allPaths });
   },
 
@@ -263,56 +258,48 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   },
 
   async commit() {
-    const { commitMessage, amend, changes, selectedFiles } = get();
-    if (!commitMessage.trim()) return false;
-
-    // Get selected file paths (only unstaged ones need to be staged)
-    const filesToStage = changes
-      .filter((f) => !f.staged && selectedFiles.has(`${f.path}:${f.staged}`))
-      .map((f) => f.path);
-
+    const { commitMessage, changes, selectedFiles, amend } = get();
+    const files = changes
+      .filter((file) => canCommit(file) && selectedFiles.has(fileKey(file)))
+      .map((file) => ({ repositoryId: file.repositoryId, path: file.path }));
+    if (!commitMessage.trim() || !files.length) return false;
     try {
-      set({ loading: true });
-      await bridge.request("commitChanges", {
+      set({ loading: true, error: undefined });
+      await bridge.request("commitRepositories", {
         message: commitMessage,
+        files,
         amend,
-        filePaths: filesToStage,
       });
-      set({ commitMessage: "", amend: false });
+      set({ commitMessage: "", amend: false, selectedFiles: new Set() });
       await get().fetchChanges();
       return true;
-    } catch (err) {
-      console.error("commit failed:", err);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Commit failed." });
       return false;
     } finally {
       set({ loading: false });
     }
   },
-
   async commitAndPush() {
-    const { commitMessage, amend, changes, selectedFiles } = get();
-    if (!commitMessage.trim()) return false;
-
-    const filesToStage = changes
-      .filter((f) => !f.staged && selectedFiles.has(`${f.path}:${f.staged}`))
-      .map((f) => f.path);
-
-    try {
-      set({ loading: true });
-      await bridge.request("commitAndPush", {
-        message: commitMessage,
-        amend,
-        filePaths: filesToStage,
+    const selected = get().changes.filter((file) =>
+      get().selectedFiles.has(fileKey(file)),
+    );
+    const roots = new Set(selected.map((file) => file.repositoryId));
+    const repositoryId = selected[0]?.repositoryId;
+    if (
+      roots.size !== 1 ||
+      useRepositoryStore
+        .getState()
+        .repositories.find((item) => item.id === repositoryId)?.kind !== "git"
+    ) {
+      set({
+        error: "Commit and Push is available for one Git repository at a time.",
       });
-      set({ commitMessage: "", amend: false });
-      await get().fetchChanges();
-      return true;
-    } catch (err) {
-      console.error("commitAndPush failed:", err);
       return false;
-    } finally {
-      set({ loading: false });
     }
+    if (!(await get().commit())) return false;
+    await bridge.request("openPushPanel", { repositoryId });
+    return true;
   },
 
   async rollbackFile(filePath: string) {
@@ -477,11 +464,17 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   },
 }));
 
-// Listen for commit state changes
-bridge.onEvent((event) => {
-  if (event === "commitStateChanged" || event === "gitStateChanged") {
-    useCommitStore.getState().fetchChanges();
-    useCommitStore.getState().fetchIdeaShelves();
-    useCommitStore.getState().fetchShelves();
+// 快照只影响对应仓库，保留其它仓库的选择和提交说明。
+bridge.onEvent((event, data) => {
+  if (["repositoriesChanged", "repositorySnapshot"].includes(event))
+    void useCommitStore.getState().fetchChanges();
+  if (event === "commitCommand") {
+    const command = (data as { command: string }).command;
+    const store = useCommitStore.getState();
+    if (command === "commit") void store.commit();
+    if (command === "commitAndPush") void store.commitAndPush();
+    if (command === "refresh") void bridge.request("refreshRepositories");
+    if (command === "shelve") store.setActiveTab("shelf");
+    if (command === "unshelve") store.setActiveTab("shelf");
   }
 });

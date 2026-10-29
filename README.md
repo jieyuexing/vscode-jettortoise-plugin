@@ -4,9 +4,9 @@
 
 <img src="https://raw.githubusercontent.com/aotemj/jetbrains-git-graph/main/images/assets/logo-128.png" width="80" />
 
-<h1>JetBrains Git - IntelliJ IDEA Git Graph, Commit & Shelf for VS Code</h1>
+<h1>JetTortoise</h1>
 
-The most complete **IntelliJ IDEA / JetBrains Git** experience for **VS Code** and **Cursor**. Includes Git graph visualization, IDEA-style commit panel with shelf and stash, branch management with context menus, cherry-pick, rebase, merge, and 3-way merge editor. Works like WebStorm, PyCharm, GoLand, and Rider's Git tooling.
+IDEA-style Commit and Log for Git and CVS across workspace repositories. Changes are grouped by repository and directory; unversioned files and incoming updates stay separate. Git retains the upstream graph, shelf, and branch tools; CVS provides file revision history.
 
 > Fork of [zhyc9de/jet-git](https://github.com/zhyc9de/jet-git) with full IntelliJ IDEA-style context menus and UI enhancements.
 

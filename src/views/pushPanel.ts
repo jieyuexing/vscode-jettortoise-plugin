@@ -27,8 +27,8 @@ export class PushPanel {
     }
 
     this.panel = vscode.window.createWebviewPanel(
-      "git-brains.pushPanel",
-      `Push Commits to ${branchName}`,
+      "jettortoise.git.pushPanel",
+      vscode.l10n.t("Push Commits to {0}", branchName),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -46,6 +46,7 @@ export class PushPanel {
 
     const routerDisposable = this.messageRouter.registerWebview(
       this.panel.webview,
+      "push",
     );
 
     this.panel.onDidDispose(() => {
@@ -55,6 +56,9 @@ export class PushPanel {
   }
 
   close(): void {
+    this.panel?.dispose();
+  }
+  dispose(): void {
     this.panel?.dispose();
   }
 }

@@ -3,9 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import "allotment/dist/style.css";
 import { Tooltip } from "../shared/components/Tooltip";
 import "../shared/components/Tooltip.css";
+import { bridge } from "../shared/bridge";
 import { usePreventSelect } from "../shared/hooks/usePreventSelect";
 import { usePanelStore } from "../shared/store/panel-store";
+import { useRepositoryStore } from "../shared/store/repository-store";
 import { BranchTree } from "./components/BranchTree";
+import { CvsHistory } from "./components/CvsHistory";
 import { DetailPanel } from "./components/DetailPanel";
 import { GitGraphPanel } from "./components/GitGraphPanel";
 import { Toolbar } from "./components/Toolbar";
@@ -44,7 +47,7 @@ function ProgressBar({ visible }: { visible: boolean }) {
   );
 }
 
-export function PanelApp() {
+function GitPanelApp() {
   const loading = usePanelStore((s) => s.loading);
   const commits = usePanelStore((s) => s.commits);
   const operationInProgress = usePanelStore((s) => s.operationInProgress);
@@ -306,5 +309,87 @@ function CloseIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+export function PanelApp() {
+  const { repositories, logRepositoryId, activeFile, ready, load, select } =
+    useRepositoryStore();
+  const repository = repositories.find((item) => item.id === logRepositoryId);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    usePanelStore.setState({
+      repositoryId: logRepositoryId,
+      commits: [],
+      visibleCommits: [],
+      branches: [],
+      tags: [],
+      commitFiles: [],
+      selectedCommitHash: null,
+      selectedCommitHashes: [],
+      selectedFilePath: null,
+      rangeOldest: null,
+      rangeNewest: null,
+      laneSnapshot: null,
+      graphLayout: {},
+      filter: {
+        searchQuery: "",
+        branch: "",
+        author: "",
+        dateRange: "",
+        file: "",
+      },
+      loading: false,
+      hasMore: true,
+    });
+  }, [logRepositoryId]);
+  return (
+    <div
+      style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
+      <div className="repository-log-toolbar">
+        <label htmlFor="log-repository">Repository</label>
+        <select
+          id="log-repository"
+          value={logRepositoryId ?? ""}
+          onChange={(event) => void select(event.target.value, "log")}
+        >
+          {!repository && <option value="">Select repository</option>}
+          {repositories.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name} [{item.kind.toUpperCase()}] — {item.root}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void bridge.request("refreshRepositories")}
+        >
+          Refresh
+        </button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {!ready ? (
+          <div className="repository-empty">Loading repositories…</div>
+        ) : !repository ? (
+          <div className="repository-empty">No available repository.</div>
+        ) : repository.kind === "cvs" ? (
+          <CvsHistory
+            key={repository.id}
+            repositoryId={repository.id}
+            activeFile={activeFile}
+          />
+        ) : (
+          <GitPanelApp key={repository.id} />
+        )}
+      </div>
+    </div>
   );
 }

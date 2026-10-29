@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
+import {
+  GitComparisonResolver,
+  type ResolvedComparison,
+} from "../comparison/resolver";
 import type { GitService } from "../git/gitService";
+import { resolveWorktreePath } from "../git/security";
 import type { DiffFile } from "../git/types";
-import { GIT_BRAINS_SCHEME } from "./gitContentProvider";
+import { assertOwnedPath } from "../repositories/boundaries.cjs";
+import { gitRevisionUri } from "./gitContentProvider";
 
 export class DiffEditorManager {
   /** Current diff navigation state */
@@ -11,7 +17,28 @@ export class DiffEditorManager {
   private diffBaseRef?: string;
   private diffCherryPickHashes?: string[];
 
-  constructor(private readonly gitService: GitService) {}
+  constructor(
+    private readonly gitService: GitService,
+    private readonly repositoryId: string,
+    private readonly repositoryRoot?: string,
+  ) {}
+
+  /**
+   * The session uses this for both the native working-file action and inline
+   * preview.  Keeping it here prevents HEAD↔index and HEAD↔disk from drifting.
+   */
+  async resolveWorkingComparison(
+    filePath: string,
+    staged: boolean,
+  ): Promise<ResolvedComparison> {
+    if (!this.repositoryRoot) {
+      throw new Error("A repository root is required for worktree comparisons");
+    }
+    return new GitComparisonResolver(
+      this.gitService,
+      this.repositoryRoot,
+    ).working(filePath, staged);
+  }
 
   /** Set the file list for diff navigation */
   setDiffFileList(
@@ -36,7 +63,7 @@ export class DiffEditorManager {
   async nextDiff(): Promise<boolean> {
     if (this.diffFiles.length === 0) {
       void vscode.window.setStatusBarMessage(
-        "$(info) No file list available. Open a diff from Changed Files first.",
+        `$(info) ${vscode.l10n.t("No file list available. Open a diff from Changed Files first.")}`,
         3000,
       );
       return false;
@@ -50,7 +77,7 @@ export class DiffEditorManager {
   async prevDiff(): Promise<boolean> {
     if (this.diffFiles.length === 0) {
       void vscode.window.setStatusBarMessage(
-        "$(info) No file list available. Open a diff from Changed Files first.",
+        `$(info) ${vscode.l10n.t("No file list available. Open a diff from Changed Files first.")}`,
         3000,
       );
       return false;
@@ -69,7 +96,7 @@ export class DiffEditorManager {
     const total = this.diffFiles.length;
     const current = this.diffIndex + 1;
     void vscode.window.setStatusBarMessage(
-      `$(arrow-right) File ${current}/${total}: ${filePath.split("/").pop()}  —  Press again to go to the next file`,
+      `$(arrow-right) ${vscode.l10n.t("File {0}/{1}: {2}  —  Press again to go to the next file", current, total, filePath.split("/").pop() ?? filePath)}`,
       5000,
     );
 
@@ -89,89 +116,63 @@ export class DiffEditorManager {
     baseRef?: string,
     cherryPickHashes?: string[],
   ): Promise<void> {
-    const status = fileMeta?.status ?? "modified";
-    const oldPath = fileMeta?.oldPath ?? filePath;
-    const newPath = fileMeta?.newPath ?? filePath;
+    const comparison = await new GitComparisonResolver(
+      this.gitService,
+      this.repositoryRoot ?? "",
+    ).history(commit, filePath, fileMeta, baseRef, cherryPickHashes);
+    await this.openResolvedComparison(comparison);
+  }
 
-    // Determine left (parent) and right (commit) refs
-    let leftRef: string;
-    let rightRef: string = commit;
-
-    if (cherryPickHashes && cherryPickHashes.length > 1) {
-      const range = await this.gitService.findFileRange(
-        cherryPickHashes,
-        newPath || oldPath,
-      );
-      if (range) {
-        rightRef = range.newest;
-        const parents = await this.gitService.getCommitParents(range.oldest);
-        leftRef = parents[0] ?? "";
-      } else {
-        const parents = await this.gitService.getCommitParents(commit);
-        leftRef = parents[0] ?? "";
-      }
-    } else if (baseRef) {
-      leftRef = baseRef;
-    } else {
-      const parents = await this.gitService.getCommitParents(commit);
-      leftRef = parents[0] ?? "";
-    }
-
-    // Build URIs based on file status
-    let leftUri: vscode.Uri;
-    let rightUri: vscode.Uri;
-
-    switch (status) {
-      case "added":
-        leftUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${newPath}?ref=empty`,
-        );
-        rightUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${newPath}?ref=${rightRef}`,
-        );
-        break;
-      case "deleted":
-        leftUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${oldPath}?ref=${leftRef}`,
-        );
-        rightUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${oldPath}?ref=empty`,
-        );
-        break;
-      case "renamed":
-      case "copied":
-        leftUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${oldPath}?ref=${leftRef}`,
-        );
-        rightUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${newPath}?ref=${rightRef}`,
-        );
-        break;
-      default: // modified
-        leftUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${newPath}?ref=${leftRef}`,
-        );
-        rightUri = vscode.Uri.parse(
-          `${GIT_BRAINS_SCHEME}:/${newPath}?ref=${rightRef}`,
-        );
-        break;
-    }
-
-    // Build title
-    const fileName = filePath.split("/").pop() ?? filePath;
-    const shortHash = commit.substring(0, 7);
-    const title =
-      cherryPickHashes && cherryPickHashes.length > 1
-        ? `${fileName} (${cherryPickHashes.length} commits)`
-        : baseRef
-          ? `${fileName} (${baseRef.substring(0, 7)}..${shortHash})`
-          : `${fileName} (${shortHash})`;
-
+  /**
+   * Open exactly the sides the preview resolver produced.  A worktree side is
+   * revalidated immediately before VS Code receives a file URI, preventing a
+   * path/symlink change between comparison resolution and native opening.
+   */
+  async openResolvedComparison(comparison: ResolvedComparison): Promise<void> {
+    const leftUri = await this.nativeUri(comparison.left);
+    const rightUri = await this.nativeUri(comparison.right);
     await vscode.commands.executeCommand(
       "vscode.diff",
       leftUri,
       rightUri,
-      title,
+      comparison.title,
     );
   }
+
+  private async nativeUri(
+    side: ResolvedComparison["left"],
+  ): Promise<vscode.Uri> {
+    if (side.source !== "worktree")
+      return nativeGitUri(this.repositoryId, side);
+    if (!this.repositoryRoot) {
+      throw new Error(
+        "A repository root is required for a worktree comparison side",
+      );
+    }
+    const filePath = await resolveWorktreePath(this.repositoryRoot, side.path, {
+      allowMissing: false,
+    });
+    await assertOwnedPath(this.repositoryRoot, "git", side.path);
+    return vscode.Uri.file(filePath);
+  }
+}
+
+/** Convert a checked Git comparison side into the existing repository URI. */
+export function nativeGitUri(
+  repositoryId: string,
+  side: Pick<ResolvedComparison["left"], "path" | "source" | "revision">,
+): vscode.Uri {
+  // Native historical views never receive a disk side.  Do not turn a
+  // repository-relative preview path into a file URI without the session's
+  // ownership/root validation.
+  if (side.source === "worktree") {
+    throw new Error(
+      "A worktree comparison side requires the session path guard",
+    );
+  }
+  return gitRevisionUri(
+    repositoryId,
+    side.path,
+    side.source === "empty" ? "empty" : (side.revision ?? "empty"),
+  );
 }

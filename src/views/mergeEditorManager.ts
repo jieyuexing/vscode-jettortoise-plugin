@@ -19,8 +19,8 @@ export class MergeEditorManager {
 
     const fileName = filePath.split("/").pop() ?? filePath;
     const panel = vscode.window.createWebviewPanel(
-      "git-brains.mergeEditor",
-      `Merge: ${fileName}`,
+      "jettortoise.git.mergeEditor",
+      vscode.l10n.t("Merge: {0}", fileName),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -39,7 +39,10 @@ export class MergeEditorManager {
       },
     );
 
-    const routerDisposable = this.messageRouter.registerWebview(panel.webview);
+    const routerDisposable = this.messageRouter.registerWebview(
+      panel.webview,
+      "merge",
+    );
 
     this.panels.set(filePath, panel);
     panel.onDidDispose(() => {
@@ -58,5 +61,9 @@ export class MergeEditorManager {
     if (panel) {
       panel.dispose();
     }
+  }
+  dispose(): void {
+    for (const panel of this.panels.values()) panel.dispose();
+    this.panels.clear();
   }
 }

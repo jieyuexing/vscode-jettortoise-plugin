@@ -18,13 +18,11 @@ interface PushRejectedState {
 
 function PushRejectedDialog({
   branchName,
-  onRebase,
-  onMerge,
+  onUpdate,
   onCancel,
 }: {
   branchName: string;
-  onRebase: () => void;
-  onMerge: () => void;
+  onUpdate: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -36,7 +34,8 @@ function PushRejectedDialog({
         </div>
         <p className="push-rejected-message">
           Push of the current branch "{branchName}" was rejected. Remote changes
-          need to be merged before pushing.
+          must be fast-forwarded before pushing. Diverged branches require
+          manual resolution.
         </p>
         <div className="push-rejected-actions">
           <button
@@ -48,17 +47,10 @@ function PushRejectedDialog({
           </button>
           <button
             type="button"
-            className="push-btn push-btn-rebase"
-            onClick={onRebase}
+            className="push-btn push-btn-secondary"
+            onClick={onUpdate}
           >
-            Rebase
-          </button>
-          <button
-            type="button"
-            className="push-btn push-btn-merge"
-            onClick={onMerge}
-          >
-            Merge
+            Update (fast-forward only) and Push
           </button>
         </div>
       </div>
@@ -174,13 +166,13 @@ export function PushApp() {
     [branchName, targetRemote, targetBranch, commits.length],
   );
 
-  const handleRebaseAndPush = useCallback(async () => {
+  const handleUpdateAndPush = useCallback(async () => {
     setPushRejected({ show: false, branchName: "" });
     setError(null);
     setPushing(true);
     try {
-      await bridge.request("pullRebase", { branchName });
-      // After successful rebase, retry push
+      await bridge.request("pullBranch", { branchName });
+      // 快进成功后才重试推送。
       await bridge.request("executePush", {
         branchName,
         remote: targetRemote,
@@ -188,34 +180,7 @@ export function PushApp() {
         force: false,
       });
       setPushing(false);
-      const message = `Rebased and pushed to ${targetRemote}/${targetBranch}`;
-      bridge.request("showInfoNotification", { message }).catch(() => {});
-      setTimeout(() => {
-        bridge.request("closePushPanel");
-      }, 500);
-    } catch (err) {
-      setPushing(false);
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      bridge.request("showErrorNotification", { message: msg }).catch(() => {});
-    }
-  }, [branchName, targetRemote, targetBranch]);
-
-  const handleMergeAndPush = useCallback(async () => {
-    setPushRejected({ show: false, branchName: "" });
-    setError(null);
-    setPushing(true);
-    try {
-      await bridge.request("pullMerge", { branchName });
-      // After successful merge, retry push
-      await bridge.request("executePush", {
-        branchName,
-        remote: targetRemote,
-        targetBranch: targetBranch,
-        force: false,
-      });
-      setPushing(false);
-      const message = `Merged and pushed to ${targetRemote}/${targetBranch}`;
+      const message = `Updated and pushed to ${targetRemote}/${targetBranch}`;
       bridge.request("showInfoNotification", { message }).catch(() => {});
       setTimeout(() => {
         bridge.request("closePushPanel");
@@ -527,8 +492,7 @@ export function PushApp() {
       {pushRejected.show && (
         <PushRejectedDialog
           branchName={pushRejected.branchName}
-          onRebase={handleRebaseAndPush}
-          onMerge={handleMergeAndPush}
+          onUpdate={handleUpdateAndPush}
           onCancel={() => setPushRejected({ show: false, branchName: "" })}
         />
       )}

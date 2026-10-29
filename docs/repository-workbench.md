@@ -62,6 +62,16 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
 - 0.5.0 在 141 上出现过「无法完整确认仓库边界」（`BOUNDARY_UNAVAILABLE`），来源至今未复现，候选见执行记录；S1 在真实窗口验收时留意。
 - 打开方式与远端落点见总仓 `wiki/gtd/reference/technical/machine-matrix.md`「141 Windows 的 VS Code」。
 
+### 用户反馈（2026-10-29，141 NsnWeb 实机）
+
+- 仓库列表把 `build`、`build\classes` 和十几条 `src\main\java\…`、`src\main\webapp\…` 都列成 CVS 仓库。用户：“理论上 下面这一段在插件中就不该显示”。
+  - `src\…` 是 0.5.0 误识别后留在 `repositoryRegistrations` 里的自动登记。这些目录父级的 `Entries.Log` 里有 `A D/<名>/`，0.5.1 起按连续目录处理；完整扫描只会把旧登记标成不可用，不会删除。
+  - `build`、`build\classes` 的 Entries 为空，Root 与 NsnWeb 相同，Repository（`NsnWeb/build`、`NsnWeb/build/classes`）在父工作副本的 Repository 之下，但父目录 Entries 没有登记它们。
+  - 处理口径：
+    1. 完整扫描后没再发现的自动登记直接删除，不留隐藏记录；手动登记仍标为不可用；扫描不完整时不动任何登记。
+    2. 嵌套 CVS 目录若 Root 与所在工作副本相同、且 Repository 在其 Repository 路径之下，就属于同一项目，只是父目录 Entries 没登记：不登记、不建 SourceControl、不出现在任何列表里。边界遍历仍在它那里停止，写保护不变，手动添加仍允许。正文「独立 checkout 单列」只指 Root 不同或 Repository 不在父路径之下的 checkout。
+- 旧四栏工作台：提交栏里全是 `.gradle/…` 的「未知状态」，「独立子仓库」里有 `build`、`build\classes`。用户：“现在这整个画面也都一团糟 重新重构一下”。按本节推进 S2、S3，旧工作台整体删除；S1 的入口是左侧「源代码管理」视图。
+
 ### 真实需求
 
 日常提交路径要和 IDEA 一样短：

@@ -6,6 +6,7 @@ export interface FileItemProps {
   file: WorkingTreeFile;
   selected: boolean;
   highlighted: boolean;
+  showPath?: boolean;
   onToggle: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onShowDiff: () => void;
@@ -16,6 +17,7 @@ export function FileItem({
   file,
   selected,
   highlighted,
+  showPath = true,
   onToggle,
   onContextMenu,
   onShowDiff,
@@ -44,15 +46,17 @@ export function FileItem({
         onContextMenu(e);
       }}
     >
-      <input
-        type="checkbox"
-        className="commit-file-checkbox"
-        aria-label={`Commit ${file.path}`}
-        disabled={!canCommit(file)}
-        onClick={(event) => event.stopPropagation()}
-        checked={selected}
-        onChange={onToggle}
-      />
+      {file.status !== "incoming" && (
+        <input
+          type="checkbox"
+          className="commit-file-checkbox"
+          aria-label={`Commit ${file.path}`}
+          disabled={!canCommit(file)}
+          onClick={(event) => event.stopPropagation()}
+          checked={selected}
+          onChange={onToggle}
+        />
+      )}
       <span className="commit-file-icon">
         <FileIcon style={{ width: 16, height: 16 }} />
       </span>
@@ -63,12 +67,18 @@ export function FileItem({
       >
         {fileName}
       </span>
-      {dirPath && (
+      {showPath && dirPath && (
         <span className="commit-file-path" title={dirPath}>
           {dirPath}
         </span>
       )}
-      <span className="commit-file-status" style={{ color: statusColor }}>
+      <span
+        className="commit-file-status"
+        style={{ color: statusColor }}
+        title={
+          file.status === "incoming" ? "Remote version available" : undefined
+        }
+      >
         {statusLabel}
       </span>
     </div>
@@ -89,6 +99,8 @@ function getStatusLabel(status: WorkingTreeFile["status"]): string {
       return "U";
     case "conflicted":
       return "C";
+    case "incoming":
+      return "↓";
     default:
       return "?";
   }

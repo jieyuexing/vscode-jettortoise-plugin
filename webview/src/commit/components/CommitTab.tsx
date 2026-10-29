@@ -83,7 +83,10 @@ export function CommitTab() {
     void select(file.repositoryId, "commit");
     setMenu({ x: event.clientX, y: event.clientY, file });
   };
-  const renderFile = (file: ChangeFile): React.ReactNode => {
+  const renderFile = (
+    file: ChangeFile,
+    showPath = !groupByDirectory,
+  ): React.ReactNode => {
     const key = fileKey(file);
     if (file.directory) {
       const expanded = expandedGroups.has(`lazy:${key}`);
@@ -111,12 +114,12 @@ export function CommitTab() {
               )
             }
           >
-            {expanded ? "▾" : "▸"} 📁 {file.path.split("/").pop()}
+            <Chevron expanded={expanded} /> {file.path.split("/").pop()}
           </button>
           {lazyErrors[key] && <div role="alert">{lazyErrors[key]}</div>}
           {expanded && (
             <div className="commit-directory-children">
-              {lazy[key]?.map(renderFile)}
+              {lazy[key]?.map((file) => renderFile(file, false))}
             </div>
           )}
         </div>
@@ -126,6 +129,7 @@ export function CommitTab() {
       <FileItem
         key={key}
         file={file}
+        showPath={showPath}
         selected={selectedFiles.has(key)}
         highlighted={highlightedFiles.has(key)}
         onToggle={() => toggleFileSelection(key)}
@@ -224,7 +228,7 @@ export function CommitTab() {
                   aria-expanded={expanded}
                   onClick={() => toggleDir(repositoryKey)}
                 >
-                  {expanded ? "▾" : "▸"}
+                  <Chevron expanded={expanded} />
                 </button>
                 <input
                   type="checkbox"
@@ -265,10 +269,12 @@ export function CommitTab() {
                 <div className="commit-repository-contents">
                   {group.changes.length > 0 && (
                     <div className="commit-group-header">
-                      Changes{" "}
+                      <span className="commit-group-title">Changes</span>{" "}
                       <span className="commit-group-count">{group.count}</span>
                     </div>
                   )}
+                  {groupByDirectory &&
+                    group.rootFiles.map((file) => renderFile(file))}
                   {groupByDirectory
                     ? group.directories.map((directory) => {
                         const key = `directory:${group.id}:${directory.path}`;
@@ -281,7 +287,7 @@ export function CommitTab() {
                                 aria-expanded={open}
                                 onClick={() => toggleDir(key)}
                               >
-                                {open ? "▾" : "▸"} {directory.path}
+                                <Chevron expanded={open} /> {directory.path}
                               </button>
                               <input
                                 type="checkbox"
@@ -306,14 +312,18 @@ export function CommitTab() {
                                 }
                               />
                               <span className="commit-group-count">
-                                {directory.files.length} files
+                                {directory.files.length}{" "}
+                                {directory.files.length === 1
+                                  ? "file"
+                                  : "files"}
                               </span>
                             </div>
-                            {open && directory.files.map(renderFile)}
+                            {open &&
+                              directory.files.map((file) => renderFile(file))}
                           </div>
                         );
                       })
-                    : group.changes.map(renderFile)}
+                    : group.changes.map((file) => renderFile(file))}
                   {showUnversioned && group.unversioned.length > 0 && (
                     <div>
                       <button
@@ -324,13 +334,17 @@ export function CommitTab() {
                         )}
                         onClick={() => toggleGroup(`unversioned:${group.id}`)}
                       >
-                        {expandedGroups.has(`unversioned:${group.id}`)
-                          ? "▾"
-                          : "▸"}{" "}
-                        Unversioned Files
+                        <Chevron
+                          expanded={expandedGroups.has(
+                            `unversioned:${group.id}`,
+                          )}
+                        />
+                        <span className="commit-group-title">
+                          Unversioned Files
+                        </span>
                       </button>
                       {expandedGroups.has(`unversioned:${group.id}`) &&
-                        group.unversioned.map(renderFile)}
+                        group.unversioned.map((file) => renderFile(file))}
                     </div>
                   )}
                   {group.incoming.length > 0 && (
@@ -343,11 +357,13 @@ export function CommitTab() {
                         )}
                         onClick={() => toggleGroup(`incoming:${group.id}`)}
                       >
-                        {expandedGroups.has(`incoming:${group.id}`) ? "▾" : "▸"}{" "}
-                        Incoming
+                        <Chevron
+                          expanded={expandedGroups.has(`incoming:${group.id}`)}
+                        />
+                        <span className="commit-group-title">Incoming</span>
                       </button>
                       {expandedGroups.has(`incoming:${group.id}`) &&
-                        group.incoming.map(renderFile)}
+                        group.incoming.map((file) => renderFile(file))}
                     </div>
                   )}
                 </div>
@@ -361,5 +377,22 @@ export function CommitTab() {
         <CommitFileContextMenu {...menu} onClose={() => setMenu(null)} />
       )}
     </div>
+  );
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span
+      className={`commit-group-chevron ${expanded ? "" : "collapsed"}`}
+      aria-hidden="true"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path
+          d="M6 11.5L9.5 8L6 4.5"
+          stroke="currentColor"
+          strokeLinecap="round"
+        />
+      </svg>
+    </span>
   );
 }

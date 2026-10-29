@@ -29,13 +29,48 @@ async function main(){
   const core=await import(pathToFileURL(path.resolve('src/cvs/core.mjs')).href);
   const cvsProcess=new core.CvsProcess(process.env.JETTORTOISE_TEST_CVS||'cvs');
   const repository=path.join(base,'cvs-repository'),seed=path.join(base,'seed'),cvsRoot=`:local:${repository}`,wc=path.join(root,'legacy');
-  await fs.mkdir(repository);await fs.mkdir(seed);await cvsProcess.run(['-d',cvsRoot,'init'],base);await fs.writeFile(path.join(seed,'same.txt'),'base\n');await fs.writeFile(path.join(seed,'excluded.txt'),'base excluded\n');await fs.writeFile(path.join(seed,'incoming.txt'),'incoming base\n');await cvsProcess.run(['-d',cvsRoot,'import','-m','base','demo','vendor','start'],seed);await core.checkout(cvsProcess,cvsRoot,'demo',wc);
+  await fs.mkdir(repository);await fs.mkdir(seed);await cvsProcess.run(['-d',cvsRoot,'init'],base);await fs.writeFile(path.join(seed,'same.txt'),'base\n');await fs.writeFile(path.join(seed,'excluded.txt'),'base excluded\n');await fs.writeFile(path.join(seed,'incoming.txt'),'incoming base\n');await fs.writeFile(path.join(seed,'unchanged.txt'),'unchanged base\n');await fs.writeFile(path.join(seed,'saved-during.txt'),'save base\n');await cvsProcess.run(['-d',cvsRoot,'import','-m','base','demo','vendor','start'],seed);await core.checkout(cvsProcess,cvsRoot,'demo',wc);
   const {RepositoryManager}=require(bundle);manager=new RepositoryManager({extensionUri:Uri.file(process.cwd())});
   const sent=[];const subscribers=new Set();let receive;
   connection=manager.connect({postMessage:msg=>{sent.push(msg);for(const fn of subscribers)fn(msg);return Promise.resolve(true)},onDidReceiveMessage:fn=>{receive=fn;return disposable()}});
   const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=msg=>{if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});
   await manager.scan();await manager.request('refreshRepositories');
   const state=manager.state();assert.equal(state.repositories.length,3);const a=state.repositories.find(r=>r.root===first),b=state.repositories.find(r=>r.root===second),c=state.repositories.find(r=>r.root===wc);assert.ok(a&&b&&c);
+  // 真实 :local: CVS：时间戳假修改须消失，网络返回前保存的另一个文件须保留。
+  const refreshSession=manager.entries.get(c.id).cvs;
+  await refreshSession.network;
+  const unchangedPath=path.join(wc,'unchanged.txt');
+  const unchangedStat=await fs.stat(unchangedPath);
+  await fs.utimes(unchangedPath,unchangedStat.atime,new Date(unchangedStat.mtimeMs+2000));
+  await refreshSession.refresh();
+  assert.ok(manager.state().snapshots.find(s=>s.repositoryId===c.id).files.some(f=>f.path==='unchanged.txt'&&f.status==='modified'),'local timestamp mismatch must first appear as modified');
+  const raceRunner=refreshSession.adapter.process,raceOriginal=raceRunner.run.bind(raceRunner);
+  let releaseNetwork,networkReturned;
+  const networkGate=new Promise(resolve=>{releaseNetwork=resolve});
+  const networkReady=new Promise(resolve=>{networkReturned=resolve});
+  raceRunner.run=async(...args)=>{
+    const output=await raceOriginal(...args);
+    assert.ok(!output.stdout.toString('utf8').includes('unchanged.txt'),'real CVS must confirm unchanged content');
+    networkReturned();
+    await networkGate;
+    return output;
+  };
+  try{
+    await refreshSession.refresh(undefined,true);
+    await networkReady;
+    const savedPath=path.join(wc,'saved-during.txt');
+    const savedStat=await fs.stat(savedPath);
+    await fs.writeFile(savedPath,'saved after network started\n');
+    await fs.utimes(savedPath,savedStat.atime,new Date(savedStat.mtimeMs+4000));
+    await refreshSession.refresh(['saved-during.txt']);
+    releaseNetwork();await refreshSession.network;
+    const afterNetwork=manager.state().snapshots.find(s=>s.repositoryId===c.id).files;
+    assert.ok(!afterNetwork.some(f=>f.path==='unchanged.txt'),'network-confirmed clean file remained in Changes');
+    assert.ok(afterNetwork.some(f=>f.path==='saved-during.txt'&&f.status==='modified'),'save during network was overwritten');
+    await refreshSession.refresh();
+    assert.ok(!manager.state().snapshots.find(s=>s.repositoryId===c.id).files.some(f=>f.path==='unchanged.txt'),'local refresh resurrected network-confirmed clean file');
+  }finally{releaseNetwork();await refreshSession.network;raceRunner.run=raceOriginal}
+
   await fs.writeFile(path.join(first,'same.txt'),'git a selected\n');await fs.writeFile(path.join(second,'same.txt'),'git b selected\n');await fs.writeFile(path.join(first,'excluded.txt'),'staged excluded\n');git(first,['add','excluded.txt']);await fs.writeFile(path.join(wc,'same.txt'),'CVS selected text\n');await fs.writeFile(path.join(wc,'excluded.txt'),'CVS excluded text\n');
   await manager.request('refreshRepositories');
   await assert.rejects(manager.request('commitRepositories',{message:'invalid',files:[{repositoryId:a.id,path:'../outside'}]}),/traversal/);

@@ -79,10 +79,12 @@ export function groupChanges(
       (file) => !["untracked", "incoming"].includes(file.status),
     );
     const incoming = files.filter((file) => file.status === "incoming");
+    const rootFiles = changes.filter((file) => !file.path.includes("/"));
     const directories = new Map<string, ChangeFile[]>();
     for (const file of changes) {
       const index = file.path.lastIndexOf("/");
-      const directory = index < 0 ? "." : file.path.slice(0, index);
+      if (index < 0) continue;
+      const directory = file.path.slice(0, index);
       const children = directories.get(directory) ?? [];
       children.push(file);
       directories.set(directory, children);
@@ -93,6 +95,7 @@ export function groupChanges(
       unversioned,
       incoming,
       count: changes.length,
+      rootFiles,
       directories: [...directories]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([path, files]) => ({ path, files })),

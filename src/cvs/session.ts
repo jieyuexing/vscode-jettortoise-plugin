@@ -9,6 +9,7 @@ interface CvsFile {
   entryRevision: string;
   state: string;
   status?: string;
+  mtimeMs?: number;
 }
 export interface CvsRevision {
   revisionId: string;
@@ -113,7 +114,17 @@ export class CvsSession {
   async refresh(paths?: string[], network = false): Promise<void> {
     const job = async () => {
       await this.guard();
-      const local = await this.adapter.localStatus(paths);
+      const previous = new Map(this.files.map((file) => [file.newPath, file]));
+      const local = (await this.adapter.localStatus(paths)).map((file) => {
+        const known = previous.get(file.newPath);
+        // 网络已确认内容未改时，焦点刷新不再仅因 Entries 时间戳不符报 M。
+        return file.state === "Locally Modified" &&
+          known?.state === "Up-to-date" &&
+          known.entryRevision === file.entryRevision &&
+          known.mtimeMs === file.mtimeMs
+          ? known
+          : file;
+      });
       await this.guard();
       if (paths) {
         const changed = new Set(paths);
@@ -134,18 +145,26 @@ export class CvsSession {
       this.network = this.queue
         .run(async (signal) => {
           await this.guard();
-          const result = await this.adapter.status(signal);
+          const before = await this.adapter.localStatus();
+          const mtimes = new Map(
+            before.map((file) => [file.newPath, file.mtimeMs]),
+          );
+          const result = await this.adapter.status(signal, before);
           await this.localTail;
           await this.guard();
-          this.files = result;
-          this.error = undefined;
-          // 重新读当前文件时间戳，避免迟到的网络结果覆盖保存后的本地状态。
           const current = await this.adapter.localStatus();
-          const unknown = result.filter((file) => file.state === "Unknown");
+          // 网络结果为准；只有网络开始后 mtime 变化的文件才采用本地状态。
+          const changed = current.filter(
+            (file) =>
+              !mtimes.has(file.newPath) ||
+              mtimes.get(file.newPath) !== file.mtimeMs,
+          );
+          const changedPaths = new Set(changed.map((file) => file.newPath));
           this.files = [
-            ...current.filter((file) => file.state !== "Unknown"),
-            ...unknown,
+            ...result.filter((file) => !changedPaths.has(file.newPath)),
+            ...changed,
           ];
+          this.error = undefined;
         })
         .catch((error) => {
           this.error = cvsErrorText(error);

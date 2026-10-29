@@ -1,4 +1,3 @@
-import { Tooltip } from "../../shared/components/Tooltip";
 import { usePreventSelect } from "../../shared/hooks/usePreventSelect";
 import { usePanelStore } from "../../shared/store/panel-store";
 import type { Commit, LaneInfo, RefInfo } from "../../shared/types/git";
@@ -210,6 +209,7 @@ export function CommitRow({
       <span
         style={{
           flex: 1,
+          minWidth: 0,
           display: "flex",
           alignItems: "center",
           overflow: "hidden",
@@ -217,93 +217,85 @@ export function CommitRow({
           gap: 6,
         }}
       >
-        <span
-          style={{
-            flexShrink: 1,
-            minWidth: 0,
-            overflow: "hidden",
-          }}
-        >
-          <Tooltip text={commit.subject}>
-            <span
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                display: "block",
-              }}
-            >
-              {commit.subject}
-            </span>
-          </Tooltip>
-        </span>
         {refItems.length > 0 && (
-          <>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              flexShrink: 1,
+              minWidth: 0,
+              maxWidth: "50%",
+              overflow: "hidden",
+            }}
+          >
+            {/* Overlapping outline tag icons */}
             <span
               style={{
                 display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
                 flexShrink: 0,
-                marginLeft: "auto",
-                paddingLeft: 8,
+                position: "relative",
+                width: 16 + Math.max(0, (refItems.length - 1) * 5),
+                height: 16,
               }}
             >
-              {/* Overlapping outline tag icons */}
-              <span
-                style={{
-                  display: "inline-flex",
-                  position: "relative",
-                  width: 16 + Math.max(0, (refItems.length - 1) * 5),
-                  height: 16,
-                }}
-              >
-                {refItems.map((item, idx) => {
-                  const color =
-                    REF_ICON_COLORS[item.type] ?? REF_ICON_COLORS.branch;
-                  return (
-                    <svg
-                      key={item.key}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      style={{ position: "absolute", left: idx * 5, top: 0 }}
-                    >
-                      <path
-                        d="M2.5 3.5C2.5 2.95 2.95 2.5 3.5 2.5H7.09c.27 0 .52.1.71.3l5.41 5.41c.39.39.39 1.02 0 1.41l-3.59 3.59c-.39.39-1.02.39-1.41 0L2.79 7.8a1 1 0 01-.29-.71V3.5z"
-                        fill="var(--app-bg, #fff)"
-                        stroke={color}
-                        strokeWidth="1.2"
-                      />
-                      <circle cx="5" cy="5" r="0.9" fill={color} />
-                    </svg>
-                  );
-                })}
-              </span>
-              {/* Text labels (skip HEAD text) */}
-              <Tooltip
-                text={refItems
-                  .filter((item) => item.type !== "HEAD")
-                  .map((item) => item.label)
-                  .join("  ")}
-              >
-                <span
-                  style={{
-                    fontSize: "0.8em",
-                    whiteSpace: "nowrap",
-                    opacity: 0.85,
-                  }}
-                >
-                  {refItems
-                    .filter((item) => item.type !== "HEAD")
-                    .map((item) => item.label)
-                    .join("  ")}
-                </span>
-              </Tooltip>
+              {refItems.map((item, idx) => {
+                const color =
+                  REF_ICON_COLORS[item.type] ?? REF_ICON_COLORS.branch;
+                return (
+                  <svg
+                    key={item.key}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    style={{ position: "absolute", left: idx * 5, top: 0 }}
+                  >
+                    <path
+                      d="M2.5 3.5C2.5 2.95 2.95 2.5 3.5 2.5H7.09c.27 0 .52.1.71.3l5.41 5.41c.39.39.39 1.02 0 1.41l-3.59 3.59c-.39.39-1.02.39-1.41 0L2.79 7.8a1 1 0 01-.29-.71V3.5z"
+                      fill="var(--app-bg, #fff)"
+                      stroke={color}
+                      strokeWidth="1.2"
+                    />
+                    <circle cx="5" cy="5" r="0.9" fill={color} />
+                  </svg>
+                );
+              })}
             </span>
-          </>
+            {/* Text labels (skip HEAD text) */}
+            <span
+              title={refItems
+                .filter((item) => item.type !== "HEAD")
+                .map((item) => item.label)
+                .join("  ")}
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                fontSize: "0.8em",
+                whiteSpace: "nowrap",
+                opacity: 0.85,
+              }}
+            >
+              {refItems
+                .filter((item) => item.type !== "HEAD")
+                .map((item) => item.label)
+                .join("  ")}
+            </span>
+          </span>
         )}
+        <span
+          title={commit.subject}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {commit.subject}
+        </span>
       </span>
 
       {/* Author column */}

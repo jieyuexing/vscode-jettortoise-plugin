@@ -518,6 +518,7 @@ export class CvsAdapter {
     }
     return {
       ...file,
+      mtimeMs: stat?.mtimeMs,
       ...parseStatus(`Status: ${state}`),
       status:
         state === "Missing"

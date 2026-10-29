@@ -15,13 +15,13 @@
 
 ## 交互与边界
 
-Changes 的计数只含已管理的本地变更。Unversioned Files 和 Incoming 默认折叠、不计数、不预选。未管理目录只展示节点，展开才读取其下一层；先通过 Add to Version Control 纳管，随后在 Changes 勾选提交。Incoming 只读，不能提交。Git 的分阶段行合并为一个路径选择，提交取所选文件的磁盘内容；重命名带旧、新两条路径。
+Changes 的计数只含已管理的本地变更。Unversioned Files 和 Incoming 默认折叠、不计数、不预选。未管理目录只展示节点，展开才读取其下一层；先通过 Add to Version Control 纳管，随后在 Changes 勾选提交。Incoming 只读，不能提交，不显示复选框，以向下箭头标记远端新版本。Changes 的根文件直接列出，只有子目录创建目录组；分组内只显示文件名，关闭目录分组才显示路径。仅 Changes、Unversioned Files 和 Incoming 标题转大写，目录保留原名，计数使用单复数 file/files，展开箭头复用上游 chevron。Git 的分阶段行合并为一个路径选择，提交取所选文件的磁盘内容；重命名带旧、新两条路径。
 
 Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一个原子事务。开始前验证全部所选根；逐仓失败会报告已经成功的仓库并保留说明。Git 先检查完整索引，再 `git commit -m <message> -- <paths>`，未选择的暂存内容保留。Amend 和 Commit and Push 只在单个 Git 仓选择中可用；Shelf/Stash 明示仅 Git。
 
-一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
+一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
 
-CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再在后台跑一次 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
+CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再在后台跑一次 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络结果为权威状态；网络开始前记录文件 mtime，只有其后 mtime 变化的文件才用本地结果覆盖。网络已确认干净的文件在 mtime 和修订号未变时继续保持干净，避免焦点刷新恢复假修改。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
 
 **真实边界决定写权限，发现与展示不能解除边界。** 同项目但父 Entries 未登记的 CVS 目录不单列，也不进入父仓任何组，仍阻止父仓整树写。连续 CVS 目录合并读取 Entries.Log。发现不越出工作区，不跟随目录软链，不调用 VCS CLI。最近真实边界即使未登记也保护文件，不回落祖先；子目录窗口不借用窗口外根。
 

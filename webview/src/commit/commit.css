@@ -202,10 +202,13 @@
   user-select: none;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.3px;
   color: var(--vscode-foreground);
   opacity: 0.85;
+}
+
+.commit-group-title {
+  text-transform: uppercase;
 }
 
 .commit-group-header:hover {
@@ -213,6 +216,7 @@
 }
 
 .commit-group-chevron {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
   display: flex;
@@ -756,6 +760,11 @@ button.commit-dropdown-item:hover:not(:disabled) {
   border: 0;
   text-align: left;
   cursor: pointer;
+}
+.repository-header button[aria-expanded],
+.commit-directory-header button {
+  display: inline-flex;
+  align-items: center;
 }
 .repository-label {
   flex: 1;

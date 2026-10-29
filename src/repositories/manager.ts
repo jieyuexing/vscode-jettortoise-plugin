@@ -28,6 +28,9 @@ interface Entry {
   disposables: vscode.Disposable[];
 }
 export class RepositoryManager implements vscode.Disposable {
+  private readonly revisionChanges = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChangeRevision = this.revisionChanges.event;
+  private readonly revisionUris = new Map<string, vscode.Uri>();
   private readonly requestLiveness = new AsyncLocalStorage<() => void>();
   private readonly entries = new Map<string, Entry>();
   private readonly views = new Set<vscode.Webview>();
@@ -195,8 +198,10 @@ export class RepositoryManager implements vscode.Disposable {
             ...(typeof data === "object" && data ? data : {}),
             repositoryId: id,
           });
-          if (event === "gitStateChanged" || event === "commitStateChanged")
+          if (event === "gitStateChanged" || event === "commitStateChanged") {
             this.schedule(entry);
+            this.written(entry);
+          }
         },
       );
     else {
@@ -231,9 +236,16 @@ export class RepositoryManager implements vscode.Disposable {
     entry.cvs?.dispose();
     for (const disposable of entry.disposables) disposable.dispose();
     this.entries.delete(id);
+    for (const [key, uri] of this.revisionUris)
+      if (uri.authority === id) this.revisionUris.delete(key);
     const timer = this.timers.get(id);
     if (timer) clearTimeout(timer);
     this.timers.delete(id);
+  }
+  private written(entry: Entry) {
+    for (const uri of this.revisionUris.values())
+      if (uri.authority === entry.info.id) this.revisionChanges.fire(uri);
+    this.broadcast("repositoryWritten", { repositoryId: entry.info.id });
   }
   private schedule(entry: Entry) {
     const id = entry.info.id;
@@ -419,6 +431,7 @@ export class RepositoryManager implements vscode.Disposable {
         return { success: true };
       } finally {
         await this.refresh(entry, true);
+        this.written(entry);
       }
     }
     if (command === "expandUnversioned")
@@ -474,8 +487,12 @@ export class RepositoryManager implements vscode.Disposable {
         command === "openRollbackPanel"
           ? (values.files as Array<{ path: string }>).map((file) => file.path)
           : this.paths(values.filePaths);
-      await cvs.rollback(files);
-      await this.refresh(entry, true);
+      try {
+        await cvs.rollback(files);
+      } finally {
+        await this.refresh(entry, true);
+        this.written(entry);
+      }
       return { success: true };
     }
     if (command === "openFile") {
@@ -582,6 +599,7 @@ export class RepositoryManager implements vscode.Disposable {
         );
       } finally {
         await this.refresh(entry, true);
+        this.written(entry);
       }
     }
     return { success: true, completed };
@@ -615,7 +633,11 @@ export class RepositoryManager implements vscode.Disposable {
   async readFile(uri: vscode.Uri) {
     const entry = this.selected(uri.authority);
     await this.guard(entry);
-    return entry.git ? entry.git.readFile(uri) : this.cvs(entry).readFile(uri);
+    const content = await (entry.git
+      ? entry.git.readFile(uri)
+      : this.cvs(entry).readFile(uri));
+    this.revisionUris.set(uri.toString(), uri);
+    return content;
   }
   async execute(command: string, ...args: unknown[]) {
     if (command === "jettortoise.showFileHistory") {
@@ -643,5 +665,7 @@ export class RepositoryManager implements vscode.Disposable {
     for (const id of this.entries.keys()) this.remove(id);
     for (const item of this.disposables) item.dispose();
     this.views.clear();
+    this.revisionChanges.dispose();
+    this.revisionUris.clear();
   }
 }

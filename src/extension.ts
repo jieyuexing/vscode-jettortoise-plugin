@@ -5,6 +5,11 @@ import { GitLogViewProvider } from "./views/gitLogViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   const manager = new RepositoryManager(context);
+  const ready = manager.scan();
+  const readFile = async (uri: vscode.Uri) => {
+    await ready;
+    return manager.readFile(uri);
+  };
   context.subscriptions.push(manager);
   for (const [viewType, provider] of [
     [
@@ -27,9 +32,13 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(
     changes,
+    manager.onDidChangeRevision((uri) =>
+      changes.fire([{ type: vscode.FileChangeType.Changed, uri }]),
+    ),
     vscode.workspace.registerTextDocumentContentProvider("jettortoise", {
+      onDidChange: manager.onDidChangeRevision,
       provideTextDocumentContent: async (uri) =>
-        Buffer.from(await manager.readFile(uri)).toString("utf8"),
+        Buffer.from(await readFile(uri)).toString("utf8"),
     }),
     vscode.workspace.registerFileSystemProvider(
       "jettortoise",
@@ -40,10 +49,10 @@ export function activate(context: vscode.ExtensionContext) {
           type: vscode.FileType.File,
           ctime: 0,
           mtime: 0,
-          size: (await manager.readFile(uri)).byteLength,
+          size: (await readFile(uri)).byteLength,
         }),
         readDirectory: () => [],
-        readFile: (uri) => manager.readFile(uri),
+        readFile,
         writeFile: readonly,
         delete: readonly,
         rename: readonly,
@@ -98,11 +107,9 @@ export function activate(context: vscode.ExtensionContext) {
   status.command = "jettortoise.gitLog.focus";
   status.show();
   context.subscriptions.push(status);
-  void manager
-    .scan()
-    .catch((error) =>
-      vscode.window.showErrorMessage(
-        `JetTortoise discovery: ${error instanceof Error ? error.message : "Unable to read workspace."}`,
-      ),
-    );
+  void ready.catch((error) =>
+    vscode.window.showErrorMessage(
+      `JetTortoise discovery: ${error instanceof Error ? error.message : "Unable to read workspace."}`,
+    ),
+  );
 }

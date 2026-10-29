@@ -104,7 +104,11 @@ export class GitService {
     if (paths.length === 0) return;
     const boundaries = await boundariesForPaths(this.cwd, "git", paths);
     if (boundaries.length > 0) {
-      throw new NestedRepositoryError(boundaries);
+      throw new NestedRepositoryError(
+        boundaries,
+        "NESTED_REPOSITORY",
+        this.cwd,
+      );
     }
     await Promise.all(paths.map((filePath) => this.checkedPath(filePath)));
   }

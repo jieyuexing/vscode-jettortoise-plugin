@@ -71,6 +71,20 @@ export function CvsHistory({
       historyGeneration.current++;
     };
   }, [loadHistory]);
+  useEffect(
+    () =>
+      bridge.onEvent((event, data) => {
+        if (
+          event === "repositoryWritten" &&
+          (data as { repositoryId?: string } | null)?.repositoryId ===
+            repositoryId
+        ) {
+          void loadFiles();
+          void loadHistory();
+        }
+      }),
+    [repositoryId, loadFiles, loadHistory],
+  );
   return (
     <div className="cvs-file-history">
       <div className="repository-log-toolbar">

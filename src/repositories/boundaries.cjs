@@ -24,10 +24,17 @@ function within(root, target) {
   );
 }
 class NestedRepositoryError extends Error {
-  constructor(boundaries = [], code = "NESTED_REPOSITORY") {
+  constructor(boundaries = [], code = "NESTED_REPOSITORY", ownerRoot) {
+    const names = boundaries
+      .slice(0, 3)
+      .map((item) =>
+        ownerRoot
+          ? path.relative(ownerRoot, item.root).split(path.sep).join("/")
+          : item.root,
+      );
     super(
       code === "NESTED_REPOSITORY"
-        ? `Nested repository boundary: ${boundaries.map((item) => item.root).join(", ")}`
+        ? `Nested repositories block this operation: ${names.join(", ")}${boundaries.length > 3 ? ` and ${boundaries.length - 3} more` : ""}.`
         : "Repository boundary validation is incomplete",
     );
     this.code = code;
@@ -262,7 +269,8 @@ async function boundariesForPaths(root, _kind, paths) {
 }
 async function assertOwnedPath(root, kind, relative) {
   const boundaries = await boundariesForPaths(root, kind, [relative]);
-  if (boundaries.length) throw new NestedRepositoryError(boundaries);
+  if (boundaries.length)
+    throw new NestedRepositoryError(boundaries, "NESTED_REPOSITORY", root);
   // A directory-targeted mutation may replace a whole subtree. Inspect that
   // subtree before accepting it, including unregistered/ignored child roots.
   const target = path.resolve(await fs.realpath(root), relative);
@@ -271,7 +279,8 @@ async function assertOwnedPath(root, kind, relative) {
   });
   if (stat?.isDirectory()) {
     const nested = await walkNested(target, root);
-    if (nested.length) throw new NestedRepositoryError(nested);
+    if (nested.length)
+      throw new NestedRepositoryError(nested, "NESTED_REPOSITORY", root);
   }
 }
 // 每次验证独立缓存；父子连续性复用同一份元数据，不跨操作复用。
@@ -359,7 +368,8 @@ async function listNestedRepositories(root, _kind) {
 }
 async function assertNoNestedRepositories(root, kind) {
   const boundaries = await listNestedRepositories(root, kind);
-  if (boundaries.length) throw new NestedRepositoryError(boundaries);
+  if (boundaries.length)
+    throw new NestedRepositoryError(boundaries, "NESTED_REPOSITORY", root);
 }
 
 function traced(stage, action) {

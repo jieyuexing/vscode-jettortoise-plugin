@@ -40,6 +40,9 @@
     "rider"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onFileSystem:jettortoise"
+  ],
   "contributes": {
     "viewsContainers": {
       "panel": [

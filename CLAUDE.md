@@ -21,6 +21,8 @@ Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一�
 
 一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
 
+修订 scheme `jettortoise` 通过 `onFileSystem:jettortoise` 激活，恢复标签页的首次读取等待仓库发现。CVS 工作区 diff 使用动态 `BASE` URI，在每次队列读取时解析当前 Entries，标题不固定修订号；历史 diff 保持指定修订。提交、回滚和更新后，按仓触发已读取修订 URI 的文本与文件系统变更事件，并通知正显示该仓的 CVS 文件历史重新加载；其它仓不跟随刷新。嵌套边界拦截提示列出最多三个相对目录，余项显示 `and N more`。
+
 CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再在后台跑一次 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络结果为权威状态；网络开始前记录文件 mtime，只有其后 mtime 变化的文件才用本地结果覆盖。网络已确认干净的文件在 mtime 和修订号未变时继续保持干净，避免焦点刷新恢复假修改。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
 
 **真实边界决定写权限，发现与展示不能解除边界。** 同项目但父 Entries 未登记的 CVS 目录不单列，也不进入父仓任何组，仍阻止父仓整树写。连续 CVS 目录合并读取 Entries.Log。发现不越出工作区，不跟随目录软链，不调用 VCS CLI。最近真实边界即使未登记也保护文件，不回落祖先；子目录窗口不借用窗口外根。
@@ -28,6 +30,8 @@ CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再�
 文件修改重新检查归属和符号链接；Git 提交验证完整索引，包括已被父仓跟踪的子仓重叠。checkout/reset、merge/rebase、全量 stash、patch 及 CVS 整树 update 沿用完整树预检，无法证明安全就拒绝。清单读取可在未管理目录停止，整树写预检不能使用这一优化。写操作在队列执行与确认后重新验证工作区可用性和信任；未保存编辑器阻止覆盖或提交。
 
 Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`，分叉不自动合并、变基或 stash。CVS 复用整树更新和子仓预检；通知区进度可取消。取消不承诺已经应用的文件写入自动回滚。
+
+2026-10-30 用户要求 CVS 整树更新改为 `update -P`、仅预检实际递归目录；该项按任务书停止条件暂停。本机 CVS 1.12.13 的真实 `:local:` 工作副本中，父 Entries 含 `D/src////`、父 Entries.Log 不存在，未登记的同项目 `build` 带 `CVS/Repository=demo/build`，原始 `cvs -f -n update -P` 仍输出 `Updating build` 和 `M build/sentinel.txt`。因此尚不能以“CVS 不会递归进入父 Entries 未登记的目录”为依据放行；现行完整树预检和 `update -dP` 均保持原状，待协调者确认后续处理。
 
 不移植 catalog、四栏编辑器工作台、`packages/vcs-ui`、原生 SCM provider 或 `git.ignoredRepositories`。界面本轮用英文，不读旧扩展存储，不注册旧命令前缀。依赖沿用 lockfile，不升级。
 

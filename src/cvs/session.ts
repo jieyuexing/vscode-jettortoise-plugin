@@ -269,8 +269,7 @@ export class CvsSession {
   async diff(file: string) {
     await this.guard();
     const entry = await this.adapter.file(file);
-    const revision = entry.entryRevision.replace(/^-/, "");
-    const left = this.uri(file, revision === "0" ? "empty" : revision);
+    const left = this.uri(file, "BASE");
     const right =
       entry.state === "Locally Removed" || entry.state === "Missing"
         ? this.uri(file, "empty")
@@ -279,7 +278,7 @@ export class CvsSession {
       "vscode.diff",
       left,
       right,
-      `${file} (BASE ${revision} ↔ working tree)`,
+      `${file} (BASE ↔ working tree)`,
     );
   }
   async revisionDiff(file: string, revision: string) {
@@ -309,11 +308,18 @@ export class CvsSession {
     if (uri.authority !== this.id) throw new Error("Repository mismatch.");
     const file = uri.path.slice(1);
     await assertOwnedPath(this.root, "cvs", file);
-    const revision = new URLSearchParams(uri.query).get("ref") ?? "";
-    if (revision === "empty") return Buffer.alloc(0);
-    return this.operate("CVS revision", (adapter, signal) =>
-      adapter.content(file, revision, signal),
-    );
+    return this.operate("CVS revision", async (adapter, signal) => {
+      let revision = new URLSearchParams(uri.query).get("ref") ?? "";
+      // 在写队列内读取当前 Entries，避免排队期间提交后仍读取旧 BASE。
+      if (revision === "BASE") {
+        const entry = await adapter.file(file);
+        revision = entry.entryRevision.replace(/^-/, "");
+        if (revision === "0") revision = "empty";
+      }
+      return revision === "empty"
+        ? Buffer.alloc(0)
+        : adapter.content(file, revision, signal);
+    });
   }
   dispose() {
     this.disposed = true;
@@ -322,6 +328,8 @@ export class CvsSession {
 }
 export function cvsErrorText(error: unknown): string {
   const code = (error as { code?: string })?.code;
+  if (code === "NESTED_REPOSITORY" && error instanceof Error)
+    return error.message;
   const messages: Record<string, string> = {
     command:
       "CVS failed. Check repository access and working copy state, then refresh.",
@@ -332,7 +340,6 @@ export function cvsErrorText(error: unknown): string {
     timeout: "CVS timed out. Refresh before retrying.",
     commitState:
       "Selected files cannot be committed. Refresh and resolve conflicts first.",
-    NESTED_REPOSITORY: "Nested repositories block this operation.",
     BOUNDARY_UNAVAILABLE: "Repository boundaries could not be fully verified.",
   };
   return code

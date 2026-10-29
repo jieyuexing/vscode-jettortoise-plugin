@@ -5,7 +5,11 @@ export interface RepositoryBoundary {
 export class NestedRepositoryError extends Error {
   code: string;
   boundaries: RepositoryBoundary[];
-  constructor(boundaries?: RepositoryBoundary[], code?: string);
+  constructor(
+    boundaries?: RepositoryBoundary[],
+    code?: string,
+    ownerRoot?: string,
+  );
 }
 export function within(root: string, target: string): boolean;
 export function containingRepositories(

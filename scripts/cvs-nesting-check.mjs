@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { build } from "esbuild";
 import {
+  assertNoNestedRepositories,
   isCvsContinuation,
   listNestedRepositories,
   nearestRepositories,
@@ -415,4 +416,22 @@ test("SCM local scale benchmark has 3089 files in 2500 directories", async () =>
     const targeted=performance.now();assert.equal((await adapter.localStatus(["d-7/file.txt"])).length,1);
     console.log(JSON.stringify({benchmark:"localStatusOneFile",milliseconds:Number((performance.now()-targeted).toFixed(2))}));
   }finally{await fs.rm(base,{recursive:true,force:true});}
+});
+
+// 拦截提示使用相对目录，最多列出前三个。
+test("nested boundary errors name three relative directories and remaining count", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-boundary-message-"));
+  try {
+    await metadata(base, "demo");
+    const names = ["one", "two", "three", "four"];
+    for (const name of names) await metadata(path.join(base, name), `other/${name}`);
+    await assert.rejects(assertNoNestedRepositories(base, "cvs"), error => {
+      assert.equal(error.code, "NESTED_REPOSITORY");
+      assert.equal(error.boundaries.length, 4);
+      const shown = error.boundaries.slice(0, 3).map(item => path.relative(base, item.root));
+      assert.equal(error.message, `Nested repositories block this operation: ${shown.join(", ")} and 1 more.`);
+      assert.ok(!error.message.includes(base));
+      return true;
+    });
+  } finally { await fs.rm(base, { recursive: true, force: true }); }
 });

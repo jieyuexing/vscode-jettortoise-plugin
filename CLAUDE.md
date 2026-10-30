@@ -79,3 +79,8 @@ Headless、fixture 和构建通过不代表 VS Code 窗口交互、加载版本�
 ETECH 工程右键通过公开命令 `jettortoise.updateProject`、`jettortoise.openCommitPanel`、`jettortoise.openHistory` 传入资源 URI；文件历史沿用 `jettortoise.showFileHistory`。新命令等待首次发现，再按资源的真实物理边界定位已发现仓库并核对工作区与信任；非法资源不回退到前一仓库。更新仍走原 request/update 队列、确认、可取消进度及 Git 快进／CVS 显式已登记目录规则。提交只选定所属仓并打开已有提交视图，不自动提交；工程历史清除旧文件选择，CVS 沿用已有文件选择器和修订列表，不宣称提供跨文件变更集日志。提交面板原有消息与行为保持不变。
 
 检查沿用 `pnpm run test:headless`，`scripts/restart-host-check.cjs` 覆盖资源选仓、无效/失信拒绝和公开入口的真实本地 CVS 更新。版本只改 package.json 与 CHANGELOG.md，候选不推送、不打标签、不发布。
+
+
+## 长列表密度（2026-10-30，0.6.2）
+
+B2 按用户给出的 IDEA 参照统一 Git 日志与图线、CVS 文件历史、提交文件行、分支与标签树为 22px。GitGraphSvg 与 CommitList 使用 CommitRow 导出的同一行高，避免图节点和虚拟滚动错位。字体通过 `--font-size` → `--vscode-font-size` 继承宿主，CVS 修订号使用宿主等宽字体，无底色徽章；表头与行的内边距一致。保留分组、勾选、消息和 VCS 行为，检查仍从原有 headless 入口执行。候选由产品仓隔离解包试用，不推送、不打标签、不发布。

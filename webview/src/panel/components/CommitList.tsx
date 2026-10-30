@@ -320,11 +320,11 @@ export function CommitList({
         style={{
           display: "flex",
           alignItems: "center",
-          height: 24,
+          height: ROW_HEIGHT,
           paddingLeft: Math.min(graphWidth, 60),
           paddingRight: 8,
           borderBottom: "1px solid var(--border)",
-          fontSize: "11px",
+          fontSize: "var(--font-size)",
           opacity: 0.6,
           flexShrink: 0,
           userSelect: "none",

@@ -321,7 +321,8 @@ function FileTreeNodeView({
         className="selectable-row"
         onClick={() => onToggle(node.fullPath)}
         style={{
-          padding: `2px 12px 2px ${12 + depth * 16}px`,
+          height: 22,
+          padding: `0 12px 0 ${12 + depth * 16}px`,
           userSelect: "none",
           display: "flex",
           alignItems: "center",
@@ -437,7 +438,8 @@ function FileRow({
         display: "flex",
         alignItems: "center",
         gap: 4,
-        padding: `2px 12px 2px ${12 + depth * 16}px`,
+        height: 22,
+        padding: `0 12px 0 ${12 + depth * 16}px`,
         color: statusColor,
       }}
     >

@@ -6,8 +6,9 @@ import type {
   LaneInfo,
 } from "../../shared/types/git";
 
+import { ROW_HEIGHT } from "./CommitRow";
+
 const COLUMN_WIDTH = 10;
-const ROW_HEIGHT = 28;
 const GRAPH_PADDING = 6;
 const VISIBLE_OVERSCAN = 8;
 const LANE_COLORS = [

@@ -866,12 +866,18 @@ input:focus-visible {
 .cvs-revision-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 12px;
+  font-size: var(--font-size);
   text-align: left;
+  table-layout: fixed;
 }
 .cvs-revision-table th,
 .cvs-revision-table td {
-  padding: 5px 9px;
+  height: 22px;
+  padding: 0 8px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
@@ -896,4 +902,54 @@ input:focus-visible {
 }
 .commit-lazy-directory > .commit-group-header {
   padding-left: 16px;
+}
+
+/* B2 长列表密度：与宿主紧凑树一致，字号仍由 VS Code / Theia 主题提供。 */
+.repository-header,
+.commit-group-header,
+.commit-directory-header,
+.commit-file-item {
+  font-size: var(--font-size);
+  height: 22px;
+  min-height: 22px;
+  line-height: 22px;
+  padding-block: 0;
+}
+.repository-header button,
+.commit-group-header button,
+.commit-directory-header button {
+  font-size: inherit;
+}
+.repository-log-toolbar {
+  padding: 2px 8px;
+  gap: 6px;
+  font-size: var(--font-size);
+}
+.repository-log-toolbar :is(button, select) {
+  height: 22px;
+  font: inherit;
+}
+.cvs-revision-table th:nth-child(1) {
+  width: 12%;
+}
+.cvs-revision-table th:nth-child(2) {
+  width: 27%;
+}
+.cvs-revision-table th:nth-child(3) {
+  width: 16%;
+}
+.cvs-revision-table button {
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  font-family: var(--editor-font);
+  font-size: inherit;
+  line-height: inherit;
+}
+.cvs-revision-table button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
 }

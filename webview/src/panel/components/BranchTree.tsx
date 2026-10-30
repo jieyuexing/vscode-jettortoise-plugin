@@ -501,7 +501,7 @@ export function BranchTree({
               style={{
                 width: "100%",
                 padding: "4px 24px",
-                fontSize: "12px",
+                fontSize: "var(--font-size)",
                 border: "1px solid var(--vscode-input-border)",
                 background: "var(--vscode-input-background)",
                 color: "var(--vscode-input-foreground)",
@@ -573,7 +573,8 @@ export function BranchTree({
               }
             }}
             style={{
-              padding: "4px 8px 4px 20px",
+              height: 22,
+              padding: "0 8px 0 20px",
               cursor: "pointer",
               fontWeight: 600,
               background: currentBranchRowSelected
@@ -807,7 +808,8 @@ function TreeNodeView({
       <div
         onClick={() => onToggle(collapseKey)}
         style={{
-          padding: `4px 8px 4px ${20 + depth * 12}px`,
+          height: 22,
+          padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "pointer",
           userSelect: "none",
           opacity: 0.8,
@@ -864,7 +866,8 @@ function TagTreeNodeView({
     return (
       <div
         style={{
-          padding: `4px 8px 4px ${20 + depth * 12}px`,
+          height: 22,
+          padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "default",
           color: "var(--description-fg)",
           display: "flex",
@@ -885,7 +888,8 @@ function TagTreeNodeView({
       <div
         onClick={() => onToggle(collapseKey)}
         style={{
-          padding: `4px 8px 4px ${20 + depth * 12}px`,
+          height: 22,
+          padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "pointer",
           userSelect: "none",
           opacity: 0.8,
@@ -933,7 +937,8 @@ function GroupSection({
       <div
         onClick={onToggle}
         style={{
-          padding: "4px 8px",
+          height: 22,
+          padding: "0 8px",
           cursor: "pointer",
           userSelect: "none",
           opacity: 0.8,
@@ -982,7 +987,8 @@ function BranchItem({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       style={{
-        padding: `4px 8px 4px ${20 + depth * 12 + 16}px`,
+        height: 22,
+        padding: `0 8px 0 ${20 + depth * 12 + 16}px`,
         fontWeight: isCurrent || isFiltered ? 600 : 400,
         background:
           isCurrent && !isSelected ? "var(--list-hoverBackground)" : undefined,

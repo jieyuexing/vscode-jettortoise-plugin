@@ -71,6 +71,9 @@ export function activate(context: vscode.ExtensionContext) {
     "openConflicts",
     "openMergeEditorFromSCM",
     "showFileHistory",
+    "updateProject",
+    "openCommitPanel",
+    "openHistory",
     "nextDiff",
     "prevDiff",
     "editSource",
@@ -79,8 +82,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand(
         `jettortoise.${command}`,
-        (...args: unknown[]) =>
-          manager.execute(`jettortoise.${command}`, ...args),
+        async (...args: unknown[]) => {
+          await ready;
+          return manager.execute(`jettortoise.${command}`, ...args);
+        },
       ),
     );
   context.subscriptions.push(

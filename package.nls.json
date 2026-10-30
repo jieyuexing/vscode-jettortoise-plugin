@@ -16,5 +16,8 @@
   "contributes.commands.11.title": "Unshelve Changes",
   "contributes.commands.12.title": "Push...",
   "contributes.commands.13.title": "(JetTortoise) Edit Source",
-  "contributes.configuration.properties.jettortoise.cvsPath.description": "Path to the CVS executable."
+  "contributes.configuration.properties.jettortoise.cvsPath.description": "Path to the CVS executable.",
+  "cmd.updateProject": "Update Project",
+  "cmd.openCommitPanel": "Commit...",
+  "cmd.openHistory": "Show History"
 }

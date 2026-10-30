@@ -73,3 +73,9 @@ pnpm run vsce:package
 `test:headless` 合并分组、发现、Git/CVS 内核与子仓、消息合同、快进更新和公共 Host 集成检查，使用真实临时 Git 仓、本地 bare remote、`:local:` CVSROOT 与模拟 VS Code API。包装后路径为 `release/jettortoise-0.6.0.vsix`；打包已有 release 文件前先备份，打包后逐字节恢复并复核 SHA-256。
 
 Headless、fixture 和构建通过不代表 VS Code 窗口交互、加载版本、安装、焦点、布局或 Windows CVSNT/公司环境验收。GUI 由协调者另行在隔离窗口验证，不从本任务自动安装、启用或发布。
+
+## 工程资源命令（2026-10-30，0.6.1）
+
+ETECH 工程右键通过公开命令 `jettortoise.updateProject`、`jettortoise.openCommitPanel`、`jettortoise.openHistory` 传入资源 URI；文件历史沿用 `jettortoise.showFileHistory`。新命令等待首次发现，再按资源的真实物理边界定位已发现仓库并核对工作区与信任；非法资源不回退到前一仓库。更新仍走原 request/update 队列、确认、可取消进度及 Git 快进／CVS 显式已登记目录规则。提交只选定所属仓并打开已有提交视图，不自动提交；工程历史清除旧文件选择，CVS 沿用已有文件选择器和修订列表，不宣称提供跨文件变更集日志。提交面板原有消息与行为保持不变。
+
+检查沿用 `pnpm run test:headless`，`scripts/restart-host-check.cjs` 覆盖资源选仓、无效/失信拒绝和公开入口的真实本地 CVS 更新。版本只改 package.json 与 CHANGELOG.md，候选不推送、不打标签、不发布。

@@ -38,6 +38,23 @@ async function main(){
   const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=msg=>{if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});
   await manager.scan();await manager.request('refreshRepositories');
   const state=manager.state();assert.equal(state.repositories.length,3);const a=state.repositories.find(r=>r.root===first),b=state.repositories.find(r=>r.root===second),c=state.repositories.find(r=>r.root===wc);assert.ok(a&&b&&c);
+  // 资源命令必须选择右键资源所属仓库，不能沿用前一个编辑器/提交区的仓库。
+  for (const command of ['jettortoise.updateProject', 'jettortoise.openCommitPanel', 'jettortoise.openHistory'])
+    assert.ok(require('../package.json').contributes.commands.some(item=>item.command===command), 'missing public command '+command);
+  await manager.execute('jettortoise.openCommitPanel',Uri.file(second));
+  assert.equal(manager.state().commitRepositoryId,b.id);
+  assert.equal(commands.at(-1)[0],'jettortoise.commitPanel.focus');
+  await manager.execute('jettortoise.showFileHistory',Uri.file(path.join(first,'same.txt')));
+  assert.equal(manager.state().logRepositoryId,a.id);assert.equal(manager.state().activeFile,'same.txt');
+  await manager.execute('jettortoise.openHistory',Uri.file(wc));
+  assert.equal(manager.state().logRepositoryId,c.id);assert.equal(manager.state().activeFile,undefined);
+  let resourceUpdates=0;const resourceSession=manager.entries.get(b.id).git;const originalResourceUpdate=resourceSession.update;
+  resourceSession.update=async()=>{resourceUpdates++};
+  try {await manager.execute('jettortoise.updateProject',Uri.file(second));assert.equal(resourceUpdates,1)} finally {resourceSession.update=originalResourceUpdate}
+  await assert.rejects(manager.execute('jettortoise.openCommitPanel',Uri.file(base)),/available repository/);
+  await assert.rejects(manager.execute('jettortoise.updateProject',Uri.parse('https://example.invalid/demo')),/available repository/);
+  vscode.workspace.isTrusted=false;
+  await assert.rejects(manager.execute('jettortoise.openHistory',Uri.file(first)),/trusted/);vscode.workspace.isTrusted=true;
   // 真实 :local: CVS：时间戳假修改须消失，网络返回前保存的另一个文件须保留。
   const refreshSession=manager.entries.get(c.id).cvs;
   await refreshSession.network;
@@ -117,7 +134,7 @@ async function main(){
   const incomingBase=commands.findLast(args=>args[0]==='vscode.diff'&&args[1].authority===c.id)[1];
   assert.equal(Buffer.from(await manager.readFile(incomingBase)).toString(),'incoming base\n');
   const beforeUpdate=changedUris.length;
-  await manager.request('updateProject',{repositoryId:c.id});
+  await manager.execute('jettortoise.updateProject',Uri.file(wc));
   assert.ok(changedUris.slice(beforeUpdate).some(uri=>uri.toString()===incomingBase.toString()),'update did not invalidate BASE');
   assert.equal(Buffer.from(await manager.readFile(incomingBase)).toString(),'remote incoming update\n');
   const otherRevision=Uri.from({scheme:'jettortoise',authority:a.id,path:'/same.txt',query:'ref=HEAD'});await manager.readFile(otherRevision);

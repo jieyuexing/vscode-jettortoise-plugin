@@ -673,17 +673,55 @@ export class RepositoryManager implements vscode.Disposable {
     return content;
   }
   async execute(command: string, ...args: unknown[]) {
-    if (command === "jettortoise.showFileHistory") {
+    if (
+      [
+        "jettortoise.updateProject",
+        "jettortoise.openCommitPanel",
+        "jettortoise.openHistory",
+        "jettortoise.showFileHistory",
+      ].includes(command)
+    ) {
       const uri =
         (args[0] as vscode.Uri | undefined) ??
         vscode.window.activeTextEditor?.document.uri;
-      await this.follow(uri);
+      const entry = uri
+        ? await this.owner(uri)
+        : this.selected(
+            command === "jettortoise.openCommitPanel" ||
+              command === "jettortoise.updateProject"
+              ? this.commitId
+              : undefined,
+          );
+      if (!entry)
+        throw new Error(vscode.l10n.t("Select an available repository."));
+      await this.guard(entry);
+      if (command === "jettortoise.updateProject")
+        return this.request("updateProject", { repositoryId: entry.info.id });
+      if (command === "jettortoise.openCommitPanel") {
+        this.commitId = entry.info.id;
+        this.publish();
+        await vscode.commands.executeCommand("jettortoise.commitPanel.focus");
+        return;
+      }
+      this.logId = entry.info.id;
+      this.editorOwnerId = undefined;
+      this.activeFile = undefined;
+      if (command === "jettortoise.showFileHistory" && uri) {
+        const file = await fs.realpath(uri.fsPath);
+        if ((await fs.stat(file)).isFile()) {
+          this.activeFile = path
+            .relative(entry.info.root, file)
+            .split(path.sep)
+            .join("/");
+          this.editorOwnerId = entry.info.id;
+        }
+      }
+      this.publish();
       await vscode.commands.executeCommand("jettortoise.gitLog.focus");
-      const entry = this.selected();
       if (entry.info.kind === "git")
         this.broadcast("showFileHistory", {
           repositoryId: entry.info.id,
-          file: this.activeFile,
+          file: this.activeFile ?? "",
         });
       return;
     }

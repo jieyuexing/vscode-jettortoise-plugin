@@ -16,5 +16,8 @@
   "contributes.commands.11.title": "取消搁置更改",
   "contributes.commands.12.title": "推送…",
   "contributes.commands.13.title": "(JetTortoise) 编辑源文件",
-  "contributes.configuration.properties.jettortoise.cvsPath.description": "CVS 可执行文件的路径。"
+  "contributes.configuration.properties.jettortoise.cvsPath.description": "CVS 可执行文件的路径。",
+  "cmd.updateProject": "更新项目",
+  "cmd.openCommitPanel": "提交…",
+  "cmd.openHistory": "显示历史"
 }

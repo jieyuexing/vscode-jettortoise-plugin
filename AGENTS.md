@@ -7,6 +7,7 @@
 | 触发条件 | 命令 | 合同文档 |
 | --- | --- | --- |
 | Commit 分组、多仓 Git/CVS、路径提交、刷新与边界回归 | `pnpm run test:headless` | `CLAUDE.md`「交互与边界」「检查」；入口 `scripts/headless-check.cjs` |
+| 工程右键资源命令（更新、提交、历史） | `pnpm run test:headless` | `CLAUDE.md`「工程资源命令」；入口 `src/extension.ts` 与 `src/repositories/manager.ts` |
 | 构建与打包候选 | `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run vsce:package` | `CLAUDE.md`「检查」 |
 | 中文界面、翻译覆盖与 Commit 列表密度 | `pnpm run test:headless`（包含 `scripts/check-l10n.cjs`） | `CLAUDE.md`「本地化与列表密度」 |
 

@@ -84,3 +84,7 @@ ETECH 工程右键通过公开命令 `jettortoise.updateProject`、`jettortoise.
 ## 长列表密度（2026-10-30，0.6.2）
 
 B2 按用户给出的 IDEA 参照统一 Git 日志与图线、CVS 文件历史、提交文件行、分支与标签树为 22px。GitGraphSvg 与 CommitList 使用 CommitRow 导出的同一行高，避免图节点和虚拟滚动错位。字体通过 `--font-size` → `--vscode-font-size` 继承宿主，CVS 修订号使用宿主等宽字体，无底色徽章；表头与行的内边距一致。保留分组、勾选、消息和 VCS 行为，检查仍从原有 headless 入口执行。候选由产品仓隔离解包试用，不推送、不打标签、不发布。
+
+## 提交与日志可见性（2026-10-31，0.6.3）
+
+Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可见性变化打开日志或关闭底栏。只有显式打开提交、历史等用户操作触发对应 focus 命令。回归并入 `scripts/restart-host-check.cjs`，由既有 `pnpm run test:headless` 运行。ETECH B3 集成任务在隔离开发构建验证底部本地更改／日志，不改变原生 VS Code 容器声明、仓库消息和写入合同。

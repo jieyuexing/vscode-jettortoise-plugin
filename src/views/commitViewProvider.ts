@@ -20,10 +20,5 @@ export class CommitViewProvider implements vscode.WebviewViewProvider {
     );
     const connection = this.manager.connect(view.webview);
     view.onDidDispose(() => connection.dispose());
-    view.onDidChangeVisibility(() => {
-      if (view.visible)
-        void vscode.commands.executeCommand("jettortoise.gitLog.focus");
-      else void vscode.commands.executeCommand("workbench.action.closePanel");
-    });
   }
 }

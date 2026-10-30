@@ -184,6 +184,20 @@ async function main(){
     const restoredManager=registeredViews[0].manager,restoredEntry=restoredManager.entries.get(c.id);
     restoredManager.written(restoredEntry);
     assert.ok(textChanges.some(uri=>uri.toString()===baseUri.toString()));assert.ok(fileChanges.some(change=>change.uri.toString()===baseUri.toString()&&change.type===1));
+    // 宿主切换提交/日志时，可见性通知只能更新内容，不能聚焦其它视图或关闭整个底栏。
+    vscode.env.language='zh-cn';
+    for(const provider of registeredViews){
+      const visibility=new Emitter(),disposed=new Emitter();
+      const view={visible:false,webview:{asWebviewUri:uri=>uri,cspSource:'fixture:',postMessage:async()=>true,onDidReceiveMessage:()=>disposable()},onDidChangeVisibility:visibility.event,onDidDispose:disposed.event};
+      try{
+        provider.resolveWebviewView(view);
+        assert.match(view.webview.html,/data-mode="(?:commit|panel)"/);
+        const before=commands.length;
+        for(const visible of [true,false,true,false]){view.visible=visible;visibility.fire();await Promise.resolve()}
+        assert.deepEqual(commands.slice(before),[],'Webview 可见性变化不能聚焦日志或关闭底栏');
+      }finally{disposed.fire();visibility.dispose();disposed.dispose()}
+    }
+
   }finally{releaseDiscovery();fs.readdir=originalReaddirForActivation;for(const subscription of activationSubscriptions.splice(0))subscription.dispose()}
   console.log(JSON.stringify({restoredUriBeforeView:true,textAndBinaryInvalidation:true,baseAfterCommit:true,historyReloadAfterCommit:true,multiRepository:true,selectedPaths:true,indexPreserved:true,cvsHistory:true,revisionDiff:true,lazyUnknownDirectory:true,ignoreAtManagedParent:true,nestedWriteProtection:true,isolatedErrors:true,dirtyEditors:true,untrusted:true,localOnlyFocus:true,targetedSave:true,incomingCannotCommit:true,rollbackBackup:true,confirmationLiveness:true}));
  }finally{for(const cleanup of historyCleanups)cleanup();for(const subscription of activationSubscriptions)subscription.dispose();connection?.dispose();manager?.dispose();delete global.__restartHistory;delete global.__restartVscode;await fs.rm(base,{recursive:true,force:true})}

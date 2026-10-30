@@ -41,7 +41,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onFileSystem:jettortoise"
+    "onFileSystem:jettortoise",
+    "onStartupFinished"
   ],
   "contributes": {
     "viewsContainers": {

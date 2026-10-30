@@ -53,6 +53,7 @@ GitHub Actions 的 trusted publishing（`vsce publish --oidc`）只在 CI 里可
 ## 发布记录
 
 - 2026-10-15 `0.5.0`：首次上架，用户经路线 C 网页上传；Marketplace 校验通过（`validated, public`）。GitHub Release `v0.5.0` 挂同一个 VSIX，市场包、GitHub 资产与本地构建 SHA-256 一致：`0be67fdd9f1e390f67a063c1d2e83c818faccb1ac274da6a2b41c25c6d63cd23`。
+- 2026-10-30 `0.6.0`：`restart` 分支 `a6b6179` 的 GitHub 预发布 `v0.6.0`，供 ETECH Theia 随包固定版本；未上架 Marketplace。资产 SHA-256：`ae2015249f9ba202b118065e7dd750d6b32084a0aa7a55a217d9b144dcfd4748`（从 Release 地址下载复核一致）。
 
 ## 每次发布
 

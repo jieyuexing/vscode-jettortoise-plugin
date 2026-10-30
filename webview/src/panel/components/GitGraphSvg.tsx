@@ -11,14 +11,14 @@ const ROW_HEIGHT = 28;
 const GRAPH_PADDING = 6;
 const VISIBLE_OVERSCAN = 8;
 const LANE_COLORS = [
-  "#3a8ee6", // blue – primary branch (IDEA blue)
-  "#c75450", // red – merge/feature branch
-  "#59a869", // green – secondary branch
-  "#e5c07b", // golden yellow
-  "#b07cd8", // purple/violet
-  "#2aa198", // teal/cyan
-  "#d19a66", // warm orange
-  "#56b6c2", // light teal
+  "var(--vscode-charts-blue)", // blue – primary branch (IDEA blue)
+  "var(--vscode-charts-red)", // red – merge/feature branch
+  "var(--vscode-charts-green)", // green – secondary branch
+  "var(--vscode-charts-yellow)", // golden yellow
+  "var(--vscode-charts-purple)", // purple/violet
+  "var(--vscode-charts-green)", // teal/cyan
+  "var(--vscode-charts-orange)", // warm orange
+  "var(--vscode-charts-blue)", // light teal
 ];
 
 function laneColor(colorIdx: number): string {
@@ -528,12 +528,7 @@ export function GitGraphSvg({
             {node.isMerge ? (
               <>
                 <circle cx={node.cx} cy={node.cy} r={3.5} fill={node.color} />
-                <circle
-                  cx={node.cx}
-                  cy={node.cy}
-                  r={2}
-                  fill="var(--app-bg, #1e1e1e)"
-                />
+                <circle cx={node.cx} cy={node.cy} r={2} fill="var(--app-bg)" />
                 <circle cx={node.cx} cy={node.cy} r={1.2} fill={node.color} />
               </>
             ) : (

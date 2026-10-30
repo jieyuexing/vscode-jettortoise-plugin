@@ -5,13 +5,13 @@
 
 .tooltip-popup {
   padding: 4px 8px;
-  background: var(--vscode-editorHoverWidget-background, #252526);
-  color: var(--vscode-editorHoverWidget-foreground, #cccccc);
-  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  background: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+  border: 1px solid var(--vscode-editorHoverWidget-border);
   border-radius: 4px;
   font-size: 12px;
   white-space: nowrap;
   z-index: 99999;
   pointer-events: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px var(--vscode-widget-shadow);
 }

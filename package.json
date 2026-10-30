@@ -49,7 +49,7 @@
       "panel": [
         {
           "id": "jettortoise-panel",
-          "title": "%category.jettortoise%",
+          "title": "%contributes.views.jettortoise-panel.0.name%",
           "icon": "$(git-branch)"
         }
       ],

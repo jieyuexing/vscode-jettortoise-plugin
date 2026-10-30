@@ -381,7 +381,13 @@ function CollapseAllIcon() {
 /** Push icon — green ↗ text matching branch ahead indicator */
 function PushIcon() {
   return (
-    <span style={{ color: "#499c54", fontSize: "16px", fontWeight: 400 }}>
+    <span
+      style={{
+        color: "var(--vscode-gitDecoration-addedResourceForeground)",
+        fontSize: "16px",
+        fontWeight: 400,
+      }}
+    >
       ↗
     </span>
   );
@@ -390,7 +396,13 @@ function PushIcon() {
 /** Pull icon — blue ↙ text matching branch behind indicator */
 function PullIcon() {
   return (
-    <span style={{ color: "#3574f0", fontSize: "16px", fontWeight: 400 }}>
+    <span
+      style={{
+        color: "var(--vscode-focusBorder)",
+        fontSize: "16px",
+        fontWeight: 400,
+      }}
+    >
       ↙
     </span>
   );

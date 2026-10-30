@@ -502,27 +502,29 @@ export function BranchTree({
                 width: "100%",
                 padding: "4px 24px",
                 fontSize: "12px",
-                border: "1px solid var(--vscode-input-border, #c4c4c4)",
-                background: "var(--vscode-input-background, #1e1e1e)",
-                color: "var(--vscode-input-foreground, #ccc)",
+                border: "1px solid var(--vscode-input-border)",
+                background: "var(--vscode-input-background)",
+                color: "var(--vscode-input-foreground)",
                 borderRadius: 3,
                 outline: "none",
                 boxSizing: "border-box",
               }}
               onFocus={(e) => {
-                (e.target as HTMLElement).style.borderColor = "#3574f0";
+                (e.target as HTMLElement).style.borderColor =
+                  "var(--vscode-focusBorder)";
               }}
               onBlur={(e) => {
                 (e.target as HTMLElement).style.borderColor =
-                  "var(--vscode-input-border, #3c3c3c)";
+                  "var(--vscode-input-border)";
               }}
               onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.borderColor = "#3574f0";
+                (e.target as HTMLElement).style.borderColor =
+                  "var(--vscode-focusBorder)";
               }}
               onMouseLeave={(e) => {
                 if (document.activeElement !== e.target) {
                   (e.target as HTMLElement).style.borderColor =
-                    "var(--vscode-input-border, #3c3c3c)";
+                    "var(--vscode-input-border)";
                 }
               }}
             />
@@ -774,7 +776,7 @@ function TreeNodeView({
       <BranchItem
         icon={
           isCurrent ? (
-            <IconTag style={{ color: "#d4a017" }} />
+            <IconTag style={{ color: "var(--vscode-charts-yellow)" }} />
           ) : (
             <IconBranch
               style={{
@@ -983,11 +985,9 @@ function BranchItem({
         padding: `4px 8px 4px ${20 + depth * 12 + 16}px`,
         fontWeight: isCurrent || isFiltered ? 600 : 400,
         background:
-          isCurrent && !isSelected
-            ? "var(--list-hoverBackground, rgba(0,0,0,0.04))"
-            : undefined,
+          isCurrent && !isSelected ? "var(--list-hoverBackground)" : undefined,
         color: isSelected ? "var(--selected-fg)" : "inherit",
-        outline: isFiltered ? "1px solid var(--focus-border, #3574f0)" : "none",
+        outline: isFiltered ? "1px solid var(--focus-border)" : "none",
         display: "flex",
         alignItems: "center",
         gap: 4,
@@ -1020,12 +1020,16 @@ function BranchItem({
           }}
         >
           {behind > 0 && (
-            <span style={{ color: "#3574f0" }}>
+            <span style={{ color: "var(--vscode-focusBorder)" }}>
               ↙ {behind > 99 ? "99+" : behind}
             </span>
           )}
           {ahead > 0 && (
-            <span style={{ color: "#499c54" }}>
+            <span
+              style={{
+                color: "var(--vscode-gitDecoration-addedResourceForeground)",
+              }}
+            >
               ↗ {ahead > 99 ? "99+" : ahead}
             </span>
           )}
@@ -1336,14 +1340,14 @@ function BranchContextMenu({
         top: position ? position.top : -9999,
         left: position ? position.left : -9999,
         zIndex: 9999,
-        background: "var(--vscode-menu-background, #1e1e1e)",
-        border: "1px solid var(--vscode-menu-border, #454545)",
+        background: "var(--vscode-menu-background)",
+        border: "1px solid var(--vscode-menu-border)",
         borderRadius: 4,
         padding: "4px 0",
         minWidth: 160,
         maxHeight: "calc(100vh - 8px)",
         overflowY: "auto",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+        boxShadow: "0 4px 16px var(--vscode-widget-shadow)",
         visibility: position ? "visible" : "hidden",
       }}
     >
@@ -1353,7 +1357,7 @@ function BranchContextMenu({
             key={`sep-${i}`}
             style={{
               height: 1,
-              background: "var(--vscode-menu-separatorBackground, #454545)",
+              background: "var(--vscode-menu-separatorBackground)",
               margin: "4px 0",
             }}
           />
@@ -1365,22 +1369,22 @@ function BranchContextMenu({
               padding: "6px 16px",
               cursor: item.disabled ? "default" : "pointer",
               opacity: item.disabled ? 0.5 : 1,
-              color: "var(--vscode-menu-foreground, #ccc)",
+              color: "var(--vscode-menu-foreground)",
               fontSize: "13px",
               whiteSpace: "nowrap",
             }}
             onMouseEnter={(e) => {
               if (!item.disabled) {
                 (e.currentTarget as HTMLElement).style.background =
-                  "var(--vscode-list-hoverBackground, #2a2d2e)";
+                  "var(--vscode-list-hoverBackground)";
                 (e.currentTarget as HTMLElement).style.color =
-                  "var(--vscode-menu-selectionForeground, #fff)";
+                  "var(--vscode-menu-selectionForeground)";
               }
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.background = "transparent";
               (e.currentTarget as HTMLElement).style.color =
-                "var(--vscode-menu-foreground, #ccc)";
+                "var(--vscode-menu-foreground)";
             }}
           >
             {item.label}

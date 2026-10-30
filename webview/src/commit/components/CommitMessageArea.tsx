@@ -147,7 +147,7 @@ export function CommitMessageArea() {
               transition: "background 0.15s, opacity 0.15s",
               opacity: showHistory ? 1 : 0.6,
               background: showHistory
-                ? "var(--vscode-toolbar-activeBackground, rgba(0,0,0,0.1))"
+                ? "var(--vscode-toolbar-activeBackground)"
                 : "transparent",
             }}
             onMouseEnter={(e) => {
@@ -160,11 +160,11 @@ export function CommitMessageArea() {
             }}
             onMouseDown={(e) => {
               (e.currentTarget as HTMLElement).style.background =
-                "var(--vscode-toolbar-activeBackground, rgba(0,0,0,0.15))";
+                "var(--vscode-toolbar-activeBackground)";
             }}
             onMouseUp={(e) => {
               (e.currentTarget as HTMLElement).style.background = showHistory
-                ? "var(--vscode-toolbar-activeBackground, rgba(0,0,0,0.1))"
+                ? "var(--vscode-toolbar-activeBackground)"
                 : "transparent";
             }}
           >
@@ -304,13 +304,14 @@ const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
           left: 4,
           right: 4,
           zIndex: 99999,
-          background: "var(--vscode-menu-background, #1e1e1e)",
-          border: "1px solid var(--vscode-menu-border, #454545)",
+          background: "var(--vscode-menu-background)",
+          border: "1px solid var(--vscode-menu-border)",
           borderRadius: 4,
           padding: "4px 0",
           maxHeight: 250,
           overflowY: "auto",
-          boxShadow: "0 -3px 12px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06)",
+          boxShadow:
+            "0 -3px 12px var(--vscode-toolbar-hoverBackground), 0 1px 4px var(--vscode-toolbar-hoverBackground)",
         }}
       >
         {messages.length === 0 ? (
@@ -335,11 +336,11 @@ const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "var(--vscode-menu-foreground, #ccc)",
+                color: "var(--vscode-menu-foreground)",
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.background =
-                  "var(--vscode-list-hoverBackground, #2a2d2e)";
+                  "var(--vscode-list-hoverBackground)";
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLElement).style.background =

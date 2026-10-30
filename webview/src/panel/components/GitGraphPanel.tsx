@@ -34,6 +34,7 @@ export function GitGraphPanel() {
         overflow: "hidden",
         display: "flex",
         minHeight: 0,
+        minWidth: 0,
       }}
     >
       <CommitList onScroll={setScrollTop} onHeaderHeight={setHeaderHeight} />

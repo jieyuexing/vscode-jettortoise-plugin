@@ -26,7 +26,7 @@ function ProgressBar({ visible }: { visible: boolean }) {
         height: 3,
         zIndex: 10000,
         overflow: "hidden",
-        background: "rgba(0, 122, 204, 0.15)",
+        background: "var(--vscode-list-hoverBackground)",
       }}
     >
       <div
@@ -34,7 +34,7 @@ function ProgressBar({ visible }: { visible: boolean }) {
           height: "100%",
           width: "40%",
           background:
-            "linear-gradient(90deg, transparent, #007acc 30%, #3794ff 70%, transparent)",
+            "linear-gradient(90deg, transparent, var(--vscode-progressBar-background) 30%, var(--vscode-textLink-foreground) 70%, transparent)",
           animation: "progress-slide 1s infinite linear",
         }}
       />

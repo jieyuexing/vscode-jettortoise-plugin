@@ -35,8 +35,8 @@ function Checkbox({
         width: 16,
         height: 16,
         borderRadius: 3,
-        border: checked ? "none" : "1.5px solid var(--description-fg, #999)",
-        background: checked ? "#3574f0" : "transparent",
+        border: checked ? "none" : "1.5px solid var(--description-fg)",
+        background: checked ? "var(--vscode-focusBorder)" : "transparent",
         cursor: "pointer",
         flexShrink: 0,
         transition: "background 0.1s, border 0.1s",
@@ -46,7 +46,7 @@ function Checkbox({
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path
             d="M2.5 6L5 8.5L9.5 3.5"
-            stroke="#fff"
+            stroke="var(--vscode-button-foreground)"
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -131,18 +131,18 @@ export function CreateBranchDialog({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.4)",
+        background: "var(--vscode-widget-shadow)",
       }}
     >
       <div
         style={{
-          background: "var(--vscode-editorWidget-background, #252526)",
+          background: "var(--vscode-editorWidget-background)",
           border: "1px solid var(--border)",
           borderRadius: 8,
           padding: "16px 20px",
           minWidth: 380,
           maxWidth: 500,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          boxShadow: "0 8px 32px var(--vscode-widget-shadow)",
         }}
       >
         {/* Title */}
@@ -161,15 +161,13 @@ export function CreateBranchDialog({
         {error && (
           <div
             style={{
-              background:
-                "var(--vscode-inputValidation-errorBackground, #5a1d1d)",
-              border:
-                "1px solid var(--vscode-inputValidation-errorBorder, #be1100)",
+              background: "var(--vscode-inputValidation-errorBackground)",
+              border: "1px solid var(--vscode-inputValidation-errorBorder)",
               borderRadius: 4,
               padding: "8px 10px",
               marginBottom: 12,
               fontSize: 12,
-              color: "var(--vscode-errorForeground, #f48771)",
+              color: "var(--vscode-errorForeground)",
               lineHeight: 1.4,
             }}
           >
@@ -212,7 +210,7 @@ export function CreateBranchDialog({
                 background: "var(--input-bg)",
                 color: "var(--input-fg)",
                 border: error
-                  ? "1px solid var(--vscode-inputValidation-errorBorder, #be1100)"
+                  ? "1px solid var(--vscode-inputValidation-errorBorder)"
                   : "1px solid var(--input-border)",
                 borderRadius: 4,
                 padding: "4px 8px",
@@ -274,7 +272,7 @@ export function CreateBranchDialog({
             type="button"
             onClick={onClose}
             style={{
-              background: "var(--vscode-button-secondaryBackground, #3a3d41)",
+              background: "var(--vscode-button-secondaryBackground)",
               color: "var(--vscode-button-secondaryForeground, var(--app-fg))",
               border: "none",
               borderRadius: 4,

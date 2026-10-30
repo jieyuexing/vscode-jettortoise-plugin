@@ -6,8 +6,8 @@
   flex-direction: column;
   height: 100vh;
   font-size: 13px;
-  color: var(--app-fg, #ccc);
-  background: var(--app-bg, #1e1e1e);
+  color: var(--app-fg);
+  background: var(--app-bg);
 }
 
 /* ─── Header ───────────────────────────────────────────────────── */
@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -40,7 +40,7 @@
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--app-fg, #ccc);
+  color: var(--app-fg);
   cursor: pointer;
   border-radius: 4px;
   opacity: 0.6;
@@ -48,13 +48,13 @@
 }
 
 .rollback-view-toggle button:hover {
-  background: var(--list-hoverBackground, rgba(255, 255, 255, 0.04));
+  background: var(--list-hoverBackground);
   opacity: 0.9;
 }
 
 .rollback-view-toggle button.active {
   opacity: 1;
-  background: var(--vscode-toolbar-activeBackground, rgba(255, 255, 255, 0.1));
+  background: var(--vscode-toolbar-activeBackground);
 }
 
 .rollback-view-toggle button svg {
@@ -76,7 +76,7 @@
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  border: 1.5px solid var(--vscode-checkbox-border, #6b6b6b);
+  border: 1.5px solid var(--vscode-checkbox-border);
   border-radius: 3px;
   background: var(--vscode-checkbox-background, transparent);
   cursor: pointer;
@@ -85,8 +85,8 @@
 }
 
 .rollback-file-list input[type="checkbox"]:checked {
-  background: #3574f0;
-  border-color: #3574f0;
+  background: var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
 }
 
 .rollback-file-list input[type="checkbox"]:checked::after {
@@ -96,14 +96,14 @@
   top: 1px;
   width: 5px;
   height: 9px;
-  border: solid #fff;
+  border: solid var(--vscode-button-foreground);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 
 .rollback-file-list input[type="checkbox"]:indeterminate {
-  background: #3574f0;
-  border-color: #3574f0;
+  background: var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
 }
 
 .rollback-file-list input[type="checkbox"]:indeterminate::after {
@@ -113,7 +113,7 @@
   top: 6px;
   width: 8px;
   height: 2px;
-  background: #fff;
+  background: var(--vscode-button-foreground);
   border-radius: 1px;
 }
 
@@ -129,7 +129,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border, #333);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -147,7 +147,7 @@
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  border: 1.5px solid var(--vscode-checkbox-border, #6b6b6b);
+  border: 1.5px solid var(--vscode-checkbox-border);
   border-radius: 3px;
   background: var(--vscode-checkbox-background, transparent);
   cursor: pointer;
@@ -155,8 +155,8 @@
 }
 
 .rollback-delete-option input[type="checkbox"]:checked {
-  background: #3574f0;
-  border-color: #3574f0;
+  background: var(--vscode-focusBorder);
+  border-color: var(--vscode-focusBorder);
 }
 
 .rollback-delete-option input[type="checkbox"]:checked::after {
@@ -166,7 +166,7 @@
   top: 1px;
   width: 5px;
   height: 9px;
-  border: solid #fff;
+  border: solid var(--vscode-button-foreground);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -179,7 +179,7 @@
 /* ─── Error Message ────────────────────────────────────────────── */
 
 .rollback-error {
-  color: #f44747;
+  color: var(--vscode-errorForeground);
   font-size: 12px;
 }
 
@@ -206,23 +206,20 @@
 }
 
 .rollback-btn-primary {
-  background: var(--vscode-button-background, #2563eb);
-  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
 }
 
 .rollback-btn-primary:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground, #1d4ed8);
+  background: var(--vscode-button-hoverBackground);
 }
 
 .rollback-btn-secondary {
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(
-    --vscode-button-secondaryForeground,
-    var(--vscode-foreground, #ccc)
-  );
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   border: none;
 }
 
 .rollback-btn-secondary:hover:not(:disabled) {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground);
 }

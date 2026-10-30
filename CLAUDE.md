@@ -47,6 +47,17 @@ Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-
 
 `scripts/check-l10n.cjs` 已并入 headless：检查清单占位键、扩展端字面量翻译键、webview 全键及参数占位符，拒绝未翻译的 JSX/显示属性；用实际函数检查语言回落、中文计数、固定错误与 CLI 原文保留。
 
+## ETECH Theia 左侧提交与底部日志（2026-10-30）
+
+用户决定用 JetTortoise 代替 ETECH 的原生版本控制面板。产品集成与隔离 GUI 验证以总仓 `.local/tmp/etech-eclipse-layout/PROMPT-R3.md` 为本轮合同，覆盖本页旧实验的“不启动 GUI”限制；只使用本机复制的 Git/CVS 夹具，不触及公司机器。`onStartupFinished` 激活保持不变，不注册原生 SCM，不改内置 Git 配置或写操作合同。版本仍为 0.6.0，不推送、不发布。
+
+- 底部容器和视图都使用清单已有的 Log／日志词条，去掉 JetTortoise 前缀；提交容器保持 Commit／提交。
+- webview 主体清除宿主默认的左右 20px 留白。提交页签、工具栏和底部按钮固定单行，页签保留 Git 范围标识；工具按钮缩为 22px，窄栏超出时可横向滚动，不把按钮挤成多行。22px 变更树、16px 层级与选择、分组、计数规则保持原样。
+- 界面颜色、状态图标、图线、滚动条和阴影使用 `--vscode-*` 主题变量，字体继承宿主的 font-family/font-size；不写死浅色或深色值。文件类型图标沿用上游图标库。日志焦点内使用 activeSelection，焦点离开使用 inactiveSelection 及对应前景色。
+- 日志说明列占剩余空间；作者、日期、哈希分别最多占行宽 16%／24%／14%，宽屏仍使用原生拖动列宽。分支和标签最多占说明区 35%，说明至少保留 60%；过多图标与标记文字先截断，完整说明保留在 title。列标题和行使用相同上限。
+
+验证仍走下列既有入口。源码、headless 与真实隔离窗口分别记录；本轮不据此承诺 Windows CVSNT、公司仓、Marketplace 或发布版本验收。
+
 ## 检查
 
 使用 package.json 声明的 pnpm。测试临时目录由任务设置 `TMPDIR`、`TMP`、`TEMP`，本仓任务放总仓 `.local/tmp/<任务>/`。

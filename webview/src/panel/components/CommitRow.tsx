@@ -7,12 +7,12 @@ const COLUMN_WIDTH = 10;
 const GRAPH_PADDING = 6;
 const NODE_TEXT_GAP = 14;
 
-/** Tag icon colors matching IDEA */
+/** 分支和标签标记沿用宿主图表主题色。 */
 const REF_ICON_COLORS: Record<string, string> = {
-  branch: "#59a869",
-  "remote-branch": "#b07cd8",
-  tag: "#e5c07b",
-  HEAD: "#c75450",
+  branch: "var(--vscode-charts-green)",
+  "remote-branch": "var(--vscode-charts-purple)",
+  tag: "var(--vscode-charts-yellow)",
+  HEAD: "var(--vscode-charts-red)",
 };
 
 function formatDateTime(dateStr: string): string {
@@ -184,6 +184,7 @@ export function CommitRow({
   return (
     <div
       ref={rowRef}
+      tabIndex={-1}
       className={`selectable-row${isSelected ? " selected" : ""}`}
       onClick={(event) => onCommitClick(event, commit.hash)}
       onContextMenu={(e) => {
@@ -219,13 +220,15 @@ export function CommitRow({
       >
         {refItems.length > 0 && (
           <span
+            className="commit-refs"
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 4,
               flexShrink: 1,
               minWidth: 0,
-              maxWidth: "50%",
+              maxWidth: "35%",
+              flexBasis: "auto",
               overflow: "hidden",
             }}
           >
@@ -233,7 +236,10 @@ export function CommitRow({
             <span
               style={{
                 display: "inline-flex",
-                flexShrink: 0,
+                flexShrink: 1,
+                minWidth: 16,
+                maxWidth: 40,
+                overflow: "hidden",
                 position: "relative",
                 width: 16 + Math.max(0, (refItems.length - 1) * 5),
                 height: 16,
@@ -253,7 +259,7 @@ export function CommitRow({
                   >
                     <path
                       d="M2.5 3.5C2.5 2.95 2.95 2.5 3.5 2.5H7.09c.27 0 .52.1.71.3l5.41 5.41c.39.39.39 1.02 0 1.41l-3.59 3.59c-.39.39-1.02.39-1.41 0L2.79 7.8a1 1 0 01-.29-.71V3.5z"
-                      fill="var(--app-bg, #fff)"
+                      fill="var(--app-bg)"
                       stroke={color}
                       strokeWidth="1.2"
                     />
@@ -285,9 +291,10 @@ export function CommitRow({
           </span>
         )}
         <span
+          className="commit-subject"
           title={commit.subject}
           style={{
-            flex: 1,
+            flex: "1 0 60%",
             minWidth: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -304,6 +311,8 @@ export function CommitRow({
           style={{
             flexShrink: 0,
             width: columnWidths.author,
+            maxWidth: "16%",
+            minWidth: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -321,6 +330,11 @@ export function CommitRow({
           style={{
             flexShrink: 0,
             width: columnWidths.date,
+            maxWidth: "24%",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
             textAlign: "right",
             opacity: 0.5,
             paddingLeft: 8,
@@ -336,6 +350,8 @@ export function CommitRow({
           style={{
             flexShrink: 0,
             width: columnWidths.hash,
+            maxWidth: "14%",
+            minWidth: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",

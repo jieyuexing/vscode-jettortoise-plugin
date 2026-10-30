@@ -28,16 +28,17 @@ function getStateColor(block: MergeBlock, side: string): string {
   if (state === "conflict" && isSideDecided(block, side)) return "transparent";
 
   if (state === "conflict") {
-    if (side === "center") return "rgba(255, 0, 0, 0.05)";
-    return "rgba(255, 0, 0, 0.1)";
+    if (side === "center")
+      return "var(--vscode-diffEditor-removedTextBackground)";
+    return "var(--vscode-diffEditor-removedTextBackground)";
   }
 
   if (state === "modified_left" && (side === "left" || side === "center"))
-    return "rgba(0, 150, 255, 0.1)";
+    return "var(--vscode-list-hoverBackground)";
   if (state === "modified_right" && (side === "right" || side === "center"))
-    return "rgba(0, 150, 255, 0.1)";
+    return "var(--vscode-list-hoverBackground)";
   if (state === "modified_both" && side !== "transparent")
-    return "rgba(0, 150, 255, 0.1)";
+    return "var(--vscode-list-hoverBackground)";
 
   return "transparent";
 }
@@ -49,7 +50,7 @@ function getDecidedBorder(
 ): React.CSSProperties | undefined {
   if (block.state !== "conflict") return undefined;
   if (!isSideDecided(block, side)) return undefined;
-  const border = "1px dashed rgba(255, 80, 60, 0.5)";
+  const border = "1px dashed var(--vscode-diffEditor-removedTextBackground)";
   return { borderTop: border, borderBottom: border };
 }
 
@@ -153,7 +154,9 @@ function getDiffSpans(
   for (const token of diffTokens) {
     // Removed tokens are not present in the side text, skip them
     if (token.removed) continue;
-    const bg = token.added ? "rgba(255, 100, 70, 0.35)" : undefined;
+    const bg = token.added
+      ? "var(--vscode-diffEditor-removedTextBackground)"
+      : undefined;
     spans.push({
       start: offset,
       end: offset + token.value.length,
@@ -358,12 +361,12 @@ export const MergeColumn: React.FC<MergeColumnProps> = ({
           key={`pad-${i}`}
           style={{
             height: "20px",
-            backgroundColor: "rgba(0,0,0,0.05)",
+            backgroundColor: "var(--vscode-toolbar-hoverBackground)",
             width: "100%",
             position: "sticky",
             left: 0,
             backgroundImage:
-              "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px)",
+              "repeating-linear-gradient(45deg, transparent, transparent 10px, var(--vscode-toolbar-hoverBackground) 10px, var(--vscode-toolbar-hoverBackground) 20px)",
           }}
         />
       ))}

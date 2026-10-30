@@ -323,17 +323,26 @@ export function CommitList({
           height: 24,
           paddingLeft: Math.min(graphWidth, 60),
           paddingRight: 8,
-          borderBottom: "1px solid var(--border, #333)",
+          borderBottom: "1px solid var(--border)",
           fontSize: "11px",
           opacity: 0.6,
           flexShrink: 0,
           userSelect: "none",
           position: "relative",
           zIndex: 3,
-          background: "var(--app-bg, #1e1e1e)",
+          background: "var(--app-bg)",
         }}
       >
-        <span style={{ flex: 1, paddingRight: 4 }}>{t("Message")}</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            whiteSpace: "nowrap",
+            paddingRight: 4,
+          }}
+        >
+          {t("Message")}
+        </span>
         {visibleColumns.author && (
           <>
             <ColumnResizeHandle
@@ -344,6 +353,11 @@ export function CommitList({
               style={{
                 flexShrink: 0,
                 width: columnWidths.author,
+                maxWidth: "16%",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
                 paddingLeft: 8,
               }}
             >
@@ -361,6 +375,11 @@ export function CommitList({
               style={{
                 flexShrink: 0,
                 width: columnWidths.date,
+                maxWidth: "24%",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
                 textAlign: "right",
                 paddingLeft: 8,
               }}
@@ -379,6 +398,11 @@ export function CommitList({
               style={{
                 flexShrink: 0,
                 width: columnWidths.hash,
+                maxWidth: "14%",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
                 paddingLeft: 8,
               }}
             >
@@ -530,9 +554,7 @@ function ColumnResizeHandle({
         style={{
           width: highlight ? 2 : 1,
           height: "70%",
-          background: highlight
-            ? "var(--vscode-focusBorder, #007fd4)"
-            : "var(--border, #444)",
+          background: highlight ? "var(--vscode-focusBorder)" : "var(--border)",
           borderRadius: 1,
           transition: "width 0.1s, background 0.1s",
         }}

@@ -40,18 +40,18 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.4)",
+        background: "var(--vscode-widget-shadow)",
       }}
     >
       <div
         style={{
-          background: "var(--vscode-editorWidget-background, #252526)",
+          background: "var(--vscode-editorWidget-background)",
           border: "1px solid var(--border)",
           borderRadius: 8,
           padding: "16px 20px",
           minWidth: 340,
           maxWidth: 460,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          boxShadow: "0 8px 32px var(--vscode-widget-shadow)",
         }}
       >
         {/* Title */}
@@ -92,8 +92,8 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
             onClick={() => onPush(true)}
             style={{
               background: "transparent",
-              color: "var(--vscode-errorForeground, #f48771)",
-              border: "1px solid var(--vscode-errorForeground, #f48771)",
+              color: "var(--vscode-errorForeground)",
+              border: "1px solid var(--vscode-errorForeground)",
               borderRadius: 4,
               padding: "4px 14px",
               fontSize: 12,
@@ -109,7 +109,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
             type="button"
             onClick={onClose}
             style={{
-              background: "var(--vscode-button-secondaryBackground, #3a3d41)",
+              background: "var(--vscode-button-secondaryBackground)",
               color: "var(--vscode-button-secondaryForeground, var(--app-fg))",
               border: "none",
               borderRadius: 4,

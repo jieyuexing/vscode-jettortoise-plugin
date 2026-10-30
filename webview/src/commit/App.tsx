@@ -83,14 +83,14 @@ function RebaseBanner() {
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        background: "#e8f5e9",
-        borderBottom: "1px solid #c8e6c9",
+        background: "var(--vscode-inputValidation-infoBackground)",
+        borderBottom: "1px solid var(--vscode-inputValidation-infoBorder)",
         fontSize: 12,
         flexShrink: 0,
       }}
     >
       <span style={{ fontSize: 14 }}>⚠️</span>
-      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg, #ccc)" }}>
+      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg)" }}>
         {label}
         {progress}
       </span>
@@ -118,14 +118,14 @@ function RebaseBanner() {
           >
             <path
               d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
             <path
               d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -157,7 +157,7 @@ function RebaseBanner() {
           >
             <path
               d="M4 12L12 4M12 12L4 4"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -241,15 +241,14 @@ function CherryPickBanner() {
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        background: "var(--vscode-inputValidation-warningBackground, #352a05)",
-        borderBottom:
-          "1px solid var(--vscode-inputValidation-warningBorder, #665500)",
+        background: "var(--vscode-inputValidation-warningBackground)",
+        borderBottom: "1px solid var(--vscode-inputValidation-warningBorder)",
         fontSize: 12,
         flexShrink: 0,
       }}
     >
       <span style={{ fontSize: 14 }}>🍒</span>
-      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg, #ccc)" }}>
+      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg)" }}>
         {label}
       </span>
       <Tooltip text={t("Continue Cherry-pick (git cherry-pick --continue)")}>
@@ -275,14 +274,14 @@ function CherryPickBanner() {
           >
             <path
               d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
             <path
               d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -303,7 +302,7 @@ function CherryPickBanner() {
             }
           }}
           className="rebase-action-btn rebase-continue"
-          style={{ background: "#fb8c00" }}
+          style={{ background: "var(--vscode-charts-orange)" }}
         >
           <svg
             width="16"
@@ -314,7 +313,7 @@ function CherryPickBanner() {
           >
             <path
               d="M5 4L11 8L5 12"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -345,7 +344,7 @@ function CherryPickBanner() {
           >
             <path
               d="M4 12L12 4M12 12L4 4"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -434,14 +433,14 @@ function MergeBanner() {
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        background: "#e8f5e9",
-        borderBottom: "1px solid #c8e6c9",
+        background: "var(--vscode-inputValidation-infoBackground)",
+        borderBottom: "1px solid var(--vscode-inputValidation-infoBorder)",
         fontSize: 12,
         flexShrink: 0,
       }}
     >
       <span style={{ fontSize: 14 }}>⚠️</span>
-      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg, #ccc)" }}>
+      <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg)" }}>
         {label}
       </span>
       <Tooltip text={t("Resolve Conflicts")} position="top">
@@ -467,14 +466,14 @@ function MergeBanner() {
           >
             <path
               d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
             <path
               d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -505,7 +504,7 @@ function MergeBanner() {
           >
             <path
               d="M4 12L12 4M12 12L4 4"
-              stroke="#ffffff"
+              stroke="var(--vscode-button-foreground)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"

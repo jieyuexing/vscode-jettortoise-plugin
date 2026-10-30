@@ -4,14 +4,14 @@
   flex-direction: column;
   height: 100vh;
   font-size: 13px;
-  color: var(--app-fg, #ccc);
-  background: var(--app-bg, #1e1e1e);
+  color: var(--app-fg);
+  background: var(--app-bg);
 }
 
 .push-header {
   position: relative;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
 
@@ -62,12 +62,12 @@
 }
 
 .push-commit-item:hover {
-  background: var(--list-hoverBackground, rgba(255, 255, 255, 0.04));
+  background: var(--list-hoverBackground);
 }
 
 .push-commit-item.selected {
-  background: var(--selected-bg, #094771);
-  color: var(--selected-fg, #fff);
+  background: var(--selected-bg);
+  color: var(--selected-fg);
 }
 
 .push-commit-subject {
@@ -90,14 +90,14 @@
 .push-files {
   flex: 1;
   overflow-y: auto;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border);
 }
 
 .push-files-header {
   padding: 8px 12px;
   font-size: 12px;
   opacity: 0.6;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 1px solid var(--border);
 }
 
 .push-file-item {
@@ -109,7 +109,7 @@
 }
 
 .push-file-item:hover {
-  background: var(--list-hoverBackground, rgba(255, 255, 255, 0.04));
+  background: var(--list-hoverBackground);
 }
 
 .push-file-name {
@@ -141,11 +141,11 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border, #333);
+  border-top: 1px solid var(--border);
 }
 
 .push-error {
-  color: #f44747;
+  color: var(--vscode-errorForeground);
   font-size: 12px;
 }
 
@@ -163,22 +163,22 @@
 }
 
 .push-btn-primary {
-  background: var(--vscode-button-background, #2563eb);
-  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
 }
 
 .push-btn-primary:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground, #1d4ed8);
+  background: var(--vscode-button-hoverBackground);
 }
 
 .push-btn-secondary {
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, var(--app-fg, #ccc));
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--app-fg));
   border: none;
 }
 
 .push-btn-secondary:hover:not(:disabled) {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground);
 }
 
 .push-split-btn {
@@ -195,7 +195,7 @@
 .push-split-arrow {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 1px solid var(--vscode-toolbar-hoverBackground);
   padding: 6px 8px;
   font-size: 10px;
   display: flex;
@@ -214,10 +214,10 @@
   bottom: 100%;
   right: 0;
   margin-bottom: 4px;
-  background: var(--vscode-menu-background, var(--app-bg, #2d2d2d));
-  border: 1px solid var(--vscode-menu-border, var(--border, #555));
+  background: var(--vscode-menu-background, var(--app-bg));
+  border: 1px solid var(--vscode-menu-border, var(--border));
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow);
   z-index: 1000;
   min-width: 120px;
   overflow: hidden;
@@ -231,7 +231,7 @@ button.push-menu-item {
   text-align: left;
   background: none;
   border: none;
-  color: var(--app-fg, #333);
+  color: var(--app-fg);
   font-size: 13px;
   cursor: pointer;
   border-radius: 0;
@@ -239,26 +239,26 @@ button.push-menu-item {
 }
 
 button.push-menu-item:hover:not(:disabled) {
-  background: var(--vscode-menu-selectionBackground, #04395e);
-  color: var(--vscode-menu-selectionForeground, #fff);
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 /* Draggable Split Divider */
 .push-divider {
   flex-shrink: 0;
   width: 4px;
-  background: var(--border, #333);
+  background: var(--border);
   cursor: col-resize;
   position: relative;
   transition: background 0.15s;
 }
 
 .push-divider:hover {
-  background: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-focusBorder);
 }
 
 .push-divider--dragging {
-  background: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-focusBorder);
 }
 
 /* Branch Label (clickable affordance) */
@@ -272,7 +272,7 @@ button.push-menu-item:hover:not(:disabled) {
   text-underline-offset: 3px;
   text-decoration-color: var(
     --vscode-descriptionForeground,
-    rgba(204, 204, 204, 0.5)
+    var(--vscode-toolbar-hoverBackground)
   );
   border-radius: 3px;
   padding: 1px 4px;
@@ -283,7 +283,7 @@ button.push-menu-item:hover:not(:disabled) {
 }
 
 .push-branch-label:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-toolbar-hoverBackground);
   opacity: 0.85;
 }
 
@@ -299,10 +299,10 @@ button.push-menu-item:hover:not(:disabled) {
   top: 100%;
   left: 0;
   margin-top: 4px;
-  background: var(--vscode-dropdown-background, #2d2d2d);
-  border: 1px solid var(--vscode-dropdown-border, #555);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow);
   z-index: 1000;
   min-width: 200px;
   max-height: 300px;
@@ -329,18 +329,18 @@ button.push-menu-item:hover:not(:disabled) {
   text-align: left;
   background: none;
   border: none;
-  color: var(--vscode-dropdown-foreground, #ccc);
+  color: var(--vscode-dropdown-foreground);
   font-size: 13px;
   cursor: pointer;
 }
 
 .push-branch-item:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-list-hoverBackground);
 }
 
 .push-branch-item--selected {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
-  color: var(--vscode-list-activeSelectionForeground, #fff);
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
 }
 
 /* Remote Branch Selector (remote dropdown + branch input) */
@@ -349,10 +349,10 @@ button.push-menu-item:hover:not(:disabled) {
   top: 100%;
   left: 0;
   margin-top: 4px;
-  background: var(--app-bg, #1e1e1e);
-  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  background: var(--app-bg);
+  border: 1px solid var(--vscode-focusBorder);
   border-radius: var(--radius, 6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow);
   z-index: 1000;
   min-width: 220px;
   display: flex;
@@ -370,7 +370,7 @@ button.push-menu-item:hover:not(:disabled) {
 }
 
 .remote-branch-selector__remotes {
-  border-bottom: 1px solid var(--border, #444);
+  border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
 }
 
@@ -390,9 +390,9 @@ button.push-menu-item:hover:not(:disabled) {
 .remote-branch-selector__input {
   margin: 4px 12px 0;
   width: calc(100% - 24px);
-  background: var(--input-bg, #3c3c3c);
-  color: var(--input-fg, #ccc);
-  border: 1px solid var(--input-border, #3c3c3c);
+  background: var(--input-bg);
+  color: var(--input-fg);
+  border: 1px solid var(--input-border);
   border-radius: 3px;
   padding: 5px 8px;
   font-size: 13px;
@@ -402,7 +402,7 @@ button.push-menu-item:hover:not(:disabled) {
 }
 
 .remote-branch-selector__input:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: var(--vscode-focusBorder);
 }
 
 .remote-branch-selector__loading {
@@ -418,7 +418,7 @@ button.push-menu-item:hover:not(:disabled) {
   left: 0;
   right: 0;
   height: 3px;
-  background: var(--vscode-progressBar-background, rgba(0, 122, 204, 0.2));
+  background: var(--vscode-progressBar-background);
   overflow: hidden;
 }
 
@@ -428,8 +428,8 @@ button.push-menu-item:hover:not(:disabled) {
   background: linear-gradient(
     90deg,
     transparent,
-    #007acc 30%,
-    #3794ff 70%,
+    var(--vscode-progressBar-background) 30%,
+    var(--vscode-textLink-foreground) 70%,
     transparent
   );
   animation: push-progress-slide 1.2s infinite linear;
@@ -452,14 +452,14 @@ button.push-menu-item:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--vscode-widget-shadow);
 }
 
 .push-rejected-dialog {
-  background: var(--app-bg, #fff);
-  border: 1px solid var(--border, #ddd);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 32px var(--vscode-widget-shadow);
   padding: 24px 28px;
   max-width: 440px;
   width: 90%;
@@ -479,12 +479,12 @@ button.push-menu-item:hover:not(:disabled) {
 .push-rejected-title {
   font-size: 16px;
   font-weight: 700;
-  color: var(--app-fg, #333);
+  color: var(--app-fg);
 }
 
 .push-rejected-message {
   font-size: 13px;
-  color: var(--app-fg, #555);
+  color: var(--app-fg);
   line-height: 1.5;
   margin: 0 0 20px 0;
 }
@@ -497,22 +497,22 @@ button.push-menu-item:hover:not(:disabled) {
 }
 
 .push-btn-rebase {
-  background: #2563eb;
-  color: #fff;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
   font-weight: 600;
 }
 
 .push-btn-rebase:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--vscode-button-hoverBackground);
 }
 
 .push-btn-merge {
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
-  color: var(--vscode-button-secondaryForeground, var(--app-fg, #ccc));
-  border: 1px solid var(--border, #555);
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--app-fg));
+  border: 1px solid var(--border);
   font-weight: 600;
 }
 
 .push-btn-merge:hover:not(:disabled) {
-  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  background: var(--vscode-button-secondaryHoverBackground);
 }

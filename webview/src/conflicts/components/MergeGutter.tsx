@@ -19,7 +19,7 @@ interface MergeGutterProps {
 const LINE_HEIGHT = 20;
 
 const lineNoStyle: React.CSSProperties = {
-  color: "var(--line-number-fg, #858585)",
+  color: "var(--line-number-fg)",
   fontSize: "var(--editor-font-size, 12px)",
   fontFamily: "var(--editor-font, monospace)",
   lineHeight: `${LINE_HEIGHT}px`,
@@ -50,12 +50,12 @@ const btnBase: React.CSSProperties = {
 
 const acceptBtnStyle: React.CSSProperties = {
   ...btnBase,
-  color: "var(--link-fg, #4ea1f0)",
+  color: "var(--link-fg)",
 };
 
 const rejectBtnStyle: React.CSSProperties = {
   ...btnBase,
-  color: "var(--error-fg, #f44747)",
+  color: "var(--error-fg)",
 };
 
 export const MergeGutter: React.FC<MergeGutterProps> = ({

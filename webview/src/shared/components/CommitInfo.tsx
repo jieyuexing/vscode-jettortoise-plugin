@@ -13,7 +13,10 @@ function Linkify({ text }: { text: string }) {
           <a
             key={`link-${i}-${part.slice(0, 20)}`}
             href={part}
-            style={{ color: "#3574f0", textDecoration: "none" }}
+            style={{
+              color: "var(--vscode-focusBorder)",
+              textDecoration: "none",
+            }}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -40,10 +43,10 @@ function formatDateTime(dateStr: string): string {
 
 /** Icon colors matching IDEA */
 const iconColors: Record<string, string> = {
-  branch: "#59a869",
-  "remote-branch": "#9b7dd4",
-  tag: "#c4a000",
-  HEAD: "#e06c75",
+  branch: "var(--vscode-charts-green)",
+  "remote-branch": "var(--vscode-charts-purple)",
+  tag: "var(--vscode-charts-yellow)",
+  HEAD: "var(--vscode-charts-red)",
 };
 
 /**
@@ -102,7 +105,10 @@ export function CommitInfo({ commit }: { commit: Commit }) {
           <>
             <a
               href={`mailto:${commit.authorEmail}`}
-              style={{ color: "#3574f0", textDecoration: "none" }}
+              style={{
+                color: "var(--vscode-focusBorder)",
+                textDecoration: "none",
+              }}
             >
               &lt;{commit.authorEmail}&gt;
             </a>{" "}
@@ -140,7 +146,7 @@ export function CommitInfo({ commit }: { commit: Commit }) {
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                   <path
                     d="M2.5 3.5C2.5 2.95 2.95 2.5 3.5 2.5H7.09c.27 0 .52.1.71.3l5.41 5.41c.39.39.39 1.02 0 1.41l-3.59 3.59c-.39.39-1.02.39-1.41 0L2.79 7.8a1 1 0 01-.29-.71V3.5z"
-                    fill="var(--app-bg, #fff)"
+                    fill="var(--app-bg)"
                     stroke={color}
                     strokeWidth="1.2"
                   />

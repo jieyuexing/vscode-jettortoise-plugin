@@ -7,7 +7,7 @@ function TextFileIcon({ style }: { style?: React.CSSProperties }) {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={style}>
       <path
         d="M3 3.5h10M3 6.5h10M3 9.5h10M3 12.5h7"
-        stroke="#6C707E"
+        stroke="var(--vscode-descriptionForeground)"
         strokeLinecap="round"
       />
     </svg>

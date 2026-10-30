@@ -15,7 +15,7 @@
 
 ## 交互与边界
 
-Changes 的计数只含已管理的本地变更。Unversioned Files 和 Incoming 默认折叠、不计数、不预选。未管理目录只展示节点，展开才读取其下一层；先通过 Add to Version Control 纳管，随后在 Changes 勾选提交。Incoming 只读，不能提交，不显示复选框，以向下箭头标记远端新版本。Changes 的根文件直接列出，只有子目录创建目录组；分组内只显示文件名，关闭目录分组才显示路径。仅 Changes、Unversioned Files 和 Incoming 标题转大写，目录保留原名，计数使用单复数 file/files，展开箭头复用上游 chevron。Git 的分阶段行合并为一个路径选择，提交取所选文件的磁盘内容；重命名带旧、新两条路径。
+更改（Changes）的计数只含已管理的本地变更。未受版本控制的文件（Unversioned Files）和传入（Incoming）默认折叠、不计数、不预选。未管理目录只展示节点，展开才读取其下一层；先通过“添加到版本控制”纳管，随后在更改中勾选提交。传入只读，不能提交，不显示复选框，以向下箭头标记远端新版本。更改的根文件直接列出，只有子目录创建目录组；分组内只显示文件名，关闭目录分组才显示路径。只有英文分组标题转大写，中文标题及目录保留原样；英文计数使用单复数 file/files，中文使用“N 个文件”，展开箭头复用上游 chevron。Git 的分阶段行合并为一个路径选择，提交取所选文件的磁盘内容；重命名带旧、新两条路径。
 
 Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一个原子事务。开始前验证全部所选根；逐仓失败会报告已经成功的仓库并保留说明。Git 先检查完整索引，再 `git commit -m <message> -- <paths>`，未选择的暂存内容保留。Amend 和 Commit and Push 只在单个 Git 仓选择中可用；Shelf/Stash 明示仅 Git。
 
@@ -33,7 +33,19 @@ Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-
 
 2026-10-30 用户确定用 `-l` 加显式已登记目录替代递归 update。依据两条本机 CVS 1.12.13 真实 `:local:` 实测：父 Entries 含 `D/src////`、无 Entries.Log 时，递归 `cvs -f -n update -P` 仍进入未登记的同项目 build，并输出 `M build/sentinel.txt`；`cvs -q update -l -P . ./src ./src/deep ./side` 不进入该 build，同时能取得已登记多层目录的服务器修改和新文件。真实回归也验证 Entries.Log 的 A 纳入、R 排除、服务器新目录不创建、已登记的异 Root/Git 边界拒绝，以及 8000 字符分批和批间取消。用户此前在 NsnWeb 实测 `update -d` 会拉下 WebContent、build、doc 并冲突，因此不能恢复 `-d`。更新后不另跑 `cvs -n -q update -d` 统计新目录：它需要额外遍历服务器目录，可能进入本轮明确跳过的 build 等大树，当前没有便宜且有界的计数入口。
 
-不移植 catalog、四栏编辑器工作台、`packages/vcs-ui`、原生 SCM provider 或 `git.ignoredRepositories`。界面本轮用英文，不读旧扩展存储，不注册旧命令前缀。依赖沿用 lockfile，不升级。
+不移植 catalog、四栏编辑器工作台、`packages/vcs-ui`、原生 SCM provider 或 `git.ignoredRepositories`。不读旧扩展存储，不注册旧命令前缀。依赖沿用 lockfile，不升级。
+
+## 本地化与列表密度
+
+2026-10-30 用户确定将界面本地化为简体中文，并按 IDEA 提交窗口压紧变更树。本轮只改显示文本与 Commit 变更树样式，不改分组、计数、折叠、勾选或写操作流程；不启动 GUI、不推送、不接入 141 或台式机。
+
+- 清单文本由 `package.json` 中的 `%key%` 对应 `package.nls.json`（英文）和 `package.nls.zh-cn.json`（简体中文）。扩展端使用 `vscode.l10n.t`，`package.json` 的 `l10n` 指向 `./l10n`；英文原文为键，译文在 `l10n/bundle.l10n.zh-cn.json`，不另设英文 bundle。
+- `src/views/html.ts` 将 `vscode.env.language` 经 HTML 转义写入根元素的 `data-language` 和页面 `lang`。`webview/src/shared/i18n/index.ts` 负责选择语言、替换参数和文件计数，`locales.ts` 保存英文字典及 `zh-cn` 字典；中文缺键回落英文，其它语言显示英文。不生成 `zh`、`zh-tw` 副本，不引入第三方 i18n 库。
+- 译名参考 `main` 的清单、扩展 bundle、webview/CVS 和 `packages/vcs-ui` 字典；本轮明确要求优先于旧译名，统一 Commit→提交、Update Project→更新项目、Rollback→回滚、Changes→更改、Unversioned Files→未受版本控制的文件、Incoming→传入、Shelf→搁置、Commit and Push→提交并推送、Amend→修改提交。没有旧译名时沿用 IntelliJ IDEA 简体中文的操作叫法。Git/CVS 标识、分支名、修订号、文件路径和原始提交说明保持原值。
+- 纯 Node 的 CVS 内核、路径和请求验证不导入 `vscode`。`src/cvs/session.ts` 在会话层将内核错误码转为译文；`src/messages/errors.ts` 在显示边界翻译固定错误与相对子仓提示，CLI 原始输出和开发者调试日志保持原值。
+- `webview/src/commit/commit.css` 将仓库、分组、目录、文件行固定为 22px；层级缩进 16px，树内复选框 14px，控件间距 2px。根文件的文件名起点为 16px 左内边距 + 14px 复选框 + 2px 间距 + 14px 图标槽 + 2px 间距，即 x=48；目录文件再缩进 16px。仓库和目录计数紧随名称并使用弱化颜色。这是源码尺寸合同，真实窗口的 CSS 像素、缩放和截断由协调者另验。
+
+`scripts/check-l10n.cjs` 已并入 headless：检查清单占位键、扩展端字面量翻译键、webview 全键及参数占位符，拒绝未翻译的 JSX/显示属性；用实际函数检查语言回落、中文计数、固定错误与 CLI 原文保留。
 
 ## 检查
 

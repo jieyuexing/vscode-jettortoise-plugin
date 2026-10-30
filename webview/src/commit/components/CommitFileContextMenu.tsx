@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { bridge } from "../../shared/bridge";
+import { t } from "../../shared/i18n";
 import type { ChangeFile } from "../../shared/models/changes";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
@@ -47,7 +48,7 @@ export function CommitFileContextMenu({
       await useCommitStore.getState().fetchChanges();
     } catch (error) {
       useCommitStore.setState({
-        error: error instanceof Error ? error.message : "Operation failed.",
+        error: error instanceof Error ? error.message : t("Operation failed."),
       });
     }
   };
@@ -70,7 +71,7 @@ export function CommitFileContextMenu({
           className="commit-context-menu-item"
           onClick={() => void invoke("openFile", { filePath: file.path })}
         >
-          Open File
+          {t("Open File")}
         </button>
       )}
       {file.status === "untracked" ? (
@@ -83,7 +84,10 @@ export function CommitFileContextMenu({
               void invoke("ignoreUnversioned", { filePaths: [file.path] })
             }
           >
-            Add to {repository?.kind === "cvs" ? ".cvsignore" : ".gitignore"}
+            {t(
+              "Add to {0}",
+              repository?.kind === "cvs" ? ".cvsignore" : ".gitignore",
+            )}
           </button>
           {!file.directory && (
             <button
@@ -94,7 +98,7 @@ export function CommitFileContextMenu({
                 void invoke("addUnversioned", { filePaths: [file.path] })
               }
             >
-              Add to Version Control
+              {t("Add to Version Control")}
             </button>
           )}
         </>
@@ -112,7 +116,7 @@ export function CommitFileContextMenu({
                 })
               }
             >
-              Show Diff
+              {t("Show Diff")}
             </button>
           )}
           {file.status !== "incoming" && (
@@ -132,7 +136,7 @@ export function CommitFileContextMenu({
                 })
               }
             >
-              Rollback
+              {t("Rollback")}
             </button>
           )}
           {repository?.kind === "git" && (
@@ -147,7 +151,7 @@ export function CommitFileContextMenu({
                   })
                 }
               >
-                {file.staged ? "Unstage" : "Stage"}
+                {file.staged ? t("Unstage") : t("Stage")}
               </button>
               <button
                 type="button"
@@ -155,12 +159,12 @@ export function CommitFileContextMenu({
                 className="commit-context-menu-item"
                 onClick={() =>
                   void invoke("ideaShelveChanges", {
-                    message: "Shelved changes",
+                    message: t("Shelved changes"),
                     filePaths: [file.path],
                   })
                 }
               >
-                Shelve (Git)
+                {t("Shelve (Git)")}
               </button>
             </>
           )}

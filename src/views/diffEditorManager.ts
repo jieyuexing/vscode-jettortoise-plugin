@@ -32,7 +32,9 @@ export class DiffEditorManager {
     staged: boolean,
   ): Promise<ResolvedComparison> {
     if (!this.repositoryRoot) {
-      throw new Error("A repository root is required for worktree comparisons");
+      throw new Error(
+        vscode.l10n.t("A repository root is required for worktree comparisons"),
+      );
     }
     return new GitComparisonResolver(
       this.gitService,
@@ -146,7 +148,9 @@ export class DiffEditorManager {
       return nativeGitUri(this.repositoryId, side);
     if (!this.repositoryRoot) {
       throw new Error(
-        "A repository root is required for a worktree comparison side",
+        vscode.l10n.t(
+          "A repository root is required for a worktree comparison side",
+        ),
       );
     }
     const filePath = await resolveWorktreePath(this.repositoryRoot, side.path, {
@@ -167,7 +171,9 @@ export function nativeGitUri(
   // ownership/root validation.
   if (side.source === "worktree") {
     throw new Error(
-      "A worktree comparison side requires the session path guard",
+      vscode.l10n.t(
+        "A worktree comparison side requires the session path guard",
+      ),
     );
   }
   return gitRevisionUri(

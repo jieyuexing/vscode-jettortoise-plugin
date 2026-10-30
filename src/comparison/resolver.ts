@@ -94,7 +94,7 @@ async function checkedCvsWorktreeSide(
   const realRoot = await fs.realpath(root);
   const target = path.resolve(realRoot, safePath);
   if (!target.startsWith(`${realRoot}${path.sep}`)) {
-    throw new Error("Path is outside the repository");
+    throw new Error(vscode.l10n.t("Path is outside the repository"));
   }
   return { source: "worktree", path: safePath, label: "worktree" };
 }
@@ -116,7 +116,9 @@ function safeCvsRelativeFile(value: string): string {
           segment.toLowerCase() === "cvs",
       )
   ) {
-    throw new Error("A repository-relative CVS path is required");
+    throw new Error(
+      vscode.l10n.t("A repository-relative CVS path is required"),
+    );
   }
   return value;
 }
@@ -200,7 +202,9 @@ export class GitComparisonResolver {
     // change for this fixed repository and side.
     if (!change)
       throw new Error(
-        "The requested working-tree change is no longer available",
+        vscode.l10n.t(
+          "The requested working-tree change is no longer available",
+        ),
       );
     return {
       oldPath: change.oldPath || change.path,
@@ -426,7 +430,8 @@ async function readSide(
 
 async function readLimitedFile(target: string): Promise<Buffer> {
   const stat = await fs.stat(target);
-  if (!stat.isFile()) throw new Error("A regular file is required for preview");
+  if (!stat.isFile())
+    throw new Error(vscode.l10n.t("A regular file is required for preview"));
   if (stat.size > COMPARISON_MAX_BYTES) throw new GitContentTooLargeError();
   const handle = await fs.open(target, "r");
   try {

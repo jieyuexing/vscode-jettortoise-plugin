@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { localizeError } from "./messages/errors";
 import { RepositoryManager } from "./repositories/manager";
 import { CommitViewProvider } from "./views/commitViewProvider";
 import { GitLogViewProvider } from "./views/gitLogViewProvider";
@@ -28,7 +29,9 @@ export function activate(context: vscode.ExtensionContext) {
     );
   const changes = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   const readonly = () => {
-    throw vscode.FileSystemError.NoPermissions("Read-only revision content.");
+    throw vscode.FileSystemError.NoPermissions(
+      vscode.l10n.t("Read-only revision content."),
+    );
   };
   context.subscriptions.push(
     changes,
@@ -103,13 +106,18 @@ export function activate(context: vscode.ExtensionContext) {
     100,
   );
   status.text = "$(git-branch) JetTortoise";
-  status.tooltip = "Open JetTortoise Log";
+  status.tooltip = vscode.l10n.t("Open JetTortoise Log");
   status.command = "jettortoise.gitLog.focus";
   status.show();
   context.subscriptions.push(status);
   void ready.catch((error) =>
     vscode.window.showErrorMessage(
-      `JetTortoise discovery: ${error instanceof Error ? error.message : "Unable to read workspace."}`,
+      vscode.l10n.t(
+        "JetTortoise discovery: {0}",
+        localizeError(
+          error instanceof Error ? error : "Unable to read workspace.",
+        ),
+      ),
     ),
   );
 }

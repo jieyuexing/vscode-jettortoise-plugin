@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 let repositoryId: string | undefined;
 let repositoryKind: "git" | "cvs" | undefined;
 export function setBridgeRepository(id?: string, kind?: "git" | "cvs") {
@@ -36,7 +38,7 @@ export function createVSCodeBridge(): Bridge {
         if (resp.success) {
           pending.resolve(resp.data);
         } else {
-          pending.reject(new Error(resp.error?.message ?? "Unknown error"));
+          pending.reject(new Error(resp.error?.message ?? t("Unknown error")));
         }
       }
     } else if (msg.type === "event") {
@@ -66,7 +68,7 @@ export function createVSCodeBridge(): Bridge {
         const id = crypto.randomUUID();
         const timeout = setTimeout(() => {
           pendingRequests.delete(id);
-          reject(new Error(`Request '${command}' timed out`));
+          reject(new Error(t("Request '{0}' timed out", command)));
         }, 240_000);
 
         const owner = repositoryId;
@@ -85,7 +87,7 @@ export function createVSCodeBridge(): Bridge {
           resolve: (v) => {
             clearTimeout(timeout);
             if (!globalCommand && owner !== repositoryId)
-              reject(new Error("Repository selection changed."));
+              reject(new Error(t("Repository selection changed.")));
             else resolve(v);
           },
           reject: (e) => {

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { bridge } from "../../shared/bridge";
+import { fileCount, t } from "../../shared/i18n";
 import {
   type ChangeFile,
   canCommit,
@@ -73,7 +74,7 @@ export function CommitTab() {
       await fn();
     } catch (error) {
       useCommitStore.setState({
-        error: error instanceof Error ? error.message : "Operation failed.",
+        error: error instanceof Error ? error.message : t("Operation failed."),
       });
     }
   };
@@ -159,7 +160,7 @@ export function CommitTab() {
             if (!current || current.kind !== "git") return;
             await bridge.request("ideaShelveChanges", {
               repositoryId: current.id,
-              message: "Shelved changes",
+              message: t("Shelved changes"),
               filePaths: selected
                 .filter((file) => file.repositoryId === current.id)
                 .map((file) => file.path),
@@ -207,7 +208,7 @@ export function CommitTab() {
       <div className="commit-file-list">
         {groups.length === 0 && (
           <div className="repository-empty">
-            No Git or CVS repositories found in this workspace.
+            {t("No Git or CVS repositories found in this workspace.")}
           </div>
         )}
         {groups.map((group) => {
@@ -232,7 +233,7 @@ export function CommitTab() {
                 </button>
                 <input
                   type="checkbox"
-                  aria-label={`Select changes in ${group.name}`}
+                  aria-label={t("Select changes in {0}", group.name)}
                   checked={
                     keys.length > 0 &&
                     keys.every((key) => selectedFiles.has(key))
@@ -251,7 +252,7 @@ export function CommitTab() {
                     {group.kind.toUpperCase()}
                   </span>{" "}
                   <span className="commit-group-count">
-                    {group.count} {group.count === 1 ? "file" : "files"}
+                    {fileCount(group.count)}
                   </span>
                 </button>
               </div>
@@ -262,14 +263,14 @@ export function CommitTab() {
               )}
               {group.refreshing && (
                 <div className="repository-progress" role="status">
-                  Checking remote updates…
+                  {t("Checking remote updates…")}
                 </div>
               )}
               {expanded && (
                 <div className="commit-repository-contents">
                   {group.changes.length > 0 && (
                     <div className="commit-group-header">
-                      <span className="commit-group-title">Changes</span>{" "}
+                      <span className="commit-group-title">{t("Changes")}</span>{" "}
                       <span className="commit-group-count">{group.count}</span>
                     </div>
                   )}
@@ -291,7 +292,7 @@ export function CommitTab() {
                               </button>
                               <input
                                 type="checkbox"
-                                aria-label={`Select ${directory.path}`}
+                                aria-label={t("Select {0}", directory.path)}
                                 disabled={!directory.files.some(canCommit)}
                                 checked={
                                   directory.files.filter(canCommit).length >
@@ -312,10 +313,7 @@ export function CommitTab() {
                                 }
                               />
                               <span className="commit-group-count">
-                                {directory.files.length}{" "}
-                                {directory.files.length === 1
-                                  ? "file"
-                                  : "files"}
+                                {fileCount(directory.files.length)}
                               </span>
                             </div>
                             {open &&
@@ -340,7 +338,7 @@ export function CommitTab() {
                           )}
                         />
                         <span className="commit-group-title">
-                          Unversioned Files
+                          {t("Unversioned Files")}
                         </span>
                       </button>
                       {expandedGroups.has(`unversioned:${group.id}`) &&
@@ -360,7 +358,9 @@ export function CommitTab() {
                         <Chevron
                           expanded={expandedGroups.has(`incoming:${group.id}`)}
                         />
-                        <span className="commit-group-title">Incoming</span>
+                        <span className="commit-group-title">
+                          {t("Incoming")}
+                        </span>
                       </button>
                       {expandedGroups.has(`incoming:${group.id}`) &&
                         group.incoming.map((file) => renderFile(file))}

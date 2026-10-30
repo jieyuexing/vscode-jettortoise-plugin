@@ -170,8 +170,9 @@
   padding: 3px 8px;
   cursor: pointer;
   font-size: 12px;
-  gap: 4px;
-  min-height: 26px;
+  gap: 2px;
+  height: 22px;
+  min-height: 22px;
   user-select: none;
   opacity: 0.85;
 }
@@ -197,7 +198,11 @@
 .commit-group-header {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 0 4px;
+  height: 22px;
+  min-height: 22px;
+  box-sizing: border-box;
+  gap: 2px;
   cursor: pointer;
   user-select: none;
   font-size: 11px;
@@ -211,6 +216,10 @@
   text-transform: uppercase;
 }
 
+html:lang(zh-cn) .commit-group-title {
+  text-transform: none;
+}
+
 .commit-group-header:hover {
   background: var(--vscode-list-hoverBackground);
 }
@@ -222,7 +231,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 4px;
+  margin-right: 0;
   transition: transform 0.15s;
   transform: rotate(90deg);
 }
@@ -232,9 +241,10 @@
 }
 
 .commit-group-count {
-  margin-left: 6px;
+  margin-left: 2px;
   opacity: 0.6;
   font-weight: 400;
+  white-space: nowrap;
 }
 
 .commit-group-checkbox {
@@ -253,11 +263,12 @@
 .commit-file-item {
   display: flex;
   align-items: center;
-  padding: 3px 8px 3px 28px;
+  padding: 0 4px 0 16px;
   cursor: pointer;
   font-size: 12px;
-  gap: 4px;
-  min-height: 26px;
+  gap: 2px;
+  height: 22px;
+  min-height: 22px;
   box-sizing: border-box;
 }
 
@@ -272,9 +283,9 @@
 
 .commit-file-checkbox {
   flex-shrink: 0;
-  margin-right: 4px;
-  width: 16px;
-  height: 16px;
+  margin: 0;
+  width: 14px;
+  height: 14px;
   cursor: pointer;
 }
 
@@ -285,7 +296,7 @@
 
 .commit-file-icon {
   flex-shrink: 0;
-  width: 16px;
+  width: 14px;
   height: 16px;
   display: flex;
   align-items: center;
@@ -747,7 +758,7 @@ button.commit-dropdown-item:hover:not(:disabled) {
 
 .repository-header {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   border-top: 1px solid var(--vscode-panel-border);
 }
 .repository-header.active {
@@ -760,6 +771,9 @@ button.commit-dropdown-item:hover:not(:disabled) {
   border: 0;
   text-align: left;
   cursor: pointer;
+  padding: 0;
+  height: 20px;
+  min-width: 0;
 }
 .repository-header button[aria-expanded],
 .commit-directory-header button {
@@ -767,7 +781,9 @@ button.commit-dropdown-item:hover:not(:disabled) {
   align-items: center;
 }
 .repository-label {
-  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -776,17 +792,19 @@ button.commit-dropdown-item:hover:not(:disabled) {
 .repository-kind {
   opacity: 0.65;
   font-size: 10px;
-  margin-inline: 6px;
+  margin-inline: 4px;
+  order: 1;
 }
 .commit-repository-contents {
-  padding-left: 10px;
+  padding-left: 0;
 }
 .commit-directory-header {
   display: flex;
-  gap: 6px;
+  gap: 2px;
+  padding-left: 16px;
 }
 .commit-directory-children {
-  padding-left: 14px;
+  padding-left: 16px;
 }
 .repository-error {
   color: var(--vscode-errorForeground);
@@ -849,4 +867,27 @@ input:focus-visible {
 .cvs-revision-table td {
   padding: 5px 9px;
   border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* 变更树密度：22px 行、16px 层级；根文件名从 x=48 开始。 */
+.commit-file-list input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  box-sizing: border-box;
+}
+.commit-file-list input[type="checkbox"]:checked::after {
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+}
+.commit-directory-header input {
+  order: -1;
+}
+.commit-directory-header ~ .commit-file-item {
+  padding-left: 32px;
+}
+.commit-lazy-directory > .commit-group-header {
+  padding-left: 16px;
 }

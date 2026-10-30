@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { t } from "../../shared/i18n";
 
 export interface PushDialogProps {
   branchName: string;
@@ -62,7 +63,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
             color: "var(--app-fg)",
           }}
         >
-          Push Branch
+          {t("Push Branch")}
         </div>
 
         {/* Description */}
@@ -74,7 +75,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
             lineHeight: 1.5,
           }}
         >
-          Push branch '{branchName}' to remote 'origin'.
+          {t("Push branch '{0}' to remote 'origin'.", branchName)}
         </div>
 
         {/* Buttons */}
@@ -101,7 +102,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               fontWeight: 500,
             }}
           >
-            Force Push
+            {t("Force Push")}
           </button>
           <div style={{ flex: 1 }} />
           <button
@@ -118,7 +119,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               cursor: "pointer",
             }}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -134,7 +135,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               cursor: "pointer",
             }}
           >
-            Push
+            {t("Push")}
           </button>
         </div>
       </div>

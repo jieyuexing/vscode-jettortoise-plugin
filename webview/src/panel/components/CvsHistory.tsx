@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { bridge } from "../../shared/bridge";
+import { t } from "../../shared/i18n";
 
 interface Revision {
   revisionId: string;
@@ -88,13 +89,13 @@ export function CvsHistory({
   return (
     <div className="cvs-file-history">
       <div className="repository-log-toolbar">
-        <label htmlFor="cvs-history-file">CVS file</label>
+        <label htmlFor="cvs-history-file">{t("CVS file")}</label>
         <select
           id="cvs-history-file"
           value={selected}
           onChange={(event) => setSelected(event.target.value)}
         >
-          {!files.length && <option value="">No versioned file</option>}
+          {!files.length && <option value="">{t("No versioned file")}</option>}
           {files.map((file) => (
             <option key={file} value={file}>
               {file}
@@ -108,12 +109,12 @@ export function CvsHistory({
             void loadHistory();
           }}
         >
-          Refresh File History
+          {t("Refresh File History")}
         </button>
       </div>
       {loading && (
         <div role="status" className="repository-empty">
-          Loading file revisions…
+          {t("Loading file revisions…")}
         </div>
       )}
       {error && (
@@ -123,16 +124,16 @@ export function CvsHistory({
       )}
       {!loading && !error && revisions.length === 0 && (
         <div className="repository-empty">
-          Choose a versioned file to see its revisions.
+          {t("Choose a versioned file to see its revisions.")}
         </div>
       )}
       <table className="cvs-revision-table">
         <thead>
           <tr>
-            <th>Revision</th>
-            <th>Date</th>
-            <th>Author</th>
-            <th>Message</th>
+            <th>{t("Revision")}</th>
+            <th>{t("Date")}</th>
+            <th>{t("Author")}</th>
+            <th>{t("Message")}</th>
           </tr>
         </thead>
         <tbody>
@@ -141,7 +142,7 @@ export function CvsHistory({
               <td>
                 <button
                   type="button"
-                  title="Compare with previous revision"
+                  title={t("Compare with previous revision")}
                   onClick={() =>
                     void bridge
                       .request("diffCvsRevision", {

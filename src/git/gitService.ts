@@ -160,7 +160,9 @@ export class GitService {
       .map((entry) => entry.trim())
       .filter(Boolean);
     if (!configured.includes(safeRemote)) {
-      throw new Error("Remote is not configured for this repository");
+      throw new Error(
+        vscode.l10n.t("Remote is not configured for this repository"),
+      );
     }
     return safeRemote;
   }
@@ -795,7 +797,7 @@ export class GitService {
     // remoteBranch is like "origin/feature" → push --delete origin feature
     const slashIdx = remoteBranch.indexOf("/");
     if (slashIdx <= 0 || slashIdx === remoteBranch.length - 1) {
-      throw new Error("Remote branch is invalid");
+      throw new Error(vscode.l10n.t("Remote branch is invalid"));
     }
     const remote = await this.configuredRemote(
       remoteBranch.substring(0, slashIdx),
@@ -923,7 +925,9 @@ export class GitService {
   async pull(branchName?: string): Promise<void> {
     if (branchName && branchName !== (await this.getCurrentBranch()))
       throw new Error(
-        "Update Project updates the current branch upstream only.",
+        vscode.l10n.t(
+          "Update Project updates the current branch upstream only.",
+        ),
       );
     await this.updateFastForward(this.ensureAvailable);
   }
@@ -1443,7 +1447,7 @@ export class GitService {
   async getRecentCommitMessages(count = 20): Promise<string[]> {
     try {
       if (!Number.isSafeInteger(count) || count < 1 || count > 200) {
-        throw new Error("Commit message count is invalid");
+        throw new Error(vscode.l10n.t("Commit message count is invalid"));
       }
       const output = await this.execGit(["log", `-${count}`, "--format=%s"]);
       return output
@@ -1615,11 +1619,13 @@ export class GitService {
 
   private async assertKnownStash(stashId: string): Promise<void> {
     if (!/^stash@\{\d+\}$/.test(stashId)) {
-      throw new Error("Shelf entry is invalid");
+      throw new Error(vscode.l10n.t("Shelf entry is invalid"));
     }
     const known = await this.getShelves();
     if (!known.some((entry) => entry.id === stashId)) {
-      throw new Error("Shelf entry is not available in this repository");
+      throw new Error(
+        vscode.l10n.t("Shelf entry is not available in this repository"),
+      );
     }
   }
 

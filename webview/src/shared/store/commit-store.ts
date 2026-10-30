@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { bridge } from "../bridge";
+import { t } from "../i18n";
 
 import {
   type ChangeFile,
@@ -128,7 +129,9 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
     } catch (error) {
       set({
         error:
-          error instanceof Error ? error.message : "Unable to refresh changes.",
+          error instanceof Error
+            ? error.message
+            : t("Unable to refresh changes."),
       });
     }
   },
@@ -274,7 +277,9 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
       await get().fetchChanges();
       return true;
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Commit failed." });
+      set({
+        error: error instanceof Error ? error.message : t("Commit failed."),
+      });
       return false;
     } finally {
       set({ loading: false });
@@ -293,7 +298,9 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
         .repositories.find((item) => item.id === repositoryId)?.kind !== "git"
     ) {
       set({
-        error: "Commit and Push is available for one Git repository at a time.",
+        error: t(
+          "Commit and Push is available for one Git repository at a time.",
+        ),
       });
       return false;
     }

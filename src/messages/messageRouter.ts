@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { localizeError } from "./errors";
 import {
   ErrorCode,
   type EventMessage,
@@ -433,7 +434,9 @@ export class MessageRouter {
 
   handle(command: string, handler: CommandHandler): void {
     if (!SPECS[command]) {
-      throw new Error(`Missing webview command specification: ${command}`);
+      throw new Error(
+        vscode.l10n.t("Missing webview command specification: {0}", command),
+      );
     }
     this.handlers.set(command, handler);
   }
@@ -469,14 +472,18 @@ export class MessageRouter {
     const spec = SPECS[command];
     const handler = this.handlers.get(command);
     if (!spec || !handler || !spec.surfaces.includes(surface))
-      throw new Error("Command is not available from this view.");
+      throw new Error(
+        vscode.l10n.t("Command is not available from this view."),
+      );
     const validation = validateParams(params, spec);
     if (validation) throw new Error(validation);
     const action = async () => {
       await this.options.ensureAvailable?.();
       if (requiresHostConfirmation(command, params)) {
         if (!this.options.confirm)
-          throw new Error("Host confirmation is not configured.");
+          throw new Error(
+            vscode.l10n.t("Host confirmation is not configured."),
+          );
         if (!(await this.options.confirm(command, params)))
           return { success: false, cancelled: true };
         await this.options.ensureAvailable?.();
@@ -541,7 +548,9 @@ export class MessageRouter {
         if (requiresHostConfirmation(request.command, request.params)) {
           if (!this.options.confirm) {
             throw new Error(
-              "Host confirmation is not configured for this action.",
+              vscode.l10n.t(
+                "Host confirmation is not configured for this action.",
+              ),
             );
           }
           const confirmed = await this.options.confirm(
@@ -561,18 +570,13 @@ export class MessageRouter {
           : await action();
       this.sendResponse(webview, request.id, true, data);
     } catch (err: unknown) {
-      this.reject(
-        webview,
-        request.id,
-        ErrorCode.UNKNOWN,
-        err instanceof Error ? err.message : String(err),
-      );
+      this.reject(webview, request.id, ErrorCode.UNKNOWN, localizeError(err));
     }
   }
 
   private assertLive(registered: RegisteredWebview): void {
     if (!this.webviews.has(registered)) {
-      throw new Error("Webview is no longer active.");
+      throw new Error(vscode.l10n.t("Webview is no longer active."));
     }
   }
 
@@ -582,7 +586,10 @@ export class MessageRouter {
     code: ErrorCode,
     message: string,
   ): void {
-    this.sendResponse(webview, id, false, undefined, { code, message });
+    this.sendResponse(webview, id, false, undefined, {
+      code,
+      message: localizeError(message),
+    });
   }
 
   private sendResponse(

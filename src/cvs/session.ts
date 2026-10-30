@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { localizeError } from "../messages/errors";
 import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import type { ChangeFile, RepositorySnapshot } from "../repositories/changes";
 import { hasDirtyEditors } from "../repositories/editor-documents";
@@ -76,7 +77,8 @@ export class CvsSession {
       executable: process.executable,
       run: async (...args) => {
         await guard();
-        if (this.disposed) throw new Error("Repository removed.");
+        if (this.disposed)
+          throw new Error(vscode.l10n.t("Repository removed."));
         return process.run(...args);
       },
     });
@@ -186,9 +188,12 @@ export class CvsSession {
     try {
       return await this.queue.run(async (signal) => {
         await this.guard();
-        if (this.disposed) throw new Error("Repository removed.");
+        if (this.disposed)
+          throw new Error(vscode.l10n.t("Repository removed."));
         if (dirty && (await hasDirtyEditors(this.root)))
-          throw new Error("Save unsaved editors before modifying files.");
+          throw new Error(
+            vscode.l10n.t("Save unsaved editors before modifying files."),
+          );
         return vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -213,48 +218,56 @@ export class CvsSession {
   }
   commit(paths: string[], message: string) {
     return this.operate(
-      "CVS Commit",
+      vscode.l10n.t("CVS Commit"),
       (adapter, signal) => adapter.commit(paths, message, signal),
       true,
     );
   }
   add(paths: string[]) {
     return this.operate(
-      "CVS Add",
+      vscode.l10n.t("CVS Add"),
       (adapter, signal) => adapter.add(paths, signal),
       true,
     );
   }
   update() {
     return this.operate(
-      "Update Project",
+      vscode.l10n.t("Update Project"),
       (adapter, signal) => adapter.update(signal),
       true,
     );
   }
   history(file: string) {
-    return this.operate("CVS File History", (adapter, signal) =>
+    return this.operate(vscode.l10n.t("CVS File History"), (adapter, signal) =>
       adapter.log(file, signal),
     );
   }
   async rollback(paths: string[]) {
     return this.operate(
-      "CVS Rollback",
+      vscode.l10n.t("CVS Rollback"),
       async (adapter, signal) => {
         const confirmed = await vscode.window.showWarningMessage(
-          `Rollback ${paths.length} CVS file(s)? A sibling backup will be kept.`,
+          vscode.l10n.t(
+            "Rollback {0} CVS file(s)? A sibling backup will be kept.",
+            paths.length,
+          ),
           { modal: true },
-          "Rollback",
+          vscode.l10n.t("Rollback"),
         );
-        if (confirmed !== "Rollback") return;
+        if (confirmed !== vscode.l10n.t("Rollback")) return;
         await this.guard();
         if (await hasDirtyEditors(this.root))
-          throw new Error("Save unsaved editors before rolling back.");
+          throw new Error(
+            vscode.l10n.t("Save unsaved editors before rolling back."),
+          );
         const backups = [];
         for (const file of paths)
           backups.push(await adapter.rollback(file, signal));
         void vscode.window.showInformationMessage(
-          `CVS rollback completed. Backups: ${backups.join(", ")}`,
+          vscode.l10n.t(
+            "CVS rollback completed. Backups: {0}",
+            backups.join(", "),
+          ),
         );
       },
       true,
@@ -280,13 +293,13 @@ export class CvsSession {
       "vscode.diff",
       left,
       right,
-      `${file} (BASE ↔ working tree)`,
+      vscode.l10n.t("{0} (BASE ↔ working tree)", file),
     );
   }
   async revisionDiff(file: string, revision: string) {
     const history = await this.history(file);
     if (!history.some((entry) => entry.revisionId === revision))
-      throw new Error("Unknown revision.");
+      throw new Error(vscode.l10n.t("Unknown revision."));
     const parts = revision.split(".").map(Number);
     let previous = "empty";
     if (parts[parts.length - 1] > 1)
@@ -296,7 +309,7 @@ export class CvsSession {
       previous !== "empty" &&
       !history.some((entry) => entry.revisionId === previous)
     )
-      throw new Error("Previous revision is unavailable.");
+      throw new Error(vscode.l10n.t("Previous revision is unavailable."));
     await this.guard();
     await vscode.commands.executeCommand(
       "vscode.diff",
@@ -307,21 +320,25 @@ export class CvsSession {
   }
   async readFile(uri: vscode.Uri) {
     await this.guard();
-    if (uri.authority !== this.id) throw new Error("Repository mismatch.");
+    if (uri.authority !== this.id)
+      throw new Error(vscode.l10n.t("Repository mismatch."));
     const file = uri.path.slice(1);
     await assertOwnedPath(this.root, "cvs", file);
-    return this.operate("CVS revision", async (adapter, signal) => {
-      let revision = new URLSearchParams(uri.query).get("ref") ?? "";
-      // 在写队列内读取当前 Entries，避免排队期间提交后仍读取旧 BASE。
-      if (revision === "BASE") {
-        const entry = await adapter.file(file);
-        revision = entry.entryRevision.replace(/^-/, "");
-        if (revision === "0") revision = "empty";
-      }
-      return revision === "empty"
-        ? Buffer.alloc(0)
-        : adapter.content(file, revision, signal);
-    });
+    return this.operate(
+      vscode.l10n.t("CVS revision"),
+      async (adapter, signal) => {
+        let revision = new URLSearchParams(uri.query).get("ref") ?? "";
+        // 在写队列内读取当前 Entries，避免排队期间提交后仍读取旧 BASE。
+        if (revision === "BASE") {
+          const entry = await adapter.file(file);
+          revision = entry.entryRevision.replace(/^-/, "");
+          if (revision === "0") revision = "empty";
+        }
+        return revision === "empty"
+          ? Buffer.alloc(0)
+          : adapter.content(file, revision, signal);
+      },
+    );
   }
   dispose() {
     this.disposed = true;
@@ -331,22 +348,49 @@ export class CvsSession {
 export function cvsErrorText(error: unknown): string {
   const code = (error as { code?: string })?.code;
   if (code === "NESTED_REPOSITORY" && error instanceof Error)
-    return error.message;
+    return localizeError(error);
   const messages: Record<string, string> = {
-    command:
+    command: vscode.l10n.t(
       "CVS failed. Check repository access and working copy state, then refresh.",
-    missingClient:
+    ),
+    missingClient: vscode.l10n.t(
       "CVS was not found. Set JetTortoise: CVS Path to an installed client.",
-    cancelled:
+    ),
+    cancelled: vscode.l10n.t(
       "CVS cancelled. Refresh to check whether files were partly changed.",
-    timeout: "CVS timed out. Refresh before retrying.",
-    commitState:
+    ),
+    timeout: vscode.l10n.t("CVS timed out. Refresh before retrying."),
+    commitState: vscode.l10n.t(
       "Selected files cannot be committed. Refresh and resolve conflicts first.",
-    BOUNDARY_UNAVAILABLE: "Repository boundaries could not be fully verified.",
+    ),
+    BOUNDARY_UNAVAILABLE: vscode.l10n.t(
+      "Repository boundaries could not be fully verified.",
+    ),
+    path: vscode.l10n.t(
+      "CVS path is invalid or exceeds the command length limit.",
+    ),
+    revision: vscode.l10n.t("CVS revision is invalid."),
+    root: vscode.l10n.t("CVS repository root changed or is invalid."),
+    module: vscode.l10n.t("CVS module is invalid."),
+    workingCopy: vscode.l10n.t("No CVS working copy was found."),
+    symlink: vscode.l10n.t(
+      "CVS requires regular files and directories, without symbolic links.",
+    ),
+    inventoryLimit: vscode.l10n.t(
+      "CVS working copy exceeds the inventory limit.",
+    ),
+    parse: vscode.l10n.t(
+      "CVS output could not be parsed. Check the working copy and refresh.",
+    ),
+    changed: vscode.l10n.t(
+      "CVS file changed during the operation. Refresh before retrying.",
+    ),
+    message: vscode.l10n.t("Enter a valid CVS commit message."),
   };
   return code
-    ? (messages[code] ?? `CVS could not complete the operation (${code}).`)
+    ? (messages[code] ??
+        vscode.l10n.t("CVS could not complete the operation ({0}).", code))
     : error instanceof Error
-      ? error.message
-      : "CVS operation failed.";
+      ? localizeError(error)
+      : vscode.l10n.t("CVS operation failed.");
 }

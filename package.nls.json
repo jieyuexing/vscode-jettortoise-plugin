@@ -1,0 +1,20 @@
+{
+  "category.jettortoise": "JetTortoise",
+  "description": "IDEA-style Commit and Log for Git and CVS across workspace repositories.",
+  "cmd.scm.commit": "Commit",
+  "contributes.views.jettortoise-panel.0.name": "Log",
+  "contributes.commands.0.title": "Refresh Log",
+  "contributes.commands.1.title": "Open Merge Editor",
+  "contributes.commands.2.title": "Conflicts",
+  "contributes.commands.3.title": "Open in JetTortoise Merge Editor",
+  "contributes.commands.4.title": "(JetTortoise) Show File History",
+  "contributes.commands.5.title": "Next File Diff",
+  "contributes.commands.6.title": "Previous File Diff",
+  "contributes.commands.7.title": "Refresh Changes",
+  "contributes.commands.9.title": "Commit and Push",
+  "contributes.commands.10.title": "Shelve Changes",
+  "contributes.commands.11.title": "Unshelve Changes",
+  "contributes.commands.12.title": "Push...",
+  "contributes.commands.13.title": "(JetTortoise) Edit Source",
+  "contributes.configuration.properties.jettortoise.cvsPath.description": "Path to the CVS executable."
+}

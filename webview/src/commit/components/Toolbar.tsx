@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { bridge } from "../../shared/bridge";
 import { Tooltip } from "../../shared/components/Tooltip";
+import { t } from "../../shared/i18n";
 import "../../shared/components/Tooltip.css";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
@@ -60,7 +61,7 @@ export function Toolbar({
 
   return (
     <div className="commit-toolbar">
-      <Tooltip text="Refresh">
+      <Tooltip text={t("Refresh")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -69,7 +70,7 @@ export function Toolbar({
           <RefreshIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Rollback">
+      <Tooltip text={t("Rollback")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -80,7 +81,7 @@ export function Toolbar({
         </button>
       </Tooltip>
       {gitSelected && (
-        <Tooltip text="Shelve Changes (Git only)">
+        <Tooltip text={t("Shelve Changes (Git only)")}>
           <button
             type="button"
             className="commit-toolbar-btn"
@@ -91,7 +92,7 @@ export function Toolbar({
           </button>
         </Tooltip>
       )}
-      <Tooltip text="Show Diff">
+      <Tooltip text={t("Show Diff")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -101,7 +102,7 @@ export function Toolbar({
           <DiffIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Update Project">
+      <Tooltip text={t("Update Project")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -118,7 +119,7 @@ export function Toolbar({
         </button>
       </Tooltip>
       {gitSelected && (
-        <Tooltip text="Push...">
+        <Tooltip text={t("Push...")}>
           <button
             type="button"
             className="commit-toolbar-btn"
@@ -134,7 +135,7 @@ export function Toolbar({
       <div className="commit-toolbar-spacer" />
 
       <div style={{ position: "relative" }}>
-        <Tooltip text="View Options">
+        <Tooltip text={t("View Options")}>
           <button
             type="button"
             className="commit-toolbar-btn"
@@ -147,7 +148,7 @@ export function Toolbar({
           <ViewOptionsMenu onClose={() => setShowViewMenu(false)} />
         )}
       </div>
-      <Tooltip text="Expand All">
+      <Tooltip text={t("Expand All")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -156,7 +157,7 @@ export function Toolbar({
           <ExpandAllIcon />
         </button>
       </Tooltip>
-      <Tooltip text="Collapse All">
+      <Tooltip text={t("Collapse All")}>
         <button
           type="button"
           className="commit-toolbar-btn"
@@ -199,7 +200,7 @@ function ViewOptionsMenu({ onClose }: { onClose: () => void }) {
           zIndex: 1000,
         }}
       >
-        <div className="commit-context-menu-header">Group By</div>
+        <div className="commit-context-menu-header">{t("Group By")}</div>
         <button
           type="button"
           className="commit-context-menu-item"
@@ -211,11 +212,11 @@ function ViewOptionsMenu({ onClose }: { onClose: () => void }) {
           <span className="commit-context-menu-icon">
             {groupByDirectory && <CheckIcon />}
           </span>
-          <span>Directory</span>
+          <span>{t("Directory")}</span>
           <span className="commit-context-menu-shortcut">^P</span>
         </button>
         <div className="commit-context-menu-separator" />
-        <div className="commit-context-menu-header">Show</div>
+        <div className="commit-context-menu-header">{t("Show")}</div>
         <button
           type="button"
           className="commit-context-menu-item"
@@ -227,7 +228,7 @@ function ViewOptionsMenu({ onClose }: { onClose: () => void }) {
           <span className="commit-context-menu-icon">
             {showUnversioned && <CheckIcon />}
           </span>
-          <span>Unversioned Files</span>
+          <span>{t("Unversioned Files")}</span>
         </button>
       </div>
     </>

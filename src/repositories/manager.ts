@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { CvsSession } from "../cvs/session";
 import { resolveWorktreePath } from "../git/security";
 import { createGitRepositorySession } from "../git/session";
+import { localizeError } from "../messages/errors";
 import { ignorePaths } from "../scm/ignore";
 import {
   assertOwnedPath,
@@ -87,15 +88,18 @@ export class RepositoryManager implements vscode.Disposable {
   private selected(id?: unknown) {
     const selected = typeof id === "string" ? id : this.logId;
     const entry = selected ? this.entries.get(selected) : undefined;
-    if (!entry) throw new Error("Select an available repository.");
+    if (!entry)
+      throw new Error(vscode.l10n.t("Select an available repository."));
     return entry;
   }
   private cvs(entry: Entry) {
-    if (!entry.cvs) throw new Error("CVS session is unavailable.");
+    if (!entry.cvs)
+      throw new Error(vscode.l10n.t("CVS session is unavailable."));
     return entry.cvs;
   }
   private git(entry: Entry) {
-    if (!entry.git) throw new Error("Git session is unavailable.");
+    if (!entry.git)
+      throw new Error(vscode.l10n.t("Git session is unavailable."));
     return entry.git;
   }
   private async guard(entry: Entry) {
@@ -105,7 +109,9 @@ export class RepositoryManager implements vscode.Disposable {
       this.entries.get(entry.info.id) !== entry ||
       !vscode.workspace.isTrusted
     )
-      throw new Error("Repository is no longer available or trusted.");
+      throw new Error(
+        vscode.l10n.t("Repository is no longer available or trusted."),
+      );
     const currentRoots = await Promise.all(
       (vscode.workspace.workspaceFolders ?? [])
         .filter((folder) => folder.uri.scheme === "file")
@@ -115,7 +121,7 @@ export class RepositoryManager implements vscode.Disposable {
       !currentRoots.some((root) => within(root, entry.info.root)) ||
       (await fs.realpath(entry.info.root)) !== entry.info.root
     )
-      throw new Error("Repository is outside this workspace.");
+      throw new Error(vscode.l10n.t("Repository is outside this workspace."));
     const nearest = await nearestRepositories(entry.info.root);
     if (
       !nearest.some(
@@ -123,7 +129,7 @@ export class RepositoryManager implements vscode.Disposable {
           root.kind === entry.info.kind && root.root === entry.info.root,
       )
     )
-      throw new Error("Repository metadata changed.");
+      throw new Error(vscode.l10n.t("Repository metadata changed."));
     this.requestLiveness.getStore()?.();
   }
   async scan() {
@@ -281,8 +287,9 @@ export class RepositoryManager implements vscode.Disposable {
     } catch (error) {
       entry.snapshot = {
         ...entry.snapshot,
-        error:
-          error instanceof Error ? error.message : "Repository refresh failed.",
+        error: localizeError(
+          error instanceof Error ? error : "Repository refresh failed.",
+        ),
       };
     }
     this.broadcast("repositorySnapshot", entry.snapshot);
@@ -352,13 +359,13 @@ export class RepositoryManager implements vscode.Disposable {
             (key) => !["type", "id", "command", "params"].includes(key),
           )
         )
-          throw new Error("Unexpected message field.");
+          throw new Error(vscode.l10n.t("Unexpected message field."));
         const data = await this.request(
           msg.command,
           msg.params as Record<string, unknown>,
           () => {
             if (!this.views.has(view))
-              throw new Error("Webview is no longer active.");
+              throw new Error(vscode.l10n.t("Webview is no longer active."));
           },
         );
         if (this.views.has(view))
@@ -376,8 +383,9 @@ export class RepositoryManager implements vscode.Disposable {
             success: false,
             error: {
               code: "UNKNOWN",
-              message:
-                error instanceof Error ? error.message : "Request failed.",
+              message: localizeError(
+                error instanceof Error ? error : "Request failed.",
+              ),
             },
           });
       }
@@ -403,7 +411,7 @@ export class RepositoryManager implements vscode.Disposable {
     validateRepositoryRequest(command, params);
     const { repositoryId, ...values } = params;
     if (["cwd", "root", "repository"].some((key) => Object.hasOwn(values, key)))
-      throw new Error("A view cannot choose a repository path.");
+      throw new Error(vscode.l10n.t("A view cannot choose a repository path."));
     if (command === "getRepositories") return this.state();
     if (command === "selectRepository") {
       const entry = this.selected(repositoryId);
@@ -442,14 +450,21 @@ export class RepositoryManager implements vscode.Disposable {
       const action = async () => {
         await this.guard(entry);
         if (await hasDirtyEditors(entry.info.root))
-          throw new Error("Save unsaved editors before editing ignore files.");
+          throw new Error(
+            vscode.l10n.t("Save unsaved editors before editing ignore files."),
+          );
         await this.requireUnversioned(entry, files);
         await ignorePaths(entry.info.root, entry.info.kind, files, () =>
           this.guard(entry),
         );
       };
       if (entry.git) await entry.git.mutate(command, action);
-      else await this.cvs(entry).operate("CVS Ignore", action, true);
+      else
+        await this.cvs(entry).operate(
+          vscode.l10n.t("CVS Ignore"),
+          action,
+          true,
+        );
       await this.refresh(entry, true);
       return { success: true };
     }
@@ -474,7 +489,7 @@ export class RepositoryManager implements vscode.Disposable {
         String(values.revision),
       );
     if (command === "getCvsFiles")
-      return await cvs.operate("CVS files", async (adapter) => {
+      return await cvs.operate(vscode.l10n.t("CVS files"), async (adapter) => {
         const files = await adapter.localStatus();
         return files
           .filter((file) => file.entryRevision)
@@ -511,11 +526,13 @@ export class RepositoryManager implements vscode.Disposable {
     if (command === "getRebaseState") return { isRebasing: false };
     if (command === "getMergeState") return { isMerging: false };
     if (command === "getCherryPickState") return { isCherryPicking: false };
-    throw new Error("This action is available for Git repositories only.");
+    throw new Error(
+      vscode.l10n.t("This action is available for Git repositories only."),
+    );
   }
   private paths(value: unknown) {
     if (!Array.isArray(value) || !value.length || value.length > 2000)
-      throw new Error("Select files.");
+      throw new Error(vscode.l10n.t("Select files."));
     return value.map((item) => repositoryPath(item));
   }
   private async requireUnversioned(entry: Entry, paths: string[]) {
@@ -529,7 +546,9 @@ export class RepositoryManager implements vscode.Disposable {
               (change.directory && file.startsWith(`${change.path}/`))),
         )
       )
-        throw new Error("Ignore/Add applies to unversioned entries only.");
+        throw new Error(
+          vscode.l10n.t("Ignore/Add applies to unversioned entries only."),
+        );
   }
   private async commit(values: Record<string, unknown>) {
     if (
@@ -538,13 +557,13 @@ export class RepositoryManager implements vscode.Disposable {
       values.message.length > 16000 ||
       values.message.includes("\0")
     )
-      throw new Error("Enter a commit message.");
+      throw new Error(vscode.l10n.t("Enter a commit message."));
     const selected = values.files as Array<{
       repositoryId: string;
       path: string;
     }>;
     if (!Array.isArray(selected) || !selected.length || selected.length > 2000)
-      throw new Error("Select changed files.");
+      throw new Error(vscode.l10n.t("Select changed files."));
     const grouped = new Map<Entry, ChangeFile[]>();
     for (const file of selected) {
       const entry = this.selected(file.repositoryId);
@@ -570,14 +589,20 @@ export class RepositoryManager implements vscode.Disposable {
         );
         if (!current || !canCommit(current))
           throw new Error(
-            `${entry.info.name}: selected file cannot be committed: ${file.path}`,
+            vscode.l10n.t(
+              "{0}: selected file cannot be committed: {1}",
+              entry.info.name,
+              file.path,
+            ),
           );
         Object.assign(file, current);
         await assertOwnedPath(entry.info.root, entry.info.kind, file.path);
       }
     }
     if (values.amend && (grouped.size !== 1 || ![...grouped.keys()][0].git))
-      throw new Error("Amend is available for one Git repository only.");
+      throw new Error(
+        vscode.l10n.t("Amend is available for one Git repository only."),
+      );
     const completed: string[] = [];
     for (const [entry, files] of grouped) {
       try {
@@ -595,7 +620,15 @@ export class RepositoryManager implements vscode.Disposable {
         completed.push(entry.info.id);
       } catch (error) {
         throw new Error(
-          `${entry.info.name}: ${error instanceof Error ? error.message : "Commit failed"}. Completed repositories: ${completed.map((id) => this.entries.get(id)?.info.name).join(", ") || "none"}.`,
+          vscode.l10n.t(
+            "{0}: {1}. Completed repositories: {2}.",
+            entry.info.name,
+            localizeError(
+              error instanceof Error ? error : vscode.l10n.t("Commit failed"),
+            ),
+            completed.map((id) => this.entries.get(id)?.info.name).join(", ") ||
+              vscode.l10n.t("none"),
+          ),
         );
       } finally {
         await this.refresh(entry, true);

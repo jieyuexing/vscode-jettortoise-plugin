@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import { canCommit } from "../../shared/models/changes";
 import type { WorkingTreeFile } from "../../shared/store/commit-store";
 import { getCommitFileIcon } from "../utils/file-icon";
@@ -50,7 +51,7 @@ export function FileItem({
         <input
           type="checkbox"
           className="commit-file-checkbox"
-          aria-label={`Commit ${file.path}`}
+          aria-label={t("Commit {0}", file.path)}
           disabled={!canCommit(file)}
           onClick={(event) => event.stopPropagation()}
           checked={selected}
@@ -76,7 +77,7 @@ export function FileItem({
         className="commit-file-status"
         style={{ color: statusColor }}
         title={
-          file.status === "incoming" ? "Remote version available" : undefined
+          file.status === "incoming" ? t("Remote version available") : undefined
         }
       >
         {statusLabel}

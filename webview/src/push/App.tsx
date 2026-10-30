@@ -5,6 +5,7 @@ import CodiconListTree from "~icons/codicon/list-tree";
 import { bridge } from "../shared/bridge";
 import { CommitInfo } from "../shared/components/CommitInfo";
 import { FileTree } from "../shared/components/FileTree";
+import { fileCount, t } from "../shared/i18n";
 import type { Commit, DiffFile } from "../shared/types/git";
 import { RemoteBranchSelector } from "./components/RemoteBranchSelector";
 import { useDraggableDivider } from "./hooks/useDraggableDivider";
@@ -30,12 +31,13 @@ function PushRejectedDialog({
       <div className="push-rejected-dialog">
         <div className="push-rejected-header">
           <span className="push-rejected-icon">⚠️</span>
-          <span className="push-rejected-title">Push Rejected</span>
+          <span className="push-rejected-title">{t("Push Rejected")}</span>
         </div>
         <p className="push-rejected-message">
-          Push of the current branch "{branchName}" was rejected. Remote changes
-          must be fast-forwarded before pushing. Diverged branches require
-          manual resolution.
+          {t(
+            'Push of the current branch "{0}" was rejected. Remote changes must be fast-forwarded before pushing. Diverged branches require manual resolution.',
+            branchName,
+          )}
         </p>
         <div className="push-rejected-actions">
           <button
@@ -43,14 +45,14 @@ function PushRejectedDialog({
             className="push-btn push-btn-secondary"
             onClick={onCancel}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
             className="push-btn push-btn-secondary"
             onClick={onUpdate}
           >
-            Update (fast-forward only) and Push
+            {t("Update (fast-forward only) and Push")}
           </button>
         </div>
       </div>
@@ -137,8 +139,20 @@ export function PushApp() {
         setPushing(false);
         const isUpToDate = result?.data?.isUpToDate;
         const message = isUpToDate
-          ? "Everything is up to date"
-          : `Pushed ${commits.length} commit${commits.length !== 1 ? "s" : ""} to ${targetRemote}/${targetBranch}`;
+          ? t("Everything is up to date")
+          : commits.length === 1
+            ? t(
+                "Pushed {0} commit to {1}/{2}",
+                commits.length,
+                targetRemote,
+                targetBranch,
+              )
+            : t(
+                "Pushed {0} commits to {1}/{2}",
+                commits.length,
+                targetRemote,
+                targetBranch,
+              );
         // Show VS Code native notification then close
         bridge.request("showInfoNotification", { message }).catch(() => {});
         setTimeout(() => {
@@ -180,7 +194,11 @@ export function PushApp() {
         force: false,
       });
       setPushing(false);
-      const message = `Updated and pushed to ${targetRemote}/${targetBranch}`;
+      const message = t(
+        "Updated and pushed to {0}/{1}",
+        targetRemote,
+        targetBranch,
+      );
       bridge.request("showInfoNotification", { message }).catch(() => {});
       setTimeout(() => {
         bridge.request("closePushPanel");
@@ -260,7 +278,7 @@ export function PushApp() {
         {/* Left: commit list */}
         <div className="push-commits" style={{ width: `${leftWidthPercent}%` }}>
           {commits.length === 0 ? (
-            <div className="push-empty">No commits to push</div>
+            <div className="push-empty">{t("No commits to push")}</div>
           ) : (
             commits.map((c) => (
               <div
@@ -310,7 +328,7 @@ export function PushApp() {
                         textTransform: "uppercase",
                       }}
                     >
-                      {files.length} file{files.length !== 1 ? "s" : ""}
+                      {fileCount(files.length)}
                     </span>
                     <span style={{ display: "flex", gap: 2 }}>
                       <button
@@ -329,7 +347,7 @@ export function PushApp() {
                           alignItems: "center",
                           color: "inherit",
                         }}
-                        title="Tree View"
+                        title={t("Tree View")}
                       >
                         <CodiconListTree />
                       </button>
@@ -349,7 +367,7 @@ export function PushApp() {
                           alignItems: "center",
                           color: "inherit",
                         }}
-                        title="Flat List"
+                        title={t("Flat List")}
                       >
                         <CodiconListFlat />
                       </button>
@@ -390,7 +408,9 @@ export function PushApp() {
             </Allotment>
           )}
           {!selectedCommit && (
-            <div style={{ padding: 12, opacity: 0.5 }}>No commits selected</div>
+            <div style={{ padding: 12, opacity: 0.5 }}>
+              {t("No commits selected")}
+            </div>
           )}
         </div>
       </div>
@@ -405,7 +425,7 @@ export function PushApp() {
           onClick={() => bridge.request("closePushPanel")}
           disabled={pushing}
         >
-          Cancel
+          {t("Cancel")}
         </button>
         <div className="push-split-btn">
           <button
@@ -414,7 +434,7 @@ export function PushApp() {
             onClick={() => handlePush(false)}
             disabled={pushing || commits.length === 0}
           >
-            {pushing ? "Pushing..." : "Push"}
+            {pushing ? t("Pushing...") : t("Push")}
           </button>
           <button
             type="button"
@@ -448,7 +468,7 @@ export function PushApp() {
                     handlePush(true);
                   }}
                 >
-                  Force Push
+                  {t("Force Push")}
                 </button>
               </div>
             </>

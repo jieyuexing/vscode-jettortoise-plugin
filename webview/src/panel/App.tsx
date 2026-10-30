@@ -1,5 +1,6 @@
 import { Allotment } from "allotment";
 import { useCallback, useEffect, useState } from "react";
+import { t } from "../shared/i18n";
 import "allotment/dist/style.css";
 import { Tooltip } from "../shared/components/Tooltip";
 import "../shared/components/Tooltip.css";
@@ -100,7 +101,7 @@ function GitPanelApp() {
           opacity: 0.5,
         }}
       >
-        Loading...
+        {t("Loading...")}
       </div>
     );
   }
@@ -149,7 +150,7 @@ function GitPanelApp() {
                 paddingTop: 4,
               }}
             >
-              <Tooltip text="Show Branches">
+              <Tooltip text={t("Show Branches")}>
                 <button
                   type="button"
                   className="panel-toggle-btn"
@@ -230,7 +231,7 @@ function GitPanelApp() {
                       flexShrink: 0,
                     }}
                   >
-                    <Tooltip text="Hide Details">
+                    <Tooltip text={t("Hide Details")}>
                       <button
                         type="button"
                         className="panel-toggle-btn"
@@ -255,7 +256,7 @@ function GitPanelApp() {
                     borderLeft: "1px solid var(--border)",
                   }}
                 >
-                  <Tooltip text="Show Details">
+                  <Tooltip text={t("Show Details")}>
                     <button
                       type="button"
                       className="panel-toggle-btn"
@@ -355,13 +356,13 @@ export function PanelApp() {
       }}
     >
       <div className="repository-log-toolbar">
-        <label htmlFor="log-repository">Repository</label>
+        <label htmlFor="log-repository">{t("Repository")}</label>
         <select
           id="log-repository"
           value={logRepositoryId ?? ""}
           onChange={(event) => void select(event.target.value, "log")}
         >
-          {!repository && <option value="">Select repository</option>}
+          {!repository && <option value="">{t("Select repository")}</option>}
           {repositories.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name} [{item.kind.toUpperCase()}] — {item.root}
@@ -372,14 +373,16 @@ export function PanelApp() {
           type="button"
           onClick={() => void bridge.request("refreshRepositories")}
         >
-          Refresh
+          {t("Refresh")}
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         {!ready ? (
-          <div className="repository-empty">Loading repositories…</div>
+          <div className="repository-empty">{t("Loading repositories…")}</div>
         ) : !repository ? (
-          <div className="repository-empty">No available repository.</div>
+          <div className="repository-empty">
+            {t("No available repository.")}
+          </div>
         ) : repository.kind === "cvs" ? (
           <CvsHistory
             key={repository.id}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { bridge } from "../shared/bridge";
 import { Tooltip } from "../shared/components/Tooltip";
+import { t } from "../shared/i18n";
 import "../shared/components/Tooltip.css";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
@@ -67,7 +68,9 @@ function RebaseBanner() {
 
   if (!state.isRebasing) return null;
 
-  const label = state.branchName ? `Rebasing ${state.branchName}` : "Rebasing";
+  const label = state.branchName
+    ? t("Rebasing {0}", state.branchName)
+    : t("Rebasing");
   const progress =
     state.step && state.totalSteps
       ? ` (${state.step}/${state.totalSteps})`
@@ -91,7 +94,7 @@ function RebaseBanner() {
         {label}
         {progress}
       </span>
-      <Tooltip text="Continue Rebase (git rebase --continue)">
+      <Tooltip text={t("Continue Rebase (git rebase --continue)")}>
         <div
           role="button"
           tabIndex={0}
@@ -130,7 +133,7 @@ function RebaseBanner() {
           </svg>
         </div>
       </Tooltip>
-      <Tooltip text="Abort Rebase (git rebase --abort)">
+      <Tooltip text={t("Abort Rebase (git rebase --abort)")}>
         <div
           role="button"
           tabIndex={0}
@@ -227,7 +230,9 @@ function CherryPickBanner() {
   const shortHash = state.cherryPickHead
     ? state.cherryPickHead.substring(0, 7)
     : "";
-  const label = shortHash ? `Cherry-picking ${shortHash}` : "Cherry-picking";
+  const label = shortHash
+    ? t("Cherry-picking {0}", shortHash)
+    : t("Cherry-picking");
 
   return (
     <div
@@ -247,7 +252,7 @@ function CherryPickBanner() {
       <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg, #ccc)" }}>
         {label}
       </span>
-      <Tooltip text="Continue Cherry-pick (git cherry-pick --continue)">
+      <Tooltip text={t("Continue Cherry-pick (git cherry-pick --continue)")}>
         <div
           role="button"
           tabIndex={0}
@@ -285,7 +290,7 @@ function CherryPickBanner() {
           </svg>
         </div>
       </Tooltip>
-      <Tooltip text="Skip Cherry-pick (git cherry-pick --skip)">
+      <Tooltip text={t("Skip Cherry-pick (git cherry-pick --skip)")}>
         <div
           role="button"
           tabIndex={0}
@@ -317,7 +322,7 @@ function CherryPickBanner() {
           </svg>
         </div>
       </Tooltip>
-      <Tooltip text="Abort Cherry-pick (git cherry-pick --abort)">
+      <Tooltip text={t("Abort Cherry-pick (git cherry-pick --abort)")}>
         <div
           role="button"
           tabIndex={0}
@@ -412,13 +417,13 @@ function MergeBanner() {
   if (!state.isMerging) return null;
 
   // Parse branch name from merge message like "Merge branch 'feature' into main"
-  let label = "Merging";
+  let label = t("Merging");
   if (state.mergeMsg) {
     const match = state.mergeMsg.match(
       /Merge (?:branch '([^']+)'|remote-tracking branch '([^']+)')/,
     );
     if (match) {
-      label = `Merging ${match[1] || match[2]}`;
+      label = t("Merging {0}", match[1] || match[2]);
     }
   }
 
@@ -439,7 +444,7 @@ function MergeBanner() {
       <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg, #ccc)" }}>
         {label}
       </span>
-      <Tooltip text="Resolve Conflicts" position="top">
+      <Tooltip text={t("Resolve Conflicts")} position="top">
         <div
           role="button"
           tabIndex={0}
@@ -477,7 +482,7 @@ function MergeBanner() {
           </svg>
         </div>
       </Tooltip>
-      <Tooltip text="Abort Merge (git merge --abort)" position="top">
+      <Tooltip text={t("Abort Merge (git merge --abort)")} position="top">
         <div
           role="button"
           tabIndex={0}
@@ -542,25 +547,25 @@ export function CommitApp() {
           className={`commit-tab ${activeTab === "commit" ? "active" : ""}`}
           onClick={() => setActiveTab("commit")}
         >
-          Commit
+          {t("Commit")}
         </button>
         <button
           type="button"
           className={`commit-tab ${activeTab === "shelf" ? "active" : ""}`}
           disabled={!gitSelected}
-          title="Git repositories only"
+          title={t("Git repositories only")}
           onClick={() => setActiveTab("shelf")}
         >
-          Shelf (Git)
+          {t("Shelf (Git)")}
         </button>
         <button
           type="button"
           className={`commit-tab ${activeTab === "stash" ? "active" : ""}`}
           disabled={!gitSelected}
-          title="Git repositories only"
+          title={t("Git repositories only")}
           onClick={() => setActiveTab("stash")}
         >
-          Stash (Git)
+          {t("Stash (Git)")}
         </button>
       </div>
       <RebaseBanner />
@@ -573,26 +578,28 @@ export function CommitApp() {
           (gitSelected ? (
             <>
               <div className="shelf-repository">
-                Git: {selectedRepository?.name}
+                {t("Git:")}
+                {selectedRepository?.name}
               </div>
               <IdeaShelfTab key={selectedRepository?.id} />
             </>
           ) : (
             <div className="repository-empty">
-              Shelf is available for Git repositories only.
+              {t("Shelf is available for Git repositories only.")}
             </div>
           ))}
         {activeTab === "stash" &&
           (gitSelected ? (
             <>
               <div className="shelf-repository">
-                Git: {selectedRepository?.name}
+                {t("Git:")}
+                {selectedRepository?.name}
               </div>
               <ShelfTab key={selectedRepository?.id} />
             </>
           ) : (
             <div className="repository-empty">
-              Stash is available for Git repositories only.
+              {t("Stash is available for Git repositories only.")}
             </div>
           ))}
       </div>

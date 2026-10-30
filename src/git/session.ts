@@ -1684,7 +1684,9 @@ export function createGitRepositorySession(
       await runMutation("commitPaths", async () => {
         await ensureAvailable();
         if (await hasDirtyEditors(workspaceRoot))
-          throw new Error("Save unsaved editors before committing.");
+          throw new Error(
+            vscode.l10n.t("Save unsaved editors before committing."),
+          );
         await gitService.commitPaths(message, paths, amend);
         messageRouter.broadcastEvent("commitStateChanged", {});
       });

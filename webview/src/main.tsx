@@ -6,6 +6,7 @@ import { MergeStandaloneApp } from "./conflicts/MergeStandaloneApp";
 import { PanelApp } from "./panel/App";
 import { PushApp } from "./push/App";
 import { RollbackApp } from "./rollback/App";
+import { initializeI18n } from "./shared/i18n";
 import "./shared/theme/variables.css";
 
 // Fix Cmd+A/Ctrl+A not working in webview inputs (VS Code intercepts it)
@@ -21,6 +22,7 @@ document.addEventListener("keydown", (e) => {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");
+initializeI18n(root.dataset.language);
 const mode = root.dataset.mode as
   | "panel"
   | "merge"

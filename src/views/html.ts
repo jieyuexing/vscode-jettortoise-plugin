@@ -15,7 +15,8 @@ export function getWebviewHtml(
   );
   const nonce = getNonce();
 
-  const dataAttrs = [`data-mode="${mode}"`];
+  const language = escapeHtml(vscode.env.language || "en");
+  const dataAttrs = [`data-mode="${mode}"`, `data-language="${language}"`];
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
       dataAttrs.push(`data-${key}="${escapeHtml(value)}"`);
@@ -23,7 +24,7 @@ export function getWebviewHtml(
   }
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${language}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

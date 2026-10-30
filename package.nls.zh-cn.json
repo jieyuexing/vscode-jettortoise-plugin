@@ -1,0 +1,20 @@
+{
+  "category.jettortoise": "JetTortoise",
+  "description": "为工作区中的多个 Git 和 CVS 仓库提供 IDEA 风格的提交与日志界面。",
+  "cmd.scm.commit": "提交",
+  "contributes.views.jettortoise-panel.0.name": "日志",
+  "contributes.commands.0.title": "刷新日志",
+  "contributes.commands.1.title": "打开合并编辑器",
+  "contributes.commands.2.title": "冲突",
+  "contributes.commands.3.title": "在 JetTortoise 合并编辑器中打开",
+  "contributes.commands.4.title": "(JetTortoise) 显示文件历史",
+  "contributes.commands.5.title": "下一个文件差异",
+  "contributes.commands.6.title": "上一个文件差异",
+  "contributes.commands.7.title": "刷新更改",
+  "contributes.commands.9.title": "提交并推送",
+  "contributes.commands.10.title": "搁置更改",
+  "contributes.commands.11.title": "取消搁置更改",
+  "contributes.commands.12.title": "推送…",
+  "contributes.commands.13.title": "(JetTortoise) 编辑源文件",
+  "contributes.configuration.properties.jettortoise.cvsPath.description": "CVS 可执行文件的路径。"
+}

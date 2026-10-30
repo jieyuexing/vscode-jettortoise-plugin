@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fileCount, t } from "../../shared/i18n";
 import {
   type IdeaShelfEntry,
   useCommitStore,
@@ -88,10 +89,11 @@ export function IdeaShelfTab() {
     return (
       <div className="shelf-list" onContextMenu={handleBgContextMenu}>
         <div className="shelf-empty">
-          <p>No shelved changes</p>
+          <p>{t("No shelved changes")}</p>
           <p style={{ fontSize: 11, marginTop: 8 }}>
-            Use the shelf icon in the Commit tab toolbar to shelve changes to
-            .idea/shelf/ (IDEA-compatible format).
+            {t(
+              "Use the shelf icon in the Commit tab toolbar to shelve changes to .idea/shelf/ (IDEA-compatible format).",
+            )}
           </p>
         </div>
         {bgContextMenu && (
@@ -176,8 +178,7 @@ function IdeaShelfItem({
           {entry.description || entry.name}
         </span>
         <span className="shelf-item-info">
-          {entry.files.length} {entry.files.length === 1 ? "file" : "files"},{" "}
-          {dateStr}
+          {fileCount(entry.files.length)}, {dateStr}
         </span>
       </div>
 
@@ -234,9 +235,9 @@ function formatDate(isoDate: string): string {
   const diffHr = Math.floor(diffMs / 3600000);
   const diffDay = Math.floor(diffHr / 24);
 
-  if (diffHr < 1) return "just now";
-  if (diffHr < 24) return `${diffHr}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
+  if (diffHr < 1) return t("just now");
+  if (diffHr < 24) return t("{0}h ago", diffHr);
+  if (diffDay < 7) return t("{0}d ago", diffDay);
 
   const d = date.getDate();
   const m = date.getMonth() + 1;
@@ -307,7 +308,7 @@ function ShelfBgContextMenu({
         onClick={handleImport}
       >
         <ImportIcon />
-        <span>Import Patches...</span>
+        <span>{t("Import Patches...")}</span>
       </button>
       <button
         type="button"
@@ -320,7 +321,7 @@ function ShelfBgContextMenu({
         }}
       >
         <ClipboardImportIcon />
-        <span>Import Patches from Clipboard</span>
+        <span>{t("Import Patches from Clipboard")}</span>
       </button>
     </div>
   );

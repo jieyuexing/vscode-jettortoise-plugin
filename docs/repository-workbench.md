@@ -105,6 +105,11 @@ CVS 更新复用已有串行队列、超时、取消和错误脱敏。无法证�
   - 底部 Git 日志的说明列过窄，带标记的行只剩一个字（上游原有，英文界面同样）；
   - 正式验证（台式机或 141，CVSNT 行为待确认）。往 141 装包要先取得用户同意。
 - 实验目录：`/Users/jieyuexing/jieyuexing-universe/.local/tmp/jettortoise-restart/`，其中有任务书、执行记录、截图、夹具和 CDP 驱动 `cdp.mjs`。
+- 用户 2026-10-30：“用 jettortoise 代替原生版本控制面板, jettortoise 插件你也可以修改重构”。ETECH Theia 改用 `restart` 版：
+  - 提交视图放进 ETECH 左侧卡片，取代原生「源代码管理」；日志视图放在底部；
+  - 内置 `vscode.git` 保留，`restart` 版不注册 SCM provider，行号改动标记和状态栏分支仍由它提供；
+  - Theia 1.76 不为 `contributes.views` 隐式补 `onView`，布局恢复时已可见的视图也不发 `onView`，`restart` 提交 `26c1086` 改为 `onStartupFinished` 激活，已在 ETECH Theia 隔离副本验证首次打开与重启恢复两种情况；
+  - 集成与 Trae 风格适配在 ETECH 线程「1030_ETECH Theia 界面对齐 Eclipse 监督」推进，产品仓状态以 `projects/etech/etech-theia-ide/ETECH.md` 定制清单为准。
 
 ### 真实需求
 

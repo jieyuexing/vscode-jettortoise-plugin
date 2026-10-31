@@ -283,7 +283,11 @@ export class RepositoryManager implements vscode.Disposable {
         path: file.path.replace(/\/$/, ""),
       })) as ChangeFile[];
       await this.guard(entry);
-      entry.snapshot = { repositoryId: entry.info.id, files: changes };
+      entry.snapshot = {
+        repositoryId: entry.info.id,
+        files: changes,
+        branch: (await git.service.getCurrentBranch()) ?? undefined,
+      };
     } catch (error) {
       entry.snapshot = {
         ...entry.snapshot,
@@ -478,6 +482,20 @@ export class RepositoryManager implements vscode.Disposable {
         });
       await this.refresh(entry, true);
       return { success: true };
+    }
+    if (command === "getWorkingFilePreview") {
+      const file = repositoryPath(values.filePath);
+      if (
+        !entry.snapshot.files.some(
+          (item) => item.path === file && !item.directory,
+        )
+      )
+        throw new Error(
+          vscode.l10n.t(
+            "The requested working-tree change is no longer available",
+          ),
+        );
+      if (!entry.git) return this.cvs(entry).preview(file);
     }
     if (entry.git) return entry.git.router.request(command, values);
     const cvs = this.cvs(entry);

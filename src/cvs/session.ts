@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { CvsComparisonResolver } from "../comparison/resolver";
 import { localizeError } from "../messages/errors";
 import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import type { ChangeFile, RepositorySnapshot } from "../repositories/changes";
@@ -28,6 +29,7 @@ interface Adapter {
     name: string,
     revision: string,
     signal?: AbortSignal,
+    options?: { maxBytes?: number },
   ): Promise<Buffer>;
   commit(names: string[], message: string, signal?: AbortSignal): Promise<void>;
   rollback(name: string, signal?: AbortSignal): Promise<string>;
@@ -280,6 +282,18 @@ export class CvsSession {
       path: `/${file}`,
       query: new URLSearchParams({ ref: revision }).toString(),
     });
+  }
+  async preview(file: string) {
+    return this.operate(
+      vscode.l10n.t("CVS revision"),
+      async (adapter, signal) => {
+        const resolver = new CvsComparisonResolver(adapter, this.root);
+        const comparison = await resolver.working(file);
+        const result = await resolver.materialize(comparison, signal);
+        await this.guard();
+        return result;
+      },
+    );
   }
   async diff(file: string) {
     await this.guard();

@@ -6,8 +6,6 @@ import "../shared/components/Tooltip.css";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitTab } from "./components/CommitTab";
-import { IdeaShelfTab } from "./components/IdeaShelfTab";
-import { ShelfTab } from "./components/ShelfTab";
 import "./commit.css";
 
 function ProgressBar({ visible }: { visible: boolean }) {
@@ -517,91 +515,22 @@ function MergeBanner() {
 }
 
 export function CommitApp() {
-  const workspace = useRepositoryStore();
-  const selectedRepository = workspace.repositories.find(
-    (item) =>
-      item.id === (workspace.commitRepositoryId ?? workspace.logRepositoryId),
-  );
-  const gitSelected = selectedRepository?.kind === "git";
-  const {
-    activeTab,
-    setActiveTab,
-    loading,
-    fetchChanges,
-    fetchShelves,
-    fetchIdeaShelves,
-  } = useCommitStore();
-
+  const { repositories } = useRepositoryStore();
+  const { loading, fetchChanges } = useCommitStore();
   useEffect(() => {
-    fetchChanges();
-    fetchShelves();
-    fetchIdeaShelves();
-  }, [fetchChanges, fetchShelves, fetchIdeaShelves]);
-
+    void fetchChanges();
+  }, [fetchChanges]);
   return (
     <div className="commit-app">
-      <div className="commit-tabs">
-        <button
-          type="button"
-          className={`commit-tab ${activeTab === "commit" ? "active" : ""}`}
-          onClick={() => setActiveTab("commit")}
-        >
-          {t("Commit")}
-        </button>
-        <button
-          type="button"
-          className={`commit-tab ${activeTab === "shelf" ? "active" : ""}`}
-          disabled={!gitSelected}
-          title={t("Git repositories only")}
-          onClick={() => setActiveTab("shelf")}
-        >
-          {t("Shelf (Git)")}
-        </button>
-        <button
-          type="button"
-          className={`commit-tab ${activeTab === "stash" ? "active" : ""}`}
-          disabled={!gitSelected}
-          title={t("Git repositories only")}
-          onClick={() => setActiveTab("stash")}
-        >
-          {t("Stash (Git)")}
-        </button>
-      </div>
-      <RebaseBanner />
-      <CherryPickBanner />
-      <MergeBanner />
-      <ProgressBar visible={loading} />
-      <div className="commit-content">
-        {activeTab === "commit" && <CommitTab />}
-        {activeTab === "shelf" &&
-          (gitSelected ? (
-            <>
-              <div className="shelf-repository">
-                {t("Git:")}
-                {selectedRepository?.name}
-              </div>
-              <IdeaShelfTab key={selectedRepository?.id} />
-            </>
-          ) : (
-            <div className="repository-empty">
-              {t("Shelf is available for Git repositories only.")}
-            </div>
-          ))}
-        {activeTab === "stash" &&
-          (gitSelected ? (
-            <>
-              <div className="shelf-repository">
-                {t("Git:")}
-                {selectedRepository?.name}
-              </div>
-              <ShelfTab key={selectedRepository?.id} />
-            </>
-          ) : (
-            <div className="repository-empty">
-              {t("Stash is available for Git repositories only.")}
-            </div>
-          ))}
-      </div>
+      {repositories.length > 0 && (
+        <>
+          <RebaseBanner />
+          <CherryPickBanner />
+          <MergeBanner />
+          <ProgressBar visible={loading} />
+        </>
+      )}
+      <CommitTab />
     </div>
   );
 }

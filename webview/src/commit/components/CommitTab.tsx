@@ -1,398 +1,254 @@
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bridge } from "../../shared/bridge";
-import { fileCount, t } from "../../shared/i18n";
+import { t } from "../../shared/i18n";
 import {
   type ChangeFile,
   canCommit,
   fileKey,
-  groupChanges,
 } from "../../shared/models/changes";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
-import { CommitFileContextMenu } from "./CommitFileContextMenu";
+import { ChangeTree, changeAction } from "./ChangeTree";
 import { CommitMessageArea } from "./CommitMessageArea";
-import { FileItem } from "./FileItem";
+import { DiffPreview } from "./DiffPreview";
+import { IdeaShelfTab } from "./IdeaShelfTab";
+import { ShelfTab } from "./ShelfTab";
 import { Toolbar } from "./Toolbar";
 
 export function CommitTab() {
-  const {
-    repositories,
-    snapshots,
-    commitRepositoryId,
-    logRepositoryId,
-    select,
-  } = useRepositoryStore();
-  const {
-    changes,
-    selectedFiles,
-    highlightedFiles,
-    toggleFileSelection,
-    highlightFile,
-    setFileKeys,
-    expandedGroups,
-    toggleGroup,
-    collapsedDirs,
-    toggleDir,
-    groupByDirectory,
-    showUnversioned,
-    error,
-  } = useCommitStore();
-  const groups = useMemo(
-    () => groupChanges(repositories, snapshots),
-    [repositories, snapshots],
-  );
-  const [menu, setMenu] = useState<{
-    x: number;
-    y: number;
-    file: ChangeFile;
-  } | null>(null);
-  const [lazy, setLazy] = useState<Record<string, ChangeFile[]>>({});
-  const [lazyErrors, setLazyErrors] = useState<Record<string, string>>({});
+  const { repositories, commitRepositoryId, logRepositoryId, select } =
+    useRepositoryStore();
+  const state = useCommitStore();
+  const container = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [preview, setPreview] = useState(true);
+  const [ratio, setRatio] = useState(0.42);
+  const [previewKey, setPreviewKey] = useState<string>();
+  const selectSequence = useRef(0);
+  const wide = width >= 760;
+  const hasGit = repositories.some((repo) => repo.kind === "git");
   const currentId = commitRepositoryId ?? logRepositoryId;
-  const current = repositories.find((item) => item.id === currentId);
-  const selected = changes.filter((file) => selectedFiles.has(fileKey(file)));
-  const showDiff = useCallback(
-    async (file: ChangeFile) => {
-      await select(file.repositoryId, "commit");
-      if (file.status === "untracked")
-        await bridge.request("openFile", {
-          repositoryId: file.repositoryId,
-          filePath: file.path,
-        });
-      else
-        await bridge.request("showDiffForWorkingFile", {
-          repositoryId: file.repositoryId,
-          filePath: file.path,
-          staged: file.staged,
-        });
-    },
-    [select],
+  const current = repositories.find((repo) => repo.id === currentId);
+  const file = state.changes.find((file) => fileKey(file) === previewKey);
+  const files = state.changes.filter(
+    (file) =>
+      !file.directory && !["incoming", "untracked"].includes(file.status),
   );
-  const action = async (fn: () => Promise<unknown>) => {
-    try {
-      useCommitStore.setState({ error: undefined });
-      await fn();
-    } catch (error) {
-      useCommitStore.setState({
-        error: error instanceof Error ? error.message : t("Operation failed."),
-      });
-    }
-  };
-  const openMenu = (event: React.MouseEvent, file: ChangeFile) => {
-    event.preventDefault();
-    event.stopPropagation();
-    void select(file.repositoryId, "commit");
-    setMenu({ x: event.clientX, y: event.clientY, file });
-  };
-  const renderFile = (
-    file: ChangeFile,
-    showPath = !groupByDirectory,
-  ): React.ReactNode => {
-    const key = fileKey(file);
-    if (file.directory) {
-      const expanded = expandedGroups.has(`lazy:${key}`);
-      return (
-        <div key={key} className="commit-lazy-directory">
-          <button
-            type="button"
-            className="commit-group-header"
-            aria-expanded={expanded}
-            onContextMenu={(event) => openMenu(event, file)}
-            onClick={() =>
-              void action(async () => {
-                await select(file.repositoryId, "commit");
-                if (!expanded) {
-                  const nodes = (await bridge.request("expandUnversioned", {
-                    repositoryId: file.repositoryId,
-                    filePath: file.path,
-                  })) as ChangeFile[];
-                  setLazy((value) => ({ ...value, [key]: nodes }));
-                  setLazyErrors((value) => ({ ...value, [key]: "" }));
-                }
-                toggleGroup(`lazy:${key}`);
-              }).catch((error) =>
-                setLazyErrors((value) => ({ ...value, [key]: String(error) })),
-              )
-            }
-          >
-            <Chevron expanded={expanded} /> {file.path.split("/").pop()}
-          </button>
-          {lazyErrors[key] && <div role="alert">{lazyErrors[key]}</div>}
-          {expanded && (
-            <div className="commit-directory-children">
-              {lazy[key]?.map((file) => renderFile(file, false))}
-            </div>
-          )}
-        </div>
-      );
-    }
-    return (
-      <FileItem
-        key={key}
-        file={file}
-        showPath={showPath}
-        selected={selectedFiles.has(key)}
-        highlighted={highlightedFiles.has(key)}
-        onToggle={() => toggleFileSelection(key)}
-        onContextMenu={(event) => openMenu(event, file)}
-        onShowDiff={() => void action(() => showDiff(file))}
-        onClick={(event) => {
-          highlightFile(
-            key,
-            event.metaKey || event.ctrlKey ? "toggle" : "single",
-          );
-          void action(() => showDiff(file));
-        }}
-      />
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) =>
+      setWidth(entries[0].contentRect.width),
     );
+    if (container.current) observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k" &&
+        repositories.length
+      ) {
+        event.preventDefault();
+        state.enterCommitMode();
+      }
+      if (event.key === "Escape") state.leaveCommitMode();
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [repositories.length, state.enterCommitMode, state.leaveCommitMode]);
+  useEffect(() => {
+    if (!hasGit && state.activeTab !== "commit") state.setActiveTab("commit");
+  }, [hasGit, state.activeTab, state.setActiveTab]);
+  const selectPreview = (file: ChangeFile) => {
+    const sequence = ++selectSequence.current;
+    state.highlightFile(fileKey(file), "single");
+    void changeAction(async () => {
+      await select(file.repositoryId, "commit");
+      if (sequence === selectSequence.current) setPreviewKey(fileKey(file));
+    });
   };
+  const switchTab = async (tab: "commit" | "shelf" | "stash") => {
+    if (tab !== "commit") {
+      const git =
+        current?.kind === "git"
+          ? current
+          : repositories.find((repo) => repo.kind === "git");
+      if (!git) return;
+      await select(git.id, "commit");
+      await Promise.all([state.fetchShelves(), state.fetchIdeaShelves()]);
+    }
+    state.setActiveTab(tab);
+  };
+  const resize = (pixels: number) =>
+    setRatio(
+      Math.max(
+        220 / Math.max(1, width - 31),
+        Math.min(pixels / (width - 31), 1 - 300 / Math.max(1, width - 31)),
+      ),
+    );
   return (
     <div
-      className="commit-tab-content"
-      style={{ display: "flex", flexDirection: "column", height: "100%" }}
+      ref={container}
+      className={`commit-tab-content local-changes ${wide ? "wide" : "narrow"} ${state.commitMode ? "committing" : "browsing"}`}
     >
-      <Toolbar
-        onRefresh={() =>
-          void action(() => bridge.request("refreshRepositories"))
-        }
-        onShelve={() =>
-          void action(async () => {
-            if (!current || current.kind !== "git") return;
-            await bridge.request("ideaShelveChanges", {
-              repositoryId: current.id,
-              message: t("Shelved changes"),
-              filePaths: selected
-                .filter((file) => file.repositoryId === current.id)
-                .map((file) => file.path),
-            });
-          })
-        }
-        onRollback={() =>
-          void action(async () => {
-            const files = changes.filter(
-              (file) =>
-                highlightedFiles.has(fileKey(file)) &&
-                file.repositoryId === currentId &&
-                !["incoming", "untracked"].includes(file.status),
-            );
-            if (files.length)
-              await bridge.request("openRollbackPanel", {
-                repositoryId: currentId,
-                files: files.map(({ path, status, staged }) => ({
-                  path,
-                  status,
-                  staged,
-                })),
-              });
-          })
-        }
-        onDiff={() => {
-          const file = changes.find((file) =>
-            highlightedFiles.has(fileKey(file)),
-          );
-          if (file) void action(() => showDiff(file));
-        }}
-        hasChanges={
-          !!current &&
-          changes.some(
-            (file) => file.repositoryId === current.id && canCommit(file),
-          )
-        }
-        gitSelected={current?.kind === "git"}
-      />
-      {error && (
-        <div className="repository-error" role="alert">
-          {error}
+      {!repositories.length ? (
+        <div className="changes-empty">
+          {t("No Git or CVS repositories found in this workspace.")}
         </div>
-      )}
-      <div className="commit-file-list">
-        {groups.length === 0 && (
-          <div className="repository-empty">
-            {t("No Git or CVS repositories found in this workspace.")}
-          </div>
-        )}
-        {groups.map((group) => {
-          const repositoryKey = `repository:${group.id}`;
-          const expanded = !collapsedDirs.has(repositoryKey);
-          const keys = group.changes.filter(canCommit).map(fileKey);
-          return (
-            <section
-              key={group.id}
-              className="commit-repository"
-              aria-label={`${group.name} ${group.kind}`}
-            >
+      ) : (
+        <div
+          className={`changes-workbench ${wide && preview ? "with-preview" : ""}`}
+          style={
+            wide && preview
+              ? {
+                  gridTemplateColumns: `30px minmax(0, ${ratio}fr) 1px minmax(0, ${1 - ratio}fr)`,
+                }
+              : undefined
+          }
+        >
+          <Toolbar
+            hasGit={hasGit}
+            gitSelected={current?.kind === "git"}
+            hasChanges={state.changes.some(canCommit)}
+            previewVisible={preview}
+            onTogglePreview={() => setPreview((value) => !value)}
+            onRefresh={() =>
+              void changeAction(() => bridge.request("refreshRepositories"))
+            }
+            onShelve={() =>
+              void changeAction(async () => {
+                if (current?.kind !== "git") return;
+                const keys = state.commitMode
+                  ? state.selectedFiles
+                  : state.highlightedFiles;
+                const selected = state.changes.filter(
+                  (file) =>
+                    file.repositoryId === current.id &&
+                    keys.has(fileKey(file)) &&
+                    canCommit(file),
+                );
+                if (selected.length)
+                  await bridge.request("ideaShelveChanges", {
+                    repositoryId: current.id,
+                    message: t("Shelved changes"),
+                    filePaths: selected.map((file) => file.path),
+                  });
+              })
+            }
+            onRollback={() =>
+              void changeAction(async () => {
+                const selected = state.changes.filter(
+                  (file) =>
+                    file.repositoryId === currentId &&
+                    state.highlightedFiles.has(fileKey(file)) &&
+                    !["incoming", "untracked"].includes(file.status),
+                );
+                if (selected.length)
+                  await bridge.request("openRollbackPanel", {
+                    repositoryId: currentId,
+                    files: selected.map(({ path, status, staged }) => ({
+                      path,
+                      status,
+                      staged,
+                    })),
+                  });
+              })
+            }
+          />
+          <div className="changes-tree-pane">
+            {hasGit && (
               <div
-                className={`commit-group-header repository-header ${currentId === group.id ? "active" : ""}`}
+                className="changes-tabs"
+                role="tablist"
+                aria-label={t("Local Changes")}
               >
                 <button
                   type="button"
-                  aria-expanded={expanded}
-                  onClick={() => toggleDir(repositoryKey)}
+                  role="tab"
+                  aria-selected={state.activeTab === "commit"}
+                  onClick={() => void changeAction(() => switchTab("commit"))}
                 >
-                  <Chevron expanded={expanded} />
+                  {t("Changes")}
                 </button>
-                <input
-                  type="checkbox"
-                  aria-label={t("Select changes in {0}", group.name)}
-                  checked={
-                    keys.length > 0 &&
-                    keys.every((key) => selectedFiles.has(key))
-                  }
-                  disabled={!keys.length}
-                  onChange={(event) => setFileKeys(keys, event.target.checked)}
-                />
                 <button
                   type="button"
-                  className="repository-label"
-                  title={group.root}
-                  onClick={() => void select(group.id, "commit")}
+                  role="tab"
+                  aria-selected={state.activeTab === "shelf"}
+                  onClick={() => void changeAction(() => switchTab("shelf"))}
                 >
-                  {group.name}{" "}
-                  <span className="repository-kind">
-                    {group.kind.toUpperCase()}
-                  </span>{" "}
-                  <span className="commit-group-count">
-                    {fileCount(group.count)}
-                  </span>
+                  {t("Shelf")}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={state.activeTab === "stash"}
+                  onClick={() => void changeAction(() => switchTab("stash"))}
+                >
+                  {t("Stash")}
                 </button>
               </div>
-              {group.error && (
-                <div className="repository-error" role="alert">
-                  {group.error}
-                </div>
-              )}
-              {group.refreshing && (
-                <div className="repository-progress" role="status">
-                  {t("Checking remote updates…")}
-                </div>
-              )}
-              {expanded && (
-                <div className="commit-repository-contents">
-                  {group.changes.length > 0 && (
-                    <div className="commit-group-header">
-                      <span className="commit-group-title">{t("Changes")}</span>{" "}
-                      <span className="commit-group-count">{group.count}</span>
-                    </div>
-                  )}
-                  {groupByDirectory &&
-                    group.rootFiles.map((file) => renderFile(file))}
-                  {groupByDirectory
-                    ? group.directories.map((directory) => {
-                        const key = `directory:${group.id}:${directory.path}`;
-                        const open = !collapsedDirs.has(key);
-                        return (
-                          <div key={key}>
-                            <div className="commit-group-header commit-directory-header">
-                              <button
-                                type="button"
-                                aria-expanded={open}
-                                onClick={() => toggleDir(key)}
-                              >
-                                <Chevron expanded={open} /> {directory.path}
-                              </button>
-                              <input
-                                type="checkbox"
-                                aria-label={t("Select {0}", directory.path)}
-                                disabled={!directory.files.some(canCommit)}
-                                checked={
-                                  directory.files.filter(canCommit).length >
-                                    0 &&
-                                  directory.files
-                                    .filter(canCommit)
-                                    .every((file) =>
-                                      selectedFiles.has(fileKey(file)),
-                                    )
-                                }
-                                onChange={(event) =>
-                                  setFileKeys(
-                                    directory.files
-                                      .filter(canCommit)
-                                      .map(fileKey),
-                                    event.target.checked,
-                                  )
-                                }
-                              />
-                              <span className="commit-group-count">
-                                {fileCount(directory.files.length)}
-                              </span>
-                            </div>
-                            {open &&
-                              directory.files.map((file) => renderFile(file))}
-                          </div>
-                        );
-                      })
-                    : group.changes.map((file) => renderFile(file))}
-                  {showUnversioned && group.unversioned.length > 0 && (
-                    <div>
-                      <button
-                        type="button"
-                        className="commit-group-header"
-                        aria-expanded={expandedGroups.has(
-                          `unversioned:${group.id}`,
-                        )}
-                        onClick={() => toggleGroup(`unversioned:${group.id}`)}
-                      >
-                        <Chevron
-                          expanded={expandedGroups.has(
-                            `unversioned:${group.id}`,
-                          )}
-                        />
-                        <span className="commit-group-title">
-                          {t("Unversioned Files")}
-                        </span>
-                      </button>
-                      {expandedGroups.has(`unversioned:${group.id}`) &&
-                        group.unversioned.map((file) => renderFile(file))}
-                    </div>
-                  )}
-                  {group.incoming.length > 0 && (
-                    <div>
-                      <button
-                        type="button"
-                        className="commit-group-header"
-                        aria-expanded={expandedGroups.has(
-                          `incoming:${group.id}`,
-                        )}
-                        onClick={() => toggleGroup(`incoming:${group.id}`)}
-                      >
-                        <Chevron
-                          expanded={expandedGroups.has(`incoming:${group.id}`)}
-                        />
-                        <span className="commit-group-title">
-                          {t("Incoming")}
-                        </span>
-                      </button>
-                      {expandedGroups.has(`incoming:${group.id}`) &&
-                        group.incoming.map((file) => renderFile(file))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-      <CommitMessageArea />
-      {menu && (
-        <CommitFileContextMenu {...menu} onClose={() => setMenu(null)} />
+            )}
+            {state.error && (
+              <div className="repository-error" role="alert">
+                {state.error}
+              </div>
+            )}
+            {state.activeTab === "commit" ? (
+              <>
+                <ChangeTree onSelect={selectPreview} />
+                {state.commitMode && <CommitMessageArea />}
+              </>
+            ) : (
+              <div className="changes-shelf">
+                <div className="shelf-repository">{current?.name}</div>
+                {state.activeTab === "shelf" ? (
+                  <IdeaShelfTab key={current?.id} />
+                ) : (
+                  <ShelfTab key={current?.id} />
+                )}
+              </div>
+            )}
+          </div>
+          {wide && preview && (
+            <>
+              <div
+                className="changes-splitter"
+                role="separator"
+                aria-label={t("Resize changes tree")}
+                aria-orientation="vertical"
+                aria-valuemin={220}
+                aria-valuemax={Math.max(220, width - 331)}
+                aria-valuenow={Math.round((width - 31) * ratio)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+                    event.preventDefault();
+                    resize(
+                      (width - 31) * ratio +
+                        (event.key === "ArrowLeft" ? -20 : 20),
+                    );
+                  }
+                }}
+                onPointerDown={(event) =>
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                }
+                onPointerMove={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    resize(
+                      event.clientX -
+                        (container.current?.getBoundingClientRect().left ?? 0) -
+                        30,
+                    );
+                }}
+                onPointerUp={(event) =>
+                  event.currentTarget.releasePointerCapture(event.pointerId)
+                }
+              />
+              <DiffPreview file={file} files={files} onSelect={selectPreview} />
+            </>
+          )}
+        </div>
       )}
     </div>
-  );
-}
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <span
-      className={`commit-group-chevron ${expanded ? "" : "collapsed"}`}
-      aria-hidden="true"
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M6 11.5L9.5 8L6 4.5"
-          stroke="currentColor"
-          strokeLinecap="round"
-        />
-      </svg>
-    </span>
   );
 }

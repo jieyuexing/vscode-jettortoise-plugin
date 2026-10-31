@@ -268,6 +268,11 @@ const SPECS: Readonly<Record<string, CommandSpec>> = {
   }),
   deleteFiles: fields(panel, { filePaths: "path[]" }),
   revealInSystemExplorer: fields(panel, { filePath: "path" }),
+  getWorkingFilePreview: fields(
+    panel,
+    { filePath: "path", staged: "boolean" },
+    ["staged"],
+  ),
   showDiffForWorkingFile: fields(
     panel,
     { filePath: "path", staged: "boolean" },

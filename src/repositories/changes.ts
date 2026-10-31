@@ -23,6 +23,7 @@ export interface ChangeFile {
 export interface RepositorySnapshot {
   repositoryId: string;
   files: ChangeFile[];
+  branch?: string;
   nestedPaths?: string[];
   error?: string;
   refreshing?: boolean;

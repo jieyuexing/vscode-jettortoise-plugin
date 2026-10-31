@@ -96,6 +96,13 @@ async function main(){
   await assert.rejects(manager.request('commitRepositories',{message:'invalid',files:[{repositoryId:a.id,path:'same.txt',cwd:root}]}),/Invalid selected/);
   await assert.rejects(manager.request('updateProject',{repositoryId:a.id,cwd:root}),/Unexpected/);
   await assert.rejects(manager.request('ignoreUnversioned',{repositoryId:a.id,filePaths:['same.txt']}),/unversioned/);
+  const previewA=await manager.request('getWorkingFilePreview',{repositoryId:a.id,filePath:'same.txt',staged:false});
+  const previewC=await manager.request('getWorkingFilePreview',{repositoryId:c.id,filePath:'same.txt'});
+  assert.equal(previewA.leftContent.text,'base\n');assert.equal(previewA.rightContent.text,'git a selected\n');
+  assert.equal(previewC.leftContent.text,'base\n');assert.equal(previewC.rightContent.text,'CVS selected text\n');
+  await assert.rejects(manager.request('getWorkingFilePreview',{repositoryId:a.id,filePath:'../outside'}),/traversal/);
+  await assert.rejects(manager.request('getWorkingFilePreview',{repositoryId:a.id,filePath:'same.txt',cwd:root}),/Unexpected/);
+  await assert.rejects(manager.request('getWorkingFilePreview',{repositoryId:a.id,filePath:'same.txt',staged:'yes'}),/staged/);
   // 挂载 CVS 历史的真实 effect/bridge 合同；Hook fixture 不代表真实窗口渲染。
   const historyEffects=[],historyRequests=[];let stateIndex=0,latestHistory=[];
   const historyBridge={request:(command,params)=>{const request=manager.request(command,params).then(result=>{if(command==='getCvsHistory')latestHistory=result;return result});historyRequests.push({command,request});return request},onEvent:handler=>{const listener=msg=>{if(msg.type==='event')handler(msg.event,msg.data)};subscribers.add(listener);return()=>subscribers.delete(listener)}};

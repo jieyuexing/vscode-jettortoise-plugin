@@ -1,13 +1,13 @@
 import { t } from "../../shared/i18n";
 import { canCommit } from "../../shared/models/changes";
 import type { WorkingTreeFile } from "../../shared/store/commit-store";
-import { getCommitFileIcon } from "../utils/file-icon";
 
 export interface FileItemProps {
   file: WorkingTreeFile;
   selected: boolean;
   highlighted: boolean;
   showPath?: boolean;
+  showCheckbox?: boolean;
   onToggle: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onShowDiff: () => void;
@@ -19,6 +19,7 @@ export function FileItem({
   selected,
   highlighted,
   showPath = true,
+  showCheckbox = true,
   onToggle,
   onContextMenu,
   onShowDiff,
@@ -28,9 +29,7 @@ export function FileItem({
   const fileName = parts.pop() || parts.pop() || file.path;
   const dirPath = parts.length > 0 ? parts.join("/") : "";
 
-  const statusLabel = getStatusLabel(file.status);
   const statusColor = getStatusColor(file.status);
-  const FileIcon = getCommitFileIcon(file.path);
 
   return (
     <div
@@ -41,13 +40,14 @@ export function FileItem({
         if (event.key === "Enter") onShowDiff();
       }}
       onClick={onClick}
+      onDoubleClick={onShowDiff}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
         onContextMenu(e);
       }}
     >
-      {file.status !== "incoming" && (
+      {showCheckbox && file.status !== "incoming" && (
         <input
           type="checkbox"
           className="commit-file-checkbox"
@@ -58,9 +58,7 @@ export function FileItem({
           onChange={onToggle}
         />
       )}
-      <span className="commit-file-icon">
-        <FileIcon style={{ width: 16, height: 16 }} />
-      </span>
+      <span className="changes-file-indent" />
       <span
         className="commit-file-name"
         title={file.path}
@@ -73,48 +71,18 @@ export function FileItem({
           {dirPath}
         </span>
       )}
-      <span
-        className="commit-file-status"
-        style={{ color: statusColor }}
-        title={
-          file.status === "incoming" ? t("Remote version available") : undefined
-        }
-      >
-        {statusLabel}
-      </span>
     </div>
   );
-}
-
-function getStatusLabel(status: WorkingTreeFile["status"]): string {
-  switch (status) {
-    case "added":
-      return "A";
-    case "modified":
-      return "M";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    case "untracked":
-      return "U";
-    case "conflicted":
-      return "C";
-    case "incoming":
-      return "↓";
-    default:
-      return "?";
-  }
 }
 
 function getStatusColor(status: WorkingTreeFile["status"]): string {
   switch (status) {
     case "added":
-      return "var(--vscode-gitDecoration-addedResourceForeground)";
+      return "var(--add)";
     case "untracked":
       return "var(--vscode-gitDecoration-deletedResourceForeground)";
     case "modified":
-      return "var(--vscode-gitDecoration-modifiedResourceForeground)";
+      return "var(--mod)";
     case "deleted":
       return "var(--vscode-gitDecoration-ignoredResourceForeground)";
     case "renamed":

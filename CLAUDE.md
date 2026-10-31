@@ -88,3 +88,13 @@ B2 按用户给出的 IDEA 参照统一 Git 日志与图线、CVS 文件历史�
 ## 提交与日志可见性（2026-10-31，0.6.3）
 
 Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可见性变化打开日志或关闭底栏。只有显式打开提交、历史等用户操作触发对应 focus 命令。回归并入 `scripts/restart-host-check.cjs`，由既有 `pnpm run test:headless` 运行。ETECH B3 集成任务在隔离开发构建验证底部本地更改／日志，不改变原生 VS Code 容器声明、仓库消息和写入合同。
+
+## 本地更改三态（2026-10-31，0.6.4）
+
+用户已确认 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/local-changes.html`（“对 就应该是这样”），它是本节唯一视觉基准，覆盖旧版常驻提交表单与尺寸说明。删除上一轮未采用的弹窗提交方案，不合并 `b5-codex-wip` 界面。任务书允许本机产品开发构建试装，覆盖旧实验“不启动 GUI”的限制；不推送、不改安装版。
+
+- 浏览默认没有复选框与提交说明。30px 竖排工具栏、22px 行、14px 层级增量；按更改列表→仓库→目录分组，浅色逐项采用底稿变量，深色映射宿主主题。Git 的更改／搁置／储藏小页签仅在树列存在 Git 仓库时出现；窄于 760px 改为横排工具栏与树。
+- 单击文件请求 `getWorkingFilePreview`；双击沿用 `showDiffForWorkingFile`。预览 Git 比较 HEAD 与磁盘，CVS 比较当前 Entries 的 BASE 与磁盘；只读并排／统一视图共用滚动、行号与行内着色。中缝回滚入口打开已有完整差异，不新增文件写入通道。
+- 有界读取沿用 comparison resolver：每侧 2MiB、20000 行，前端最多合计 8000 行、diff 150ms/2000 次编辑，行内比较最多 4000 字符。超限、二进制或非 UTF-8 显示灰字，过时请求不覆盖新选择。忽略文件不参与现有变更扫描，树保留折叠入口并明确说明，不伪造忽略文件计数；传入分组保留只读。
+- Ctrl+K 或工具栏进入提交态：预选全部可提交更改，复选框出现在同一棵树，说明框在树下获得焦点；Esc 或提交成功返回浏览，失败保留说明。提交并推送与修改上次提交仍仅允许单个 Git 仓库选择，不改原命令与写队列。无仓库只显示“此工作区没有 Git 或 CVS 仓库”。
+- `webview/src/commit/commit-ui.test.tsx` 由既有 `pnpm run test:headless` 执行，原生 Git/CVS 预览与请求拒绝继续放 `scripts/restart-host-check.cjs`。结构、模拟交互与实际开发窗口分别记录，Windows 与真实公司仓未实机。

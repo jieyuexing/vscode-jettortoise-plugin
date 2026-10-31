@@ -22,38 +22,20 @@ export interface CvsComparisonAdapter {
 export const COMPARISON_MAX_BYTES = 2 * 1024 * 1024;
 export const COMPARISON_MAX_LINES = 20_000;
 
-export type ComparisonSource = "git" | "worktree" | "cvs" | "empty";
+export type {
+  ComparisonMaterialization,
+  ComparisonSide,
+  ComparisonSource,
+  MaterializedComparison,
+  ResolvedComparison,
+} from "./types";
 
-export interface ComparisonSide {
-  source: ComparisonSource;
-  /** Repository-relative source path.  It is never a client supplied cwd. */
-  path: string;
-  /** Git ref or CVS revision; absent for worktree and empty sides. */
-  revision?: string;
-  /** A stable semantic token; webview/native callers localize display text. */
-  label: "head" | "index" | "worktree" | "empty" | "revision";
-}
-
-export interface ResolvedComparison {
-  kind: "git" | "cvs";
-  source: "working" | "history";
-  filePath: string;
-  title: string;
-  left: ComparisonSide;
-  right: ComparisonSide;
-}
-
-export type ComparisonMaterialization =
-  | { available: true; text: string; bytes: number; lines: number }
-  | {
-      available: false;
-      reason: "binary" | "tooLarge" | "tooManyLines" | "undecodable";
-    };
-
-export interface MaterializedComparison extends ResolvedComparison {
-  leftContent: ComparisonMaterialization;
-  rightContent: ComparisonMaterialization;
-}
+import type {
+  ComparisonMaterialization,
+  ComparisonSide,
+  MaterializedComparison,
+  ResolvedComparison,
+} from "./types";
 
 function shortRef(ref: string): string {
   return ref.length > 7 ? ref.slice(0, 7) : ref;
@@ -409,7 +391,10 @@ async function readSide(
   try {
     bytes = await read(side);
   } catch (error) {
-    if (error instanceof GitContentTooLargeError)
+    if (
+      error instanceof GitContentTooLargeError ||
+      comparisonReadError(error) === "outputLimit"
+    )
       return { available: false, reason: "tooLarge" };
     throw error;
   }
@@ -452,4 +437,10 @@ async function readLimitedFile(target: string): Promise<Buffer> {
   } finally {
     await handle.close();
   }
+}
+
+function comparisonReadError(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : undefined;
 }

@@ -70,6 +70,7 @@ export type CommandType =
   | "shelveChanges"
   | "unshelveChanges"
   | "deleteShelve"
+  | "getWorkingFilePreview"
   | "showDiffForWorkingFile"
   | "getAmendMessage"
   | "getIdeaShelves"

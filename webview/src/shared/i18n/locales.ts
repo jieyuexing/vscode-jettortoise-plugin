@@ -1,4 +1,38 @@
 export const en = {
+  Shelf: "Shelf",
+  Stash: "Stash",
+  "Working Tree": "Working Tree",
+
+  "Local Changes": "Local Changes",
+  "Commit...": "Commit...",
+  "Diff Preview": "Diff Preview",
+  "Commit Message": "Commit Message",
+  "Amend Last Commit": "Amend Last Commit",
+  "Selected {0} files · {1} repositories":
+    "Selected {0} files · {1} repositories",
+  Ignored: "Ignored",
+  "Ignored files are excluded from the change scan.":
+    "Ignored files are excluded from the change scan.",
+  "Resize changes tree": "Resize changes tree",
+  "Select a file to preview its changes.":
+    "Select a file to preview its changes.",
+  "Loading diff…": "Loading diff…",
+  "Preview unavailable for binary, non-UTF-8 or large files. Double-click to open in the editor.":
+    "Preview unavailable for binary, non-UTF-8 or large files. Double-click to open in the editor.",
+  "Diff is too complex to preview. Double-click to open in the editor.":
+    "Diff is too complex to preview. Double-click to open in the editor.",
+  "Previous Difference": "Previous Difference",
+  "Next Difference": "Next Difference",
+  "Previous File": "Previous File",
+  "Next File": "Next File",
+  "{0}/{1} files": "{0}/{1} files",
+  "{0} differences": "{0} differences",
+  "Side by Side": "Side by Side",
+  Unified: "Unified",
+  Base: "Base",
+  "Rollback this change in the full diff":
+    "Rollback this change in the full diff",
+
   "Abort Cherry-pick (git cherry-pick --abort)":
     "Abort Cherry-pick (git cherry-pick --abort)",
   "Abort Merge (git merge --abort)": "Abort Merge (git merge --abort)",
@@ -279,6 +313,37 @@ export const en = {
 } as const;
 
 export const zhCn: Partial<Record<keyof typeof en, string>> = {
+  Shelf: "搁置",
+  Stash: "储藏",
+  "Working Tree": "工作区",
+
+  "Local Changes": "本地更改",
+  "Commit...": "提交…",
+  "Diff Preview": "差异预览",
+  "Commit Message": "提交说明",
+  "Amend Last Commit": "修改上次提交",
+  "Selected {0} files · {1} repositories": "已选 {0} 个文件 · {1} 个仓库",
+  Ignored: "忽略",
+  "Ignored files are excluded from the change scan.":
+    "忽略文件不参与更改扫描。",
+  "Resize changes tree": "调整变更树宽度",
+  "Select a file to preview its changes.": "选择文件以预览差异。",
+  "Loading diff…": "正在加载差异…",
+  "Preview unavailable for binary, non-UTF-8 or large files. Double-click to open in the editor.":
+    "二进制、非 UTF-8 或大文件无法预览，双击可在编辑器中打开。",
+  "Diff is too complex to preview. Double-click to open in the editor.":
+    "差异过于复杂，双击可在编辑器中打开。",
+  "Previous Difference": "上一处差异",
+  "Next Difference": "下一处差异",
+  "Previous File": "上一个文件",
+  "Next File": "下一个文件",
+  "{0}/{1} files": "{0}/{1} 个文件",
+  "{0} differences": "{0} 处差异",
+  "Side by Side": "并排",
+  Unified: "统一",
+  Base: "基准",
+  "Rollback this change in the full diff": "在完整差异中回滚这一处",
+
   "Abort Cherry-pick (git cherry-pick --abort)":
     "中止拣选 (git cherry-pick --abort)",
   "Abort Merge (git merge --abort)": "中止合并 (git merge --abort)",
@@ -419,7 +484,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "New Tag...": "新建标签...",
   "Next Conflict": "下一个冲突",
   "No Git or CVS repositories found in this workspace.":
-    "此工作区中未找到 Git 或 CVS 仓库。",
+    "此工作区没有 Git 或 CVS 仓库",
   "No available repository.": "没有可用的仓库。",
   "No changes to {0} in this commit": "此提交未更改 {0}",
   "No commits selected": "未选择提交",
@@ -517,7 +582,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Unshelve This File": "取消搁置此文件",
   "Unshelve...": "取消搁置...",
   Unstage: "取消暂存",
-  "Unversioned Files": "未受版本控制的文件",
+  "Unversioned Files": "未进行版本管理的文件",
   Update: "更新",
   "Update (fast-forward only) and Push": "更新（仅快进）并推送",
   "Update Branch Filter": "更新分支筛选",

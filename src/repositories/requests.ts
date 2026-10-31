@@ -11,6 +11,7 @@ const fields: Record<string, readonly string[]> = {
   ignoreUnversioned: ["filePaths"],
   addUnversioned: ["filePaths"],
   getCvsFiles: [],
+  getWorkingFilePreview: ["filePath", "staged"],
   getCvsHistory: ["filePath"],
   diffCvsRevision: ["filePath", "revision"],
 };
@@ -31,8 +32,14 @@ export function validateRepositoryRequest(
       throw new Error(`Unexpected request field: ${key}`);
   const required = fields[command];
   for (const key of required)
-    if (params[key] === undefined && key !== "amend")
+    if (params[key] === undefined && key !== "amend" && key !== "staged")
       throw new Error(`Missing request field: ${key}`);
+  if (
+    command === "getWorkingFilePreview" &&
+    params.staged !== undefined &&
+    typeof params.staged !== "boolean"
+  )
+    throw new Error("Invalid staged flag.");
   if (Object.hasOwn(params, "filePath"))
     safeRelativePath(params.filePath as string);
   if (Object.hasOwn(params, "filePaths")) {

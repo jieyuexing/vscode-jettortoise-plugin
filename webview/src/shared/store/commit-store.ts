@@ -49,6 +49,9 @@ interface CommitStore {
 
   // UI state
   activeTab: TabType;
+  commitMode: boolean;
+  enterCommitMode: () => void;
+  leaveCommitMode: () => void;
   loading: boolean;
   error?: string;
   expandedGroups: Set<string>;
@@ -101,6 +104,17 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   shelves: [],
   ideaShelves: [],
   activeTab: "commit",
+  commitMode: false,
+  enterCommitMode() {
+    set({
+      activeTab: "commit",
+      commitMode: true,
+      selectedFiles: new Set(get().changes.filter(canCommit).map(fileKey)),
+    });
+  },
+  leaveCommitMode() {
+    if (!get().loading) set({ commitMode: false });
+  },
   loading: false,
   expandedGroups: new Set(["changes", "staged"]),
   groupByDirectory: true,
@@ -273,7 +287,12 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
         files,
         amend,
       });
-      set({ commitMessage: "", amend: false, selectedFiles: new Set() });
+      set({
+        commitMessage: "",
+        amend: false,
+        selectedFiles: new Set(),
+        commitMode: false,
+      });
       await get().fetchChanges();
       return true;
     } catch (error) {
@@ -478,8 +497,8 @@ bridge.onEvent((event, data) => {
   if (event === "commitCommand") {
     const command = (data as { command: string }).command;
     const store = useCommitStore.getState();
-    if (command === "commit") void store.commit();
-    if (command === "commitAndPush") void store.commitAndPush();
+    if (command === "commit") store.enterCommitMode();
+    if (command === "commitAndPush") store.enterCommitMode();
     if (command === "refresh") void bridge.request("refreshRepositories");
     if (command === "shelve") store.setActiveTab("shelf");
     if (command === "unshelve") store.setActiveTab("shelf");

@@ -1,372 +1,86 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { bridge } from "../../shared/bridge";
-import { Tooltip } from "../../shared/components/Tooltip";
+import { useEffect, useRef } from "react";
 import { t } from "../../shared/i18n";
-import "../../shared/components/Tooltip.css";
-import { fileKey } from "../../shared/models/changes";
+import { canCommit, fileKey } from "../../shared/models/changes";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 
 export function CommitMessageArea() {
-  const workspace = useRepositoryStore();
-  const changes = useCommitStore((state) => state.changes);
-  const {
-    commitMessage,
-    setCommitMessage,
-    amend,
-    setAmend,
-    commit,
-    commitAndPush,
-    loading,
-    selectedFiles,
-  } = useCommitStore();
-
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [recentMessages, setRecentMessages] = useState<string[]>([]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const historyBtnRef = useRef<HTMLSpanElement>(null);
-  const historyDropdownRef = useRef<HTMLDivElement>(null);
-
-  const selectedRoots = new Set(
-    changes
-      .filter((file) => selectedFiles.has(fileKey(file)))
-      .map((file) => file.repositoryId),
+  const state = useCommitStore();
+  const { repositories } = useRepositoryStore();
+  const input = useRef<HTMLTextAreaElement>(null);
+  const selected = state.changes.filter(
+    (file) => canCommit(file) && state.selectedFiles.has(fileKey(file)),
   );
+  const roots = new Set(selected.map((file) => file.repositoryId));
   const singleGit =
-    selectedRoots.size === 1 &&
-    workspace.repositories.find(
-      (repository) => repository.id === [...selectedRoots][0],
-    )?.kind === "git";
+    roots.size === 1 &&
+    repositories.find((repo) => roots.has(repo.id))?.kind === "git";
+  const hasGit = repositories.some((repo) => repo.kind === "git");
   useEffect(() => {
-    if (!singleGit && amend) setAmend(false);
-  }, [singleGit, amend, setAmend]);
-  const hasSelectedFiles = selectedFiles.size > 0;
-  const canCommit =
-    commitMessage.trim().length > 0 && hasSelectedFiles && !loading;
-
-  const handleCommit = useCallback(async () => {
-    if (!canCommit) return;
-    await commit();
-  }, [canCommit, commit]);
-
-  const handleCommitAndPush = useCallback(async () => {
-    if (!canCommit) return;
-    setShowDropdown(false);
-    await commitAndPush();
-  }, [canCommit, commitAndPush]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      // Ctrl/Cmd + Enter to commit
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        handleCommit();
-      }
-    },
-    [handleCommit],
-  );
-
-  const handleHistoryClick = useCallback(async () => {
-    if (showHistory) {
-      setShowHistory(false);
-      return;
-    }
-    try {
-      const messages = (await bridge.request(
-        "getRecentCommitMessages",
-      )) as string[];
-      setRecentMessages(messages ?? []);
-    } catch {
-      setRecentMessages([]);
-    }
-    setShowHistory(true);
-  }, [showHistory]);
-
-  const handleSelectMessage = useCallback(
-    (msg: string) => {
-      setCommitMessage(msg);
-      setShowHistory(false);
-    },
-    [setCommitMessage],
-  );
-
-  // Close history dropdown on outside click
+    input.current?.focus();
+  }, []);
   useEffect(() => {
-    if (!showHistory) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      // Check if click is inside the dropdown or the button
-      if (historyBtnRef.current?.contains(target)) return;
-      if (historyDropdownRef.current?.contains(target)) return;
-      setShowHistory(false);
-    };
-    // Use setTimeout to avoid the current click event triggering close immediately
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside, true);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside, true);
-    };
-  }, [showHistory]);
-
+    if (!singleGit && state.amend) state.setAmend(false);
+  }, [singleGit, state.amend, state.setAmend]);
+  const disabled =
+    !selected.length || !state.commitMessage.trim() || state.loading;
   return (
-    <div className="commit-message-area">
+    <div className="changes-commit">
       <textarea
-        className="commit-message-textarea"
+        ref={input}
+        aria-label={t("Commit Message")}
         placeholder={t("Commit message (Ctrl+Enter to commit)")}
-        value={commitMessage}
-        onChange={(e) => setCommitMessage(e.target.value)}
-        onKeyDown={handleKeyDown}
-        rows={3}
+        value={state.commitMessage}
+        onChange={(event) => state.setCommitMessage(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            event.preventDefault();
+            if (!disabled) void state.commit();
+          }
+        }}
       />
-
-      <div className="commit-amend-row">
-        <label>
-          <input
-            type="checkbox"
-            disabled={!singleGit}
-            title={t("Amend is available for one selected Git repository.")}
-            checked={amend}
-            onChange={(e) => setAmend(e.target.checked)}
-          />
-          {t("Amend")}
-        </label>
-        <Tooltip text={t("Recent commit messages")}>
-          <span
-            ref={historyBtnRef}
-            onClick={handleHistoryClick}
-            style={{
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: 3,
-              padding: 2,
-              transition: "background 0.15s, opacity 0.15s",
-              opacity: showHistory ? 1 : 0.6,
-              background: showHistory
-                ? "var(--vscode-toolbar-activeBackground)"
-                : "transparent",
-            }}
-            onMouseEnter={(e) => {
-              if (!showHistory)
-                (e.currentTarget as HTMLElement).style.opacity = "1";
-            }}
-            onMouseLeave={(e) => {
-              if (!showHistory)
-                (e.currentTarget as HTMLElement).style.opacity = "0.6";
-            }}
-            onMouseDown={(e) => {
-              (e.currentTarget as HTMLElement).style.background =
-                "var(--vscode-toolbar-activeBackground)";
-            }}
-            onMouseUp={(e) => {
-              (e.currentTarget as HTMLElement).style.background = showHistory
-                ? "var(--vscode-toolbar-activeBackground)"
-                : "transparent";
-            }}
-          >
-            <HistoryIcon />
-          </span>
-        </Tooltip>
-        {showHistory &&
-          createPortal(
-            <HistoryDropdown
-              ref={historyDropdownRef}
-              anchorRef={historyBtnRef}
-              messages={recentMessages}
-              onSelect={handleSelectMessage}
-              onClose={() => setShowHistory(false)}
-            />,
-            document.body,
-          )}
-      </div>
-
-      <div className="commit-buttons">
+      <div className="changes-commit-actions">
         <button
           type="button"
-          className="commit-btn commit-btn-primary"
-          disabled={!canCommit}
-          onClick={handleCommit}
+          className="primary"
+          disabled={disabled}
+          onClick={() => void state.commit()}
         >
           {t("Commit")}
         </button>
-
-        {singleGit && (
-          <div className="commit-dropdown" ref={dropdownRef}>
-            <button
-              type="button"
-              className="commit-btn commit-btn-secondary commit-split-main"
-              disabled={!canCommit}
-              onClick={handleCommitAndPush}
-            >
-              {t("Commit and Push...")}
-            </button>
-            <button
-              type="button"
-              className="commit-btn commit-btn-secondary commit-split-arrow"
-              disabled={!canCommit}
-              onClick={() => setShowDropdown(!showDropdown)}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <polyline points="4,6 8,10 12,6" />
-              </svg>
-            </button>
-            {showDropdown && (
-              <div className="commit-dropdown-menu">
-                <button
-                  type="button"
-                  className="commit-dropdown-item"
-                  onClick={handleCommitAndPush}
-                >
-                  {t("Commit and Push")}
-                </button>
-                <div className="commit-dropdown-separator" />
-                <button
-                  type="button"
-                  className="commit-dropdown-item"
-                  onClick={() => {
-                    setShowDropdown(false);
-                  }}
-                >
-                  {t("Cancel")}
-                </button>
-              </div>
-            )}
-          </div>
+        {hasGit && (
+          <button
+            type="button"
+            disabled={disabled || !singleGit}
+            title={
+              !singleGit
+                ? t(
+                    "Commit and Push is available for one Git repository at a time.",
+                  )
+                : undefined
+            }
+            onClick={() => void state.commitAndPush()}
+          >
+            {t("Commit and Push...")}
+          </button>
         )}
+        <label>
+          <input
+            type="checkbox"
+            disabled={!singleGit || state.loading}
+            checked={state.amend}
+            onChange={(event) => state.setAmend(event.target.checked)}
+          />
+          {t("Amend Last Commit")}
+        </label>
+        <span className="changes-selection">
+          {t(
+            "Selected {0} files · {1} repositories",
+            selected.length,
+            roots.size,
+          )}
+        </span>
       </div>
     </div>
-  );
-}
-
-interface HistoryDropdownProps {
-  anchorRef: React.RefObject<HTMLSpanElement | null>;
-  messages: string[];
-  onSelect: (msg: string) => void;
-  onClose: () => void;
-}
-
-const HistoryDropdown = React.forwardRef<HTMLDivElement, HistoryDropdownProps>(
-  ({ anchorRef, messages, onSelect, onClose }, ref) => {
-    const innerRef = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState<{ bottom: number; left: number } | null>(
-      null,
-    );
-
-    // Combine forwarded ref and inner ref
-    const setRefs = useCallback(
-      (node: HTMLDivElement | null) => {
-        (innerRef as React.MutableRefObject<HTMLDivElement | null>).current =
-          node;
-        if (typeof ref === "function") ref(node);
-        else if (ref)
-          (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
-      },
-      [ref],
-    );
-
-    useEffect(() => {
-      if (anchorRef.current) {
-        const rect = anchorRef.current.getBoundingClientRect();
-        // Position above the button, align right edge to viewport
-        const bottom = window.innerHeight - rect.top + 4;
-        const left = Math.min(rect.left, window.innerWidth - 8);
-        setPos({ bottom, left });
-      }
-    }, [anchorRef]);
-
-    useEffect(() => {
-      const handleKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape") onClose();
-      };
-      document.addEventListener("keydown", handleKey);
-      return () => document.removeEventListener("keydown", handleKey);
-    }, [onClose]);
-
-    if (!pos) return null;
-
-    return (
-      <div
-        ref={setRefs}
-        style={{
-          position: "fixed",
-          bottom: pos.bottom,
-          left: 4,
-          right: 4,
-          zIndex: 99999,
-          background: "var(--vscode-menu-background)",
-          border: "1px solid var(--vscode-menu-border)",
-          borderRadius: 4,
-          padding: "4px 0",
-          maxHeight: 250,
-          overflowY: "auto",
-          boxShadow:
-            "0 -3px 12px var(--vscode-toolbar-hoverBackground), 0 1px 4px var(--vscode-toolbar-hoverBackground)",
-        }}
-      >
-        {messages.length === 0 ? (
-          <div
-            style={{
-              padding: "8px 12px",
-              opacity: 0.5,
-              fontSize: 12,
-            }}
-          >
-            {t("No recent commit messages")}
-          </div>
-        ) : (
-          messages.map((msg, i) => (
-            <div
-              key={`${i}-${msg}`}
-              onClick={() => onSelect(msg)}
-              style={{
-                padding: "6px 12px",
-                cursor: "pointer",
-                fontSize: 12,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                color: "var(--vscode-menu-foreground)",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background =
-                  "var(--vscode-list-hoverBackground)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background =
-                  "transparent";
-              }}
-              title={msg}
-            >
-              {msg}
-            </div>
-          ))
-        )}
-      </div>
-    );
-  },
-);
-
-function HistoryIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      style={{ opacity: 0.5 }}
-    >
-      <path d="M13.507 12.324a7 7 0 0 0 .065-8.56A7 7 0 0 0 2 4.393V2H1v3.5l.5.5H5V5H2.811a6.008 6.008 0 1 1-.135 5.77l-.887.462a7 7 0 0 0 11.718 1.092zM8 4v4.5l.5.5H12v-1H9V4H8z" />
-    </svg>
   );
 }

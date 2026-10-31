@@ -1262,6 +1262,42 @@ export function createGitRepositorySession(
     return { success: true };
   });
 
+  messageRouter.handle("getWorkingFilePreview", async (params) => {
+    await ensureAvailable();
+    const filePath = params.filePath as string;
+    const changes = (await gitService.getWorkingTreeChanges()).filter(
+      (file) => file.path === filePath,
+    );
+    const metadata =
+      changes.find(
+        (file) => file.status === "added" || file.status === "renamed",
+      ) ??
+      changes.find((file) => !file.staged) ??
+      changes[0];
+    const comparison = await comparisonResolver.working(
+      filePath,
+      params.staged === true,
+    );
+    // 提交树合并 staged/unstaged，预览始终比较 HEAD 与磁盘；完整编辑器保留原比较语义。
+    comparison.left =
+      metadata?.status === "added" || metadata?.status === "untracked"
+        ? { source: "empty", path: filePath, label: "empty" }
+        : {
+            source: "git",
+            path: metadata?.oldPath ?? filePath,
+            revision: "HEAD",
+            label: "head",
+          };
+    comparison.right =
+      changes.some((file) => !file.staged && file.status === "deleted") ||
+      (metadata?.status === "deleted" && !changes.some((file) => !file.staged))
+        ? { source: "empty", path: filePath, label: "empty" }
+        : { source: "worktree", path: filePath, label: "worktree" };
+    const result = await comparisonResolver.materialize(comparison);
+    await ensureAvailable();
+    return result;
+  });
+
   messageRouter.handle("showDiffForWorkingFile", async (params) => {
     await compare({
       source: params.staged ? "staged" : "working",

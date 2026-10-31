@@ -307,4 +307,10 @@ describe("本地更改三态", () => {
       ),
     ).toBe(false);
   });
+  it("宿主页签已有标题，树顶部只显示小页签", async () => {
+    const view = render(<CommitApp />);
+    await waitFor(() => expect(view.getByText("app.txt")).toBeTruthy());
+    expect(view.container.querySelector(".panel-header-title")).toBeNull();
+    expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
+  });
 });

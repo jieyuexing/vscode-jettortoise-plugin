@@ -460,7 +460,7 @@ input:focus-visible {
 .local-changes button:hover:not(:disabled) {
   background: var(--hover);
 }
-.local-changes :is(button, input, textarea, [tabindex]):focus-visible {
+.local-changes :is(button, input, textarea):focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
@@ -554,7 +554,15 @@ input:focus-visible {
   line-height: 14px;
 }
 .changes-file-row.selected {
+  background: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--vscode-list-inactiveSelectionForeground, var(--text));
+}
+.changes-tree:focus-within .changes-file-row.selected {
   background: var(--sel);
+  color: var(--vscode-list-activeSelectionForeground, var(--text));
+}
+.changes-tree:focus-visible {
+  outline: none;
 }
 .local-changes .commit-file-item {
   display: flex;

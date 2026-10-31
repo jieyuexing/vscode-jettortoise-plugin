@@ -159,7 +159,6 @@ export function CommitTab() {
           <div className="changes-tree-pane">
             {hasGit && (
               <PanelHeader
-                title={t("Local Changes")}
                 className="changes-tabs"
                 role="tablist"
                 aria-label={t("Local Changes")}

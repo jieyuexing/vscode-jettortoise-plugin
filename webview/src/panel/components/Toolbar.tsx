@@ -247,7 +247,7 @@ export function Toolbar() {
             alignItems: "center",
             gap: 4,
             padding: "2px 8px 2px 10px",
-            fontSize: "12px",
+            fontSize: "var(--etech-font-size)",
             borderRadius: 3,
             background: "var(--vscode-tab-activeBackground)",
             border: "1px solid var(--vscode-tab-border)",
@@ -357,7 +357,7 @@ function SearchInput({
         style={{
           width: "100%",
           padding: "4px 24px",
-          fontSize: "12px",
+          fontSize: "var(--etech-font-size)",
           border: "1px solid var(--vscode-input-border)",
           background: "var(--vscode-input-background)",
           color: "var(--vscode-input-foreground)",
@@ -433,7 +433,7 @@ function FilterButton({
         alignItems: "center",
         gap: 2,
         padding: "2px 8px",
-        fontSize: "12px",
+        fontSize: "var(--etech-font-size)",
         cursor: "pointer",
         borderRadius: 3,
         border: "1px solid transparent",
@@ -513,7 +513,7 @@ function DropdownItem({
       onClick={onClick}
       style={{
         padding: "5px 12px",
-        fontSize: "12px",
+        fontSize: "var(--etech-font-size)",
         cursor: "pointer",
         color: active
           ? "var(--vscode-menu-selectionForeground)"
@@ -637,7 +637,7 @@ function SearchableDropdown({
           style={{
             width: "100%",
             padding: "4px 8px",
-            fontSize: "12px",
+            fontSize: "var(--etech-font-size)",
             border: "1px solid var(--vscode-input-border)",
             background: "var(--vscode-input-background)",
             color: "var(--vscode-input-foreground)",
@@ -671,7 +671,7 @@ function SearchableDropdown({
           <div
             style={{
               padding: "8px 12px",
-              fontSize: "12px",
+              fontSize: "var(--etech-font-size)",
               opacity: 0.5,
             }}
           >
@@ -775,7 +775,7 @@ function ViewOptionsDropdown({
             alignItems: "center",
             gap: 8,
             padding: "5px 12px",
-            fontSize: "12px",
+            fontSize: "var(--etech-font-size)",
             cursor: "pointer",
             color: "var(--vscode-menu-foreground)",
           }}

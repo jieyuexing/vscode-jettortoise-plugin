@@ -1,4 +1,16 @@
 :root {
+  /* 尺寸镜像自 ETECH 产品 style/tokens.css，改值时两处同步；颜色只读 --vscode-*。 */
+  --etech-row-height: 20px;
+  --etech-font-size: 12px;
+  --etech-panel-header-height: 28px;
+  --etech-editor-tabs-height: 30px;
+  --etech-bottom-tabs-height: 28px;
+  --etech-statusbar-height: 22px;
+  --etech-stripe-width: 34px;
+  --etech-tool-button: 22px;
+  --etech-vtool-width: 30px;
+  --etech-indent: 16px;
+
   --app-bg: var(--vscode-editor-background);
   --app-fg: var(--vscode-editor-foreground);
   --border: var(--vscode-panel-border);
@@ -17,7 +29,7 @@
     BlinkMacSystemFont,
     sans-serif
   );
-  --font-size: var(--vscode-font-size, 13px);
+  --font-size: var(--etech-font-size);
   --badge-bg: var(--vscode-badge-background);
   --badge-fg: var(--vscode-badge-foreground);
   --input-bg: var(--vscode-input-background);
@@ -176,8 +188,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--etech-tool-button);
+  height: var(--etech-tool-button);
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -223,8 +235,8 @@ button.panel-toggle-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--etech-tool-button);
+  height: var(--etech-tool-button);
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -245,7 +257,7 @@ button.panel-toggle-btn:hover {
 
 button.panel-toggle-strip {
   align-self: stretch;
-  width: 22px;
+  width: var(--etech-tool-button);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -276,53 +288,6 @@ button.panel-toggle-strip:hover {
 .panel-toggle-strip-right {
   border-left: 1px solid var(--border);
   border-radius: 0;
-}
-
-/* ─── Branch Sidebar ───────────────────────────────────────────── */
-.branch-sidebar {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 2px;
-  gap: 2px;
-  border-right: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-y: auto;
-}
-
-button.branch-sidebar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--app-fg);
-  cursor: pointer;
-  opacity: 0.6;
-  transition:
-    opacity 0.15s,
-    background 0.15s;
-}
-
-button.branch-sidebar-btn:hover:not(:disabled) {
-  opacity: 1;
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
-button.branch-sidebar-btn:disabled {
-  opacity: 0.25;
-  cursor: default;
-}
-
-.branch-sidebar-separator {
-  width: 18px;
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
 }
 
 .branch-sidebar-spacer {

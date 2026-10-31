@@ -573,7 +573,7 @@ export function BranchTree({
               }
             }}
             style={{
-              height: 22,
+              height: "var(--etech-row-height)",
               padding: "0 8px 0 20px",
               cursor: "pointer",
               fontWeight: 600,
@@ -808,7 +808,7 @@ function TreeNodeView({
       <div
         onClick={() => onToggle(collapseKey)}
         style={{
-          height: 22,
+          height: "var(--etech-row-height)",
           padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "pointer",
           userSelect: "none",
@@ -866,7 +866,7 @@ function TagTreeNodeView({
     return (
       <div
         style={{
-          height: 22,
+          height: "var(--etech-row-height)",
           padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "default",
           color: "var(--description-fg)",
@@ -888,7 +888,7 @@ function TagTreeNodeView({
       <div
         onClick={() => onToggle(collapseKey)}
         style={{
-          height: 22,
+          height: "var(--etech-row-height)",
           padding: `0 8px 0 ${20 + depth * 12}px`,
           cursor: "pointer",
           userSelect: "none",
@@ -937,7 +937,7 @@ function GroupSection({
       <div
         onClick={onToggle}
         style={{
-          height: 22,
+          height: "var(--etech-row-height)",
           padding: "0 8px",
           cursor: "pointer",
           userSelect: "none",
@@ -987,7 +987,7 @@ function BranchItem({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       style={{
-        height: 22,
+        height: "var(--etech-row-height)",
         padding: `0 8px 0 ${20 + depth * 12 + 16}px`,
         fontWeight: isCurrent || isFiltered ? 600 : 400,
         background:

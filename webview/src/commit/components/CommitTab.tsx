@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { bridge } from "../../shared/bridge";
+import { PanelHeader } from "../../shared/components/PanelHeader";
 import { t } from "../../shared/i18n";
 import {
   type ChangeFile,
@@ -101,7 +102,7 @@ export function CommitTab() {
           style={
             wide && preview
               ? {
-                  gridTemplateColumns: `30px minmax(0, ${ratio}fr) 1px minmax(0, ${1 - ratio}fr)`,
+                  gridTemplateColumns: `var(--etech-vtool-width) minmax(0, ${ratio}fr) 1px minmax(0, ${1 - ratio}fr)`,
                 }
               : undefined
           }
@@ -157,7 +158,8 @@ export function CommitTab() {
           />
           <div className="changes-tree-pane">
             {hasGit && (
-              <div
+              <PanelHeader
+                title={t("Local Changes")}
                 className="changes-tabs"
                 role="tablist"
                 aria-label={t("Local Changes")}
@@ -186,7 +188,7 @@ export function CommitTab() {
                 >
                   {t("Stash")}
                 </button>
-              </div>
+              </PanelHeader>
             )}
             {state.error && (
               <div className="repository-error" role="alert">

@@ -69,7 +69,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
         {/* Description */}
         <div
           style={{
-            fontSize: 12,
+            fontSize: "var(--etech-font-size)",
             color: "var(--description-fg)",
             marginBottom: 16,
             lineHeight: 1.5,
@@ -96,7 +96,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               border: "1px solid var(--vscode-errorForeground)",
               borderRadius: 4,
               padding: "4px 14px",
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               height: 28,
               cursor: "pointer",
               fontWeight: 500,
@@ -114,7 +114,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               border: "none",
               borderRadius: 4,
               padding: "4px 14px",
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               height: 28,
               cursor: "pointer",
             }}
@@ -130,7 +130,7 @@ export function PushDialog({ branchName, onClose, onPush }: PushDialogProps) {
               border: "none",
               borderRadius: 4,
               padding: "4px 14px",
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               height: 28,
               cursor: "pointer",
             }}

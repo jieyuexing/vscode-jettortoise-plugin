@@ -69,7 +69,7 @@
   box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   min-width: 200px;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--etech-font-size);
 }
 
 .commit-context-menu-item {
@@ -81,7 +81,7 @@
   border: none;
   background: transparent;
   color: var(--vscode-menu-foreground, var(--vscode-foreground));
-  font-size: 12px;
+  font-size: var(--etech-font-size);
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -134,7 +134,7 @@
   padding: 20px;
   text-align: center;
   opacity: 0.6;
-  font-size: 12px;
+  font-size: var(--etech-font-size);
 }
 
 .shelf-item-container {
@@ -148,7 +148,7 @@
   padding: 6px 8px;
   cursor: pointer;
   gap: 4px;
-  min-height: 28px;
+  min-height: var(--etech-panel-header-height);
 }
 
 .shelf-item-row:hover {
@@ -171,7 +171,7 @@
 }
 
 .shelf-item-title {
-  font-size: 12px;
+  font-size: var(--etech-font-size);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -195,7 +195,7 @@
   align-items: center;
   padding: 2px 8px 2px 32px;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--etech-font-size);
   min-height: 24px;
 }
 
@@ -269,7 +269,7 @@
 /* ─── Rebase Banner Buttons ────────────────────────────────────── */
 .rebase-action-btn {
   width: 28px;
-  height: 28px;
+  height: var(--etech-panel-header-height);
   padding: 0;
   display: flex;
   align-items: center;
@@ -357,9 +357,9 @@ input:focus-visible {
 }
 .cvs-revision-table th,
 .cvs-revision-table td {
-  height: 22px;
+  height: var(--etech-row-height);
   padding: 0 8px;
-  line-height: 22px;
+  line-height: var(--etech-row-height);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -372,7 +372,7 @@ input:focus-visible {
   font-size: var(--font-size);
 }
 .repository-log-toolbar :is(button, select) {
-  height: 22px;
+  height: var(--etech-row-height);
   font: inherit;
 }
 .cvs-revision-table th:nth-child(1) {
@@ -402,35 +402,6 @@ input:focus-visible {
 
 /* B5：用户已确认的 local-changes.html 是此面的尺寸与浅色配色基准。 */
 .commit-app {
-  --bg: #fff;
-  --panel: #f7f8fa;
-  --line: #ebecf0;
-  --text: #1e1f22;
-  --dim: #818594;
-  --accent: #3574f0;
-  --sel: #d5e1ff;
-  --hover: #eef1f6;
-  --mod: #2f65ca;
-  --add: #3b8e3b;
-  --unv: #b5541c;
-  --dmod: #e8f0fd;
-  --dmodin: #c4d7fb;
-  --dadd: #e6f4e6;
-  --daddin: #c2e5c2;
-  --ddel: #f2f2f2;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 12px;
-  font-family: var(
-    --vscode-font-family,
-    -apple-system,
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif
-  );
-}
-body.vscode-dark .commit-app,
-body.vscode-high-contrast .commit-app {
   --bg: var(--vscode-editor-background);
   --panel: var(--vscode-sideBar-background);
   --line: var(--vscode-panel-border);
@@ -439,7 +410,7 @@ body.vscode-high-contrast .commit-app {
   --accent: var(--vscode-focusBorder);
   --sel: var(--vscode-list-activeSelectionBackground);
   --hover: var(--vscode-list-hoverBackground);
-  --mod: var(--vscode-textLink-foreground);
+  --mod: var(--vscode-gitDecoration-modifiedResourceForeground);
   --add: var(--vscode-gitDecoration-addedResourceForeground);
   --unv: var(--vscode-gitDecoration-untrackedResourceForeground);
   --dmod: var(
@@ -453,6 +424,10 @@ body.vscode-high-contrast .commit-app {
   );
   --daddin: var(--vscode-diffEditor-insertedTextBackground);
   --ddel: var(--vscode-editorGutter-background, var(--panel));
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--etech-font-size);
+  font-family: var(--font-family);
 }
 .local-changes {
   flex: 1;
@@ -472,53 +447,14 @@ body.vscode-high-contrast .commit-app {
   display: grid;
   flex: 1;
   min-height: 0;
-  grid-template-columns: 30px minmax(0, 1fr);
-}
-.changes-toolbar {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 4px 0;
-  border-right: 1px solid var(--line);
-  color: var(--dim);
-  /* 底栏矮时仍可滚动，但不显示滚动条，免得挤占 30px 列宽。 */
-  overflow: auto;
-  scrollbar-width: none;
-}
-.changes-toolbar::-webkit-scrollbar {
-  display: none;
-}
-.changes-toolbar button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  padding: 3px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-}
-.changes-toolbar button.active {
-  background: var(--sel);
-  color: var(--accent);
-}
-.changes-toolbar hr {
-  width: 16px;
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 3px 0;
-  flex: none;
+  grid-template-columns: var(--etech-vtool-width) minmax(0, 1fr);
 }
 .local-changes button {
   cursor: pointer;
   font: inherit;
 }
 .local-changes button:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: default;
 }
 .local-changes button:hover:not(:disabled) {
@@ -538,7 +474,7 @@ body.vscode-high-contrast .commit-app {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: var(--etech-panel-header-height);
   padding: 0 8px;
   border-bottom: 1px solid var(--line);
   flex: none;
@@ -565,8 +501,8 @@ body.vscode-high-contrast .commit-app {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 22px;
-  min-height: 22px;
+  height: var(--etech-row-height);
+  min-height: var(--etech-row-height);
   white-space: nowrap;
   box-sizing: border-box;
 }
@@ -575,7 +511,7 @@ body.vscode-high-contrast .commit-app {
   background: transparent;
   color: var(--text);
   padding: 0;
-  height: 22px;
+  height: var(--etech-row-height);
   border-radius: 0;
 }
 .changes-row-label {
@@ -627,10 +563,10 @@ body.vscode-high-contrast .commit-app {
   min-width: 0;
   width: 100%;
   padding: 0;
-  height: 22px;
-  min-height: 22px;
-  font-size: 12px;
-  line-height: 22px;
+  height: var(--etech-row-height);
+  min-height: var(--etech-row-height);
+  font-size: var(--etech-font-size);
+  line-height: var(--etech-row-height);
   background: transparent;
 }
 .local-changes .commit-file-item.highlighted {
@@ -657,7 +593,7 @@ body.vscode-high-contrast .commit-app {
   width: 12px;
   height: 12px;
   margin: 0;
-  border: 1px solid #a8adbd;
+  border: 1px solid var(--vscode-checkbox-border);
   border-radius: 3px;
   flex: none;
   box-sizing: border-box;
@@ -736,7 +672,7 @@ body.vscode-high-contrast .commit-app {
 .changes-commit-actions button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--vscode-button-foreground, #fff);
+  color: var(--vscode-button-foreground);
 }
 .changes-commit-actions label {
   display: flex;
@@ -764,7 +700,7 @@ body.vscode-high-contrast .commit-app {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: var(--etech-panel-header-height);
   padding: 0 8px;
   border-bottom: 1px solid var(--line);
   color: var(--dim);
@@ -838,7 +774,7 @@ body.vscode-high-contrast .commit-app {
   color: var(--dim);
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  height: 20px;
+  height: var(--etech-row-height);
   flex: none;
 }
 .diff-column-headings > span:not(.diff-gutter) {
@@ -850,7 +786,7 @@ body.vscode-high-contrast .commit-app {
   min-height: 0;
   overscroll-behavior: contain;
   font:
-    12px / 20px
+    var(--etech-font-size) / var(--etech-row-height)
     var(--vscode-editor-font-family, "JetBrains Mono", Menlo, monospace);
 }
 .diff-preview-lines {
@@ -859,12 +795,12 @@ body.vscode-high-contrast .commit-app {
 }
 .diff-row {
   min-width: 100%;
-  min-height: 20px;
+  min-height: var(--etech-row-height);
 }
 .diff-cell {
   display: flex;
   white-space: pre;
-  min-height: 20px;
+  min-height: var(--etech-row-height);
   min-width: 0;
   overflow: clip;
 }
@@ -907,7 +843,7 @@ body.vscode-high-contrast .commit-app {
   border: 0;
   padding: 2px 0;
   width: 16px;
-  height: 20px;
+  height: var(--etech-row-height);
   color: var(--mod);
   background: transparent;
 }
@@ -929,7 +865,9 @@ body.vscode-high-contrast .commit-app {
   display: flex;
   flex-direction: column;
 }
-.narrow .changes-toolbar {
+.narrow .changes-toolbar.panel-vtool {
+  width: auto;
+  min-width: 0;
   flex-direction: row;
   padding: 2px 6px;
   border-right: 0;

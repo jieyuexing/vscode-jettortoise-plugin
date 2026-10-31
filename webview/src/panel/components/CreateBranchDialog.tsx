@@ -166,7 +166,7 @@ export function CreateBranchDialog({
               borderRadius: 4,
               padding: "8px 10px",
               marginBottom: 12,
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               color: "var(--vscode-errorForeground)",
               lineHeight: 1.4,
             }}
@@ -188,7 +188,7 @@ export function CreateBranchDialog({
             <label
               htmlFor="branch-name-input"
               style={{
-                fontSize: 12,
+                fontSize: "var(--etech-font-size)",
                 color: "var(--description-fg)",
                 whiteSpace: "nowrap",
               }}
@@ -237,7 +237,7 @@ export function CreateBranchDialog({
               display: "flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               cursor: "pointer",
               userSelect: "none",
             }}
@@ -250,7 +250,7 @@ export function CreateBranchDialog({
               display: "flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               cursor: "pointer",
               userSelect: "none",
             }}
@@ -277,7 +277,7 @@ export function CreateBranchDialog({
               border: "none",
               borderRadius: 4,
               padding: "4px 14px",
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               height: 28,
               cursor: "pointer",
             }}
@@ -294,7 +294,7 @@ export function CreateBranchDialog({
               border: "none",
               borderRadius: 4,
               padding: "4px 14px",
-              fontSize: 12,
+              fontSize: "var(--etech-font-size)",
               height: 28,
               cursor: branchName.trim() && !submitting ? "pointer" : "default",
               opacity: branchName.trim() && !submitting ? 1 : 0.4,

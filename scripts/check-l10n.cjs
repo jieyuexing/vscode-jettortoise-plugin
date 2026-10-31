@@ -104,3 +104,21 @@ assert.equal(localizeError(Object.assign(new Error('Nested repositories block th
 const cliOutput = 'cvs update: conflict in src/中文.txt';
 assert.equal(localizeError(new Error(cliOutput)), cliOutput);
 console.log('语言回落、中文计数、参数、内核固定错误和 CLI 原文保留检查通过。');
+
+// C2：组件目录尺寸合同；webview 无法继承产品根变量，镜像同名值。
+const dimensions = {
+  '--etech-row-height': '20px', '--etech-font-size': '12px',
+  '--etech-panel-header-height': '28px', '--etech-editor-tabs-height': '30px',
+  '--etech-bottom-tabs-height': '28px', '--etech-statusbar-height': '22px',
+  '--etech-stripe-width': '34px', '--etech-tool-button': '22px',
+  '--etech-vtool-width': '30px', '--etech-indent': '16px'
+};
+const variables = fs.readFileSync(path.join(root, 'webview/src/shared/theme/variables.css'), 'utf8');
+for (const [name, value] of Object.entries(dimensions)) {
+  assert.ok(variables.includes(`${name}: ${value};`), `${name} 必须与产品 tokens.css 同步`);
+}
+const changesCss = fs.readFileSync(path.join(root, 'webview/src/commit/commit.css'), 'utf8');
+assert.match(changesCss, /height: var\(--etech-row-height\)/);
+assert.match(changesCss, /font-size: var\(--etech-font-size\)/);
+assert.ok(!/#[0-9a-f]{3,8}\b|rgba?\(/i.test(changesCss), '本地更改颜色只由宿主提供');
+console.log('C2 十个尺寸镜像、行高字号与宿主颜色合同通过。');

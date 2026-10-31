@@ -1,5 +1,6 @@
 import { Allotment } from "allotment";
 import { useCallback, useEffect, useState } from "react";
+import { PanelHeader } from "../shared/components/PanelHeader";
 import { t } from "../shared/i18n";
 import "allotment/dist/style.css";
 import { Tooltip } from "../shared/components/Tooltip";
@@ -355,7 +356,7 @@ export function PanelApp() {
         minHeight: 0,
       }}
     >
-      <div className="repository-log-toolbar">
+      <PanelHeader className="repository-log-toolbar">
         <label htmlFor="log-repository">{t("Repository")}</label>
         <select
           id="log-repository"
@@ -375,7 +376,7 @@ export function PanelApp() {
         >
           {t("Refresh")}
         </button>
-      </div>
+      </PanelHeader>
       <div style={{ flex: 1, minHeight: 0 }}>
         {!ready ? (
           <div className="repository-empty">{t("Loading repositories…")}</div>

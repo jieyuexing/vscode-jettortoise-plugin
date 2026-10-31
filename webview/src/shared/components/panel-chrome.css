@@ -1,0 +1,82 @@
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--etech-panel-header-height);
+  min-height: var(--etech-panel-header-height);
+  flex: none;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+  font-size: var(--etech-font-size);
+  white-space: nowrap;
+}
+.panel-header-title {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 6px;
+}
+.panel-vtool.panel-vtool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: var(--etech-vtool-width);
+  min-width: var(--etech-vtool-width);
+  gap: 1px;
+  padding: 4px 0;
+  border-right: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+  overflow: auto;
+  scrollbar-width: none;
+}
+.panel-vtool::-webkit-scrollbar {
+  display: none;
+}
+.panel-vtool > * {
+  flex-shrink: 0;
+}
+.panel-vtool button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--etech-tool-button);
+  height: var(--etech-tool-button);
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 1;
+}
+.panel-vtool button:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.panel-vtool button.active {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-focusBorder);
+}
+.panel-vtool button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.panel-vtool button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.panel-vtool hr,
+.panel-vtool .branch-sidebar-separator {
+  width: 16px;
+  height: 1px;
+  border: 0;
+  background: var(--vscode-panel-border);
+  margin: 3px 0;
+  flex: none;
+}
+.panel-header > label {
+  font-weight: 600;
+}

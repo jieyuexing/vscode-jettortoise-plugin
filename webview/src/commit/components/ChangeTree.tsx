@@ -84,7 +84,9 @@ export function ChangeTree({
     return (
       <div
         className="changes-row"
-        style={{ paddingInlineStart: 6 + level * 14 }}
+        style={{
+          paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+        }}
       >
         <button
           type="button"
@@ -119,7 +121,9 @@ export function ChangeTree({
         <div key={key}>
           <div
             className="changes-row"
-            style={{ paddingInlineStart: 6 + level * 14 }}
+            style={{
+              paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+            }}
           >
             <button
               type="button"
@@ -150,7 +154,9 @@ export function ChangeTree({
     return (
       <div
         key={key}
-        style={{ paddingInlineStart: 6 + level * 14 }}
+        style={{
+          paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+        }}
         className={`changes-file-row ${state.highlightedFiles.has(key) ? "selected" : ""}`}
       >
         <FileItem

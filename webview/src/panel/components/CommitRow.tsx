@@ -2,7 +2,12 @@ import { usePreventSelect } from "../../shared/hooks/usePreventSelect";
 import { usePanelStore } from "../../shared/store/panel-store";
 import type { Commit, LaneInfo, RefInfo } from "../../shared/types/git";
 
-export const ROW_HEIGHT = 22;
+export const ROW_HEIGHT =
+  Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      "--etech-row-height",
+    ),
+  ) || 20;
 const COLUMN_WIDTH = 10;
 const GRAPH_PADDING = 6;
 const NODE_TEXT_GAP = 14;

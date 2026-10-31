@@ -1,4 +1,5 @@
 import { bridge } from "../../shared/bridge";
+import { VerticalToolbar } from "../../shared/components/VerticalToolbar";
 import { t } from "../../shared/i18n";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { changeAction } from "./ChangeTree";
@@ -52,7 +53,7 @@ export function Toolbar(props: ToolbarProps) {
     </button>
   );
   return (
-    <div
+    <VerticalToolbar
       className="changes-toolbar"
       role="toolbar"
       aria-label={t("Local Changes")}
@@ -116,6 +117,6 @@ export function Toolbar(props: ToolbarProps) {
       {button(t("Collapse All"), "M5 3l3 3 3-3M5 13l3-3 3 3", () => {
         useCommitStore.setState({ expandedGroups: new Set() });
       })}
-    </div>
+    </VerticalToolbar>
   );
 }

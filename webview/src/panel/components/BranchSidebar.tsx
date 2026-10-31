@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { bridge } from "../../shared/bridge";
 import { Tooltip } from "../../shared/components/Tooltip";
+import { VerticalToolbar } from "../../shared/components/VerticalToolbar";
 import { t } from "../../shared/i18n";
 import "../../shared/components/Tooltip.css";
 import { usePanelStore } from "../../shared/store/panel-store";
@@ -75,7 +76,7 @@ export function BranchSidebar({
   }, []);
 
   return (
-    <div className="branch-sidebar">
+    <VerticalToolbar className="branch-sidebar" aria-label={t("Branch")}>
       {onTogglePanel && (
         <Tooltip text={t("Hide Branches")}>
           <button
@@ -199,7 +200,7 @@ export function BranchSidebar({
           <IconCollapseAll />
         </button>
       </Tooltip>
-    </div>
+    </VerticalToolbar>
   );
 }
 

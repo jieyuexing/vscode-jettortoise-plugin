@@ -43,7 +43,7 @@ Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-
 - `src/views/html.ts` 将 `vscode.env.language` 经 HTML 转义写入根元素的 `data-language` 和页面 `lang`。`webview/src/shared/i18n/index.ts` 负责选择语言、替换参数和文件计数，`locales.ts` 保存英文字典及 `zh-cn` 字典；中文缺键回落英文，其它语言显示英文。不生成 `zh`、`zh-tw` 副本，不引入第三方 i18n 库。
 - 译名参考 `main` 的清单、扩展 bundle、webview/CVS 和 `packages/vcs-ui` 字典；本轮明确要求优先于旧译名，统一 Commit→提交、Update Project→更新项目、Rollback→回滚、Changes→更改、Unversioned Files→未受版本控制的文件、Incoming→传入、Shelf→搁置、Commit and Push→提交并推送、Amend→修改提交。没有旧译名时沿用 IntelliJ IDEA 简体中文的操作叫法。Git/CVS 标识、分支名、修订号、文件路径和原始提交说明保持原值。
 - 纯 Node 的 CVS 内核、路径和请求验证不导入 `vscode`。`src/cvs/session.ts` 在会话层将内核错误码转为译文；`src/messages/errors.ts` 在显示边界翻译固定错误与相对子仓提示，CLI 原始输出和开发者调试日志保持原值。
-- `webview/src/commit/commit.css` 将仓库、分组、目录、文件行固定为 22px；层级缩进 16px，树内复选框 14px，控件间距 2px。根文件的文件名起点为 16px 左内边距 + 14px 复选框 + 2px 间距 + 14px 图标槽 + 2px 间距，即 x=48；目录文件再缩进 16px。仓库和目录计数紧随名称并使用弱化颜色。这是源码尺寸合同，真实窗口的 CSS 像素、缩放和截断由协调者另验。
+- `webview/src/commit/commit.css` 的仓库、分组、目录、文件行统一 20px／12px，每级缩进 16px。当前变更树的行内起点为 `6px + 层级 × 16px`，箭头槽 12px、图标 16px、控件间距 4px；浏览态无复选框，提交态按原交互加入复选框，所以文件名起点随层级与模式变化，不再用固定横坐标描述。仓库和目录计数紧随名称并使用次要色。真实窗口尺寸与截断由隔离开发构建另验。
 
 `scripts/check-l10n.cjs` 已并入 headless：检查清单占位键、扩展端字面量翻译键、webview 全键及参数占位符，拒绝未翻译的 JSX/显示属性；用实际函数检查语言回落、中文计数、固定错误与 CLI 原文保留。
 
@@ -99,3 +99,12 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 - Ctrl+K 或工具栏进入提交态：预选全部可提交更改，复选框出现在同一棵树，说明框在树下获得焦点；Esc 或提交成功返回浏览，失败保留说明。提交并推送与修改上次提交仍仅允许单个 Git 仓库选择，不改原命令与写队列。无仓库只显示“此工作区没有 Git 或 CVS 仓库”。
 - CVS 只读查询（预览、文件历史、文件清单）的进度位置为状态栏，写操作保持可取消通知；由 `scripts/restart-host-check.cjs` 断言。
 - `webview/src/commit/commit-ui.test.tsx` 由既有 `pnpm run test:headless` 执行，原生 Git/CVS 预览与请求拒绝继续放 `scripts/restart-host-check.cjs`。结构、模拟交互与实际开发窗口分别记录，Windows 与真实公司仓未实机。
+
+## 方案 C 组件化（2026-10-31，0.6.6）
+
+当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/components.html` 为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 6px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
+
+- 十个尺寸变量只在 `webview/src/shared/theme/variables.css` 镜像，名称和值与产品 `/Users/jieyuexing/jieyuexing-universe/projects/etech/etech-theia-ide/theia-extensions/etech-eclipse-layout/src/browser/style/tokens.css` 一致，改值两处同步。颜色只读 Theia 导出的 `--vscode-*`，本地更改浅色固定调色板已删除；编辑器／差异正文的代码字号仍沿宿主。
+- `webview/src/shared/components/VerticalToolbar.tsx` 与 `PanelHeader.tsx`、`panel-chrome.css` 供本地更改和日志共用。竖列 30px、按钮 22px、图标 16px、间距 1px、上下 4px，短面板滚动且隐藏工具列滚动条，禁用 40%。日志沿用分支工具列原动作；标题行 28px、12px 加粗，保留原页签与仓库选择行为。
+- Git 图与虚拟滚动共享 `CommitRow.ROW_HEIGHT`，从 CSS 镜像变量读取，未加载 CSS 时按同合同回落 20；不更改数据与 VCS 写入通道。headless 的本地化入口检查尺寸镜像与无硬编码颜色。
+- 本轮允许在产品开发构建临时解包候选，不改安装版、不推送、不发布。VSIX 为 `release/jettortoise-0.6.6.vsix`；Windows、141、真实公司仓仍未验收。

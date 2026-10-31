@@ -507,12 +507,17 @@ export class RepositoryManager implements vscode.Disposable {
         String(values.revision),
       );
     if (command === "getCvsFiles")
-      return await cvs.operate(vscode.l10n.t("CVS files"), async (adapter) => {
-        const files = await adapter.localStatus();
-        return files
-          .filter((file) => file.entryRevision)
-          .map((file) => file.newPath);
-      });
+      return await cvs.operate(
+        vscode.l10n.t("CVS files"),
+        async (adapter) => {
+          const files = await adapter.localStatus();
+          return files
+            .filter((file) => file.entryRevision)
+            .map((file) => file.newPath);
+        },
+        false,
+        vscode.ProgressLocation.Window,
+      );
     if (command === "showDiffForWorkingFile")
       return cvs.diff(repositoryPath(values.filePath));
     if (command === "rollbackFiles" || command === "openRollbackPanel") {

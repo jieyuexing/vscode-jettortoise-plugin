@@ -97,4 +97,5 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 - 单击文件请求 `getWorkingFilePreview`；双击沿用 `showDiffForWorkingFile`。预览 Git 比较 HEAD 与磁盘，CVS 比较当前 Entries 的 BASE 与磁盘；只读并排／统一视图共用滚动、行号与行内着色。中缝回滚入口打开已有完整差异，不新增文件写入通道。
 - 有界读取沿用 comparison resolver：每侧 2MiB、20000 行，前端最多合计 8000 行、diff 150ms/2000 次编辑，行内比较最多 4000 字符。超限、二进制或非 UTF-8 显示灰字，过时请求不覆盖新选择。忽略文件不参与现有变更扫描，树保留折叠入口并明确说明，不伪造忽略文件计数；传入分组保留只读。
 - Ctrl+K 或工具栏进入提交态：预选全部可提交更改，复选框出现在同一棵树，说明框在树下获得焦点；Esc 或提交成功返回浏览，失败保留说明。提交并推送与修改上次提交仍仅允许单个 Git 仓库选择，不改原命令与写队列。无仓库只显示“此工作区没有 Git 或 CVS 仓库”。
+- CVS 只读查询（预览、文件历史、文件清单）的进度位置为状态栏，写操作保持可取消通知；由 `scripts/restart-host-check.cjs` 断言。
 - `webview/src/commit/commit-ui.test.tsx` 由既有 `pnpm run test:headless` 执行，原生 Git/CVS 预览与请求拒绝继续放 `scripts/restart-host-check.cjs`。结构、模拟交互与实际开发窗口分别记录，Windows 与真实公司仓未实机。

@@ -186,6 +186,8 @@ export class CvsSession {
     label: string,
     action: (adapter: Adapter, signal: AbortSignal) => Promise<T>,
     dirty = false,
+    // 只读查询把进度放状态栏，写操作保留可取消的通知。
+    location = vscode.ProgressLocation.Notification,
   ): Promise<T> {
     try {
       return await this.queue.run(async (signal) => {
@@ -198,7 +200,7 @@ export class CvsSession {
           );
         return vscode.window.withProgress(
           {
-            location: vscode.ProgressLocation.Notification,
+            location,
             title: `JetTortoise: ${label}`,
             cancellable: true,
           },
@@ -240,8 +242,11 @@ export class CvsSession {
     );
   }
   history(file: string) {
-    return this.operate(vscode.l10n.t("CVS File History"), (adapter, signal) =>
-      adapter.log(file, signal),
+    return this.operate(
+      vscode.l10n.t("CVS File History"),
+      (adapter, signal) => adapter.log(file, signal),
+      false,
+      vscode.ProgressLocation.Window,
     );
   }
   async rollback(paths: string[]) {
@@ -293,6 +298,8 @@ export class CvsSession {
         await this.guard();
         return result;
       },
+      false,
+      vscode.ProgressLocation.Window,
     );
   }
   async diff(file: string) {

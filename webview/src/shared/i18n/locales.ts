@@ -5,6 +5,7 @@ export const en = {
 
   "Local Changes": "Local Changes",
   "More Actions": "More Actions",
+  "Hide Panel": "Hide Panel",
   "Commit...": "Commit...",
   "Diff Preview": "Diff Preview",
   "Commit Message": "Commit Message",
@@ -320,6 +321,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
 
   "Local Changes": "本地更改",
   "More Actions": "更多",
+  "Hide Panel": "收起面板",
   "Commit...": "提交…",
   "Diff Preview": "差异预览",
   "Commit Message": "提交说明",

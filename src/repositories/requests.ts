@@ -4,6 +4,7 @@ const fields: Record<string, readonly string[]> = {
   getRepositories: [],
   getRepositoryChanges: [],
   refreshRepositories: [],
+  collapseLocalChanges: [],
   selectRepository: ["surface"],
   commitRepositories: ["message", "files", "amend"],
   updateProject: [],

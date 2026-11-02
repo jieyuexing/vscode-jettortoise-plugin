@@ -85,7 +85,7 @@ export function ChangeTree({
       <div
         className="changes-row"
         style={{
-          paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+          paddingInlineStart: `calc(var(--changes-base-inset, 6px) + ${level} * var(--etech-indent))`,
         }}
       >
         <button
@@ -122,7 +122,7 @@ export function ChangeTree({
           <div
             className="changes-row"
             style={{
-              paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+              paddingInlineStart: `calc(var(--changes-base-inset, 6px) + ${level} * var(--etech-indent))`,
             }}
           >
             <button
@@ -155,7 +155,7 @@ export function ChangeTree({
       <div
         key={key}
         style={{
-          paddingInlineStart: `calc(6px + ${level} * var(--etech-indent))`,
+          paddingInlineStart: `calc(var(--changes-base-inset, 6px) + ${level} * var(--etech-indent))`,
         }}
         className={`changes-file-row ${state.highlightedFiles.has(key) ? "selected" : ""}`}
       >

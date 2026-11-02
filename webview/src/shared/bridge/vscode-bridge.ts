@@ -76,6 +76,7 @@ export function createVSCodeBridge(): Bridge {
           "getRepositories",
           "getRepositoryChanges",
           "refreshRepositories",
+          "collapseLocalChanges",
           "selectRepository",
           "commitRepositories",
           "expandUnversioned",

@@ -118,3 +118,5 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 - 产品控制容器位置与互斥显示；默认左侧本地更改、底部日志。仓库选择行使用已有 28px PanelHeader；真实 CDP 测得控件上／下留白 3.5／4.5px，文字居中误差 0.25px，无需改该行。
 
 `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1/RECORD.md`。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。
+
+D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局继续沿用 6px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1b/RECORD.md`。

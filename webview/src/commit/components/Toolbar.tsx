@@ -161,6 +161,17 @@ export function Toolbar(props: ToolbarProps) {
         >
           <Icon path="M3 8h.01M8 8h.01M13 8h.01" />
         </button>
+        <button
+          type="button"
+          className="changes-collapse"
+          title={t("Hide Panel")}
+          aria-label={t("Hide Panel")}
+          onClick={() =>
+            void changeAction(() => bridge.request("collapseLocalChanges"))
+          }
+        >
+          <Icon path="M3 8h10" />
+        </button>
       </div>
       {more && (
         <div

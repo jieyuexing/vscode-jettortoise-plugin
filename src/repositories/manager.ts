@@ -416,6 +416,14 @@ export class RepositoryManager implements vscode.Disposable {
     const { repositoryId, ...values } = params;
     if (["cwd", "root", "repository"].some((key) => Object.hasOwn(values, key)))
       throw new Error(vscode.l10n.t("A view cannot choose a repository path."));
+    if (command === "collapseLocalChanges") {
+      const commands = await vscode.commands.getCommands(true);
+      return vscode.commands.executeCommand(
+        commands.includes("core.toggle.left.panel")
+          ? "core.toggle.left.panel"
+          : "workbench.action.closeSidebar",
+      );
+    }
     if (command === "getRepositories") return this.state();
     if (command === "selectRepository") {
       const entry = this.selected(repositoryId);

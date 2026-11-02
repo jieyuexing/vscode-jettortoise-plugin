@@ -33,6 +33,12 @@ async function main(){
   const repository=path.join(base,'cvs-repository'),seed=path.join(base,'seed'),cvsRoot=`:local:${repository}`,wc=path.join(root,'legacy');
   await fs.mkdir(repository);await fs.mkdir(seed);await cvsProcess.run(['-d',cvsRoot,'init'],base);await fs.writeFile(path.join(seed,'same.txt'),'base\n');await fs.writeFile(path.join(seed,'excluded.txt'),'base excluded\n');await fs.writeFile(path.join(seed,'incoming.txt'),'incoming base\n');await fs.writeFile(path.join(seed,'unchanged.txt'),'unchanged base\n');await fs.writeFile(path.join(seed,'saved-during.txt'),'save base\n');await cvsProcess.run(['-d',cvsRoot,'import','-m','base','demo','vendor','start'],seed);await core.checkout(cvsProcess,cvsRoot,'demo',wc);
   const {RepositoryManager}=require(bundle);manager=new RepositoryManager({extensionUri:Uri.file(process.cwd())});
+  // 收起只执行固定宿主命令，不要求选仓，也不进入 Git/CVS 会话。
+  vscode.commands.getCommands=async()=>['core.toggle.left.panel'];
+  await manager.request('collapseLocalChanges');assert.equal(commands.at(-1)[0],'core.toggle.left.panel');
+  vscode.commands.getCommands=async()=>[];
+  await manager.request('collapseLocalChanges');assert.equal(commands.at(-1)[0],'workbench.action.closeSidebar');
+  await assert.rejects(manager.request('collapseLocalChanges',{command:'anything'}),/Unexpected request field/);
   const sent=[];const subscribers=new Set();let receive;
   connection=manager.connect({postMessage:msg=>{sent.push(msg);for(const fn of subscribers)fn(msg);return Promise.resolve(true)},onDidReceiveMessage:fn=>{receive=fn;return disposable()}});
   const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=msg=>{if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});

@@ -886,8 +886,11 @@ input:focus-visible {
 
 .changes-narrow-header {
   position: relative;
-  padding: 0 6px;
+  padding: 0 4px 0 10px;
   gap: 4px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  border-bottom: 0;
 }
 .changes-narrow-header .panel-header-title {
   margin-right: 0;
@@ -936,4 +939,16 @@ input:focus-visible {
 .changes-more-actions button:not(:has(svg)) {
   width: auto;
   padding: 3px 6px;
+}
+
+/* D1b：常显更多与收起，其余标题动作在面板悬停或键盘焦点时出现。 */
+.narrow .changes-header-actions
+  button:not([aria-expanded]):not(.changes-collapse) {
+  visibility: hidden;
+}
+.narrow:is(:hover, :focus-within) .changes-header-actions button {
+  visibility: visible;
+}
+.narrow .changes-tree {
+  --changes-base-inset: 8px;
 }

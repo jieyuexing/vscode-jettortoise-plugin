@@ -327,13 +327,21 @@ describe("D1 narrow local changes", () => {
       [...header!.querySelectorAll("button")].map((b) =>
         b.getAttribute("aria-label"),
       ),
-    ).toEqual(["Refresh", "Commit...", "Rollback", "More Actions"]);
+    ).toEqual([
+      "Refresh",
+      "Commit...",
+      "Rollback",
+      "More Actions",
+      "Hide Panel",
+    ]);
     expect(view.container.querySelector(".diff-preview")).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "Commit..." }));
     expect(view.container.querySelector(".changes-commit")).not.toBeNull();
     expect(
       view.container.querySelectorAll('input[type="checkbox"]').length,
     ).toBeGreaterThan(0);
+    fireEvent.click(view.getByRole("button", { name: "Hide Panel" }));
+    expect(mocks.request).toHaveBeenCalledWith("collapseLocalChanges");
     fireEvent.click(view.getByRole("button", { name: "More Actions" }));
     expect(view.getByRole("button", { name: "Update Project" })).toBeTruthy();
   });

@@ -314,3 +314,27 @@ describe("本地更改三态", () => {
     expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
   });
 });
+
+describe("D1 narrow local changes", () => {
+  it("shows title, count, refresh, commit, rollback and more without preview", async () => {
+    const view = render(<CommitApp />);
+    act(() => mocks.resize(290));
+    const header = view.container.querySelector(".changes-narrow-header");
+    expect(header).not.toBeNull();
+    expect(header?.textContent).toContain("Local Changes");
+    expect(header?.textContent).toContain("2");
+    expect(
+      [...header!.querySelectorAll("button")].map((b) =>
+        b.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Refresh", "Commit...", "Rollback", "More Actions"]);
+    expect(view.container.querySelector(".diff-preview")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Commit..." }));
+    expect(view.container.querySelector(".changes-commit")).not.toBeNull();
+    expect(
+      view.container.querySelectorAll('input[type="checkbox"]').length,
+    ).toBeGreaterThan(0);
+    fireEvent.click(view.getByRole("button", { name: "More Actions" }));
+    expect(view.getByRole("button", { name: "Update Project" })).toBeTruthy();
+  });
+});

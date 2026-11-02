@@ -4,6 +4,7 @@ export const en = {
   "Working Tree": "Working Tree",
 
   "Local Changes": "Local Changes",
+  "More Actions": "More Actions",
   "Commit...": "Commit...",
   "Diff Preview": "Diff Preview",
   "Commit Message": "Commit Message",
@@ -318,6 +319,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Working Tree": "工作区",
 
   "Local Changes": "本地更改",
+  "More Actions": "更多",
   "Commit...": "提交…",
   "Diff Preview": "差异预览",
   "Commit Message": "提交说明",

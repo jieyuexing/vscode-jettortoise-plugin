@@ -108,6 +108,13 @@ export function CommitTab() {
           }
         >
           <Toolbar
+            onSwitchTab={(tab) => void changeAction(() => switchTab(tab))}
+            narrow={!wide}
+            count={
+              state.changes.filter(
+                (file) => !file.directory && file.status !== "incoming",
+              ).length
+            }
             hasGit={hasGit}
             gitSelected={current?.kind === "git"}
             hasChanges={state.changes.some(canCommit)}
@@ -157,7 +164,7 @@ export function CommitTab() {
             }
           />
           <div className="changes-tree-pane">
-            {hasGit && (
+            {hasGit && wide && (
               <PanelHeader
                 className="changes-tabs"
                 role="tablist"

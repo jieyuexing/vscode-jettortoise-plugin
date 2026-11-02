@@ -108,3 +108,13 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 - `webview/src/shared/components/VerticalToolbar.tsx` 与 `PanelHeader.tsx`、`panel-chrome.css` 供本地更改和日志共用。竖列 30px、按钮 22px、图标 16px、间距 1px、上下 4px，短面板滚动且隐藏工具列滚动条，禁用 40%。日志沿用分支工具列原动作；标题行 28px、12px，PanelHeader 的可选标题能力保留，本地更改与日志都不传标题，避免重复宿主页签名称；保留更改／搁置／储藏小页签与仓库选择行为。变更树容器不画焦点外框，选中行只在树内焦点时使用活动选中色，离焦消费 inactiveSelectionBackground／Foreground；按钮、输入、文本框自己的键盘焦点保留。日志列表沿用主题变量的活动／非活动选中，不新增列表级焦点框。
 - Git 图与虚拟滚动共享 `CommitRow.ROW_HEIGHT`，从 CSS 镜像变量读取，未加载 CSS 时按同合同回落 20；不更改数据与 VCS 写入通道。headless 的本地化入口检查尺寸镜像与无硬编码颜色。
 - 本轮允许在产品开发构建临时解包候选，不改安装版、不推送、不发布。VSIX 为 `release/jettortoise-0.6.6.vsix`；Windows、141、真实公司仓仍未验收。
+
+## D1 左侧本地更改（2026-11-02，0.6.7）
+
+用户确认的窄栏底稿为 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/workbench-c.html`，三态仍沿用同目录 `local-changes.html`；本轮开发构建可临时加载候选，交回前恢复原插件，不推送、不发布、不改安装版。
+
+- 现有 ResizeObserver 的小于 760px 布局改为单行「本地更改」、浅色文件数，以及刷新／提交／回滚／更多四个动作；删除旧窄栏整排工具按钮及常驻的更改／搁置／储藏页签，相关动作移入更多。宽布局保持原样。
+- 窄栏只有变更树，双击文件继续在编辑器打开差异。浏览态不显示复选框和说明；提交态在同一棵树显示勾选，说明框在树下。无仓库保持灰字空态。动作仍走现有 bridge、选仓、确认和写入队列，没有新增 VCS 写通道。
+- 产品控制容器位置与互斥显示；默认左侧本地更改、底部日志。仓库选择行使用已有 28px PanelHeader；真实 CDP 测得控件上／下留白 3.5／4.5px，文字居中误差 0.25px，无需改该行。
+
+`pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1/RECORD.md`。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。

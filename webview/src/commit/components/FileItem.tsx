@@ -1,6 +1,7 @@
 import { t } from "../../shared/i18n";
 import { canCommit } from "../../shared/models/changes";
 import type { WorkingTreeFile } from "../../shared/store/commit-store";
+import { getCommitFileIcon } from "../utils/file-icon";
 
 export interface FileItemProps {
   file: WorkingTreeFile;
@@ -8,6 +9,7 @@ export interface FileItemProps {
   highlighted: boolean;
   showPath?: boolean;
   showCheckbox?: boolean;
+  icon?: { light: string; dark: string } | null;
   onToggle: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onShowDiff: () => void;
@@ -20,6 +22,7 @@ export function FileItem({
   highlighted,
   showPath = true,
   showCheckbox = true,
+  icon,
   onToggle,
   onContextMenu,
   onShowDiff,
@@ -29,6 +32,7 @@ export function FileItem({
   const fileName = parts.pop() || parts.pop() || file.path;
   const dirPath = parts.length > 0 ? parts.join("/") : "";
 
+  const Icon = getCommitFileIcon(file.path);
   const statusColor = getStatusColor(file.status);
 
   return (
@@ -59,6 +63,16 @@ export function FileItem({
         />
       )}
       <span className="changes-file-indent" />
+      <span className="commit-file-icon" aria-hidden="true">
+        {icon ? (
+          <>
+            <img className="file-icon-light" src={icon.light} alt="" />
+            <img className="file-icon-dark" src={icon.dark} alt="" />
+          </>
+        ) : (
+          <Icon />
+        )}
+      </span>
       <span
         className="commit-file-name"
         title={file.path}
@@ -80,7 +94,7 @@ function getStatusColor(status: WorkingTreeFile["status"]): string {
     case "added":
       return "var(--add)";
     case "untracked":
-      return "var(--vscode-gitDecoration-deletedResourceForeground)";
+      return "var(--unv)";
     case "modified":
       return "var(--mod)";
     case "deleted":

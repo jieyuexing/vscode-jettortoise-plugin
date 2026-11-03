@@ -10,6 +10,7 @@ import {
   registeredCvsDirectories,
   repositoryTree,
 } from "../repositories/boundaries.cjs";
+import { runNetwork } from "../repositories/network.cjs";
 
 export class CvsError extends Error {
   constructor(code) {
@@ -125,6 +126,13 @@ export class CvsProcess {
     this.maxBytes = maxBytes;
   }
   run(args, cwd, signal, allowed = [0], options = {}) {
+    return runNetwork(
+      () => this.execute(args, cwd, signal, allowed, options),
+      signal,
+    );
+  }
+  async execute(args, cwd, signal, allowed, options) {
+    await options.beforeStart?.();
     if (signal?.aborted) return Promise.reject(new CvsError("cancelled"));
     return new Promise((resolve, reject) => {
       const env = { ...process.env, LC_ALL: "C", LANG: "C" };

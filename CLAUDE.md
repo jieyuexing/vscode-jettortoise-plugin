@@ -21,9 +21,9 @@ Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一�
 
 一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
 
-修订 scheme `jettortoise` 通过 `onFileSystem:jettortoise` 激活，恢复标签页的首次读取等待仓库发现。扩展另以 `onStartupFinished` 激活：Theia 1.76 只在视图展开时发 `onView`，布局恢复时已可见的 webview 视图不会触发，也不会像 VS Code 那样为 `contributes.views` 隐式补 `onView`，否则 ETECH Theia 里提交与日志视图空白。CVS 工作区 diff 使用动态 `BASE` URI，在每次队列读取时解析当前 Entries，标题不固定修订号；历史 diff 保持指定修订。提交、回滚和更新后，按仓触发已读取修订 URI 的文本与文件系统变更事件，并通知正显示该仓的 CVS 文件历史重新加载；其它仓不跟随刷新。嵌套边界拦截提示列出最多三个相对目录，余项显示 `and N more`。
+修订 scheme `jettortoise` 通过 `onFileSystem:jettortoise` 激活，恢复标签页的首次读取等待仓库发现；0.6.8 起，CVS 恢复修订页不自动连服务器，需显式重新打开差异才允许该会话读取相应修订。Git 的本地修订恢复不变。扩展另以 `onStartupFinished` 激活：Theia 1.76 只在视图展开时发 `onView`，布局恢复时已可见的 webview 视图不会触发，也不会像 VS Code 那样为 `contributes.views` 隐式补 `onView`，否则 ETECH Theia 里提交与日志视图空白。CVS 工作区 diff 使用动态 `BASE` URI，在每次队列读取时解析当前 Entries，标题不固定修订号；历史 diff 保持指定修订。提交、回滚和更新后，按仓触发已读取修订 URI 的文本与文件系统变更事件，并通知正显示该仓的 CVS 文件历史重新加载；其它仓不跟随刷新。嵌套边界拦截提示列出最多三个相对目录，余项显示 `and N more`。
 
-CVS 首次、手动和写后刷新先发布 Entries/Entries.Log 本地段，再在后台跑一次 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络结果为权威状态；网络开始前记录文件 mtime，只有其后 mtime 变化的文件才用本地结果覆盖。网络已确认干净的文件在 mtime 和修订号未变时继续保持干净，避免焦点刷新恢复假修改。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
+CVS 登记、监听文件和焦点等自动路径只读 Entries/Entries.Log 本地段，不执行 CVS 命令；Git 自动路径只运行本地 status，不 fetch。用户显式刷新与已有写操作检查才在本地段之后运行 `cvs -f -n -q update`。焦点只读本地；保存只读该文件，保留最近确认的远端状态。网络结果为权威状态；网络开始前记录文件 mtime，只有其后 mtime 变化的文件才用本地结果覆盖。网络已确认干净的文件在 mtime 和修订号未变时继续保持干净，避免焦点刷新恢复假修改。网络失败保留本地快照并只在该仓显示错误。Git 沿用上游 watcher，每根独立；保存按真实物理归属判断。
 
 **真实边界决定写权限，发现与展示不能解除边界。** 同项目但父 Entries 未登记的 CVS 目录不单列，也不进入父仓任何组，仍阻止父仓针对该目录的路径写入；CVS 已登记目录更新跳过它。连续 CVS 目录合并读取 Entries.Log。发现不越出工作区，不跟随目录软链，不调用 VCS CLI。最近真实边界即使未登记也保护文件，不回落祖先；子目录窗口不借用窗口外根。
 
@@ -120,3 +120,18 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1/RECORD.md`。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。
 
 D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局继续沿用 6px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1b/RECORD.md`。
+
+
+## 大工作区刷新与渲染（2026-11-03，0.6.8）
+
+用户 ETW-E1 决定打开与自动刷新不连网，所有仓库网络命令全局并发最多 2。`src/repositories/network.cjs` 在 CVS 进程及 Git fetch/pull/push/ls-remote/clone 执行边界共用；本地 Git 命令不占位，队列内再次核验存活与取消，保留每仓写队列。忽略文件写后仅本地刷新；显式添加、回滚、更新、提交保持原有操作合同。未查询服务器前没有传入状态是预期行为。
+
+变更树在原 20px 行与 16px 缩进上展平可见模型，仅挂载视口和前后各 6 行；方向键、Home/End 按完整模型定位并挂载目标，折叠后夹紧滚动位置。文件勾选、懒展开、右键和预览沿用原动作。初始连接仍传完整快照，后续通知发送 changed/removed 与仓元数据；前端直接消费通知，不为每条通知重新拉取全工作区。登记与选仓通知不携带文件。
+
+CVS 盘点、路径命令长度或无法完成的边界验证触发后，保留已有状态、停止该会话该仓的后续自动/手动扫描，只在宿主通知区提示一次；写入仍独立验证真实边界，不能以停扫解除保护。重新打开工作区建立新会话才重新盘点。检查并入既有 `pnpm run test:headless` 的 `scripts/repository-performance-check.cjs` 与 UI 用例，只有合成仓和本地进程，不连接公司服务。ETW-E1 授权合成工作区开发构建 GUI 验收，覆盖本页历史实验的“不启动 GUI”限制。
+
+
+E1 远端入口补查：CVS 历史挂载、自动选文件与编辑器跟随只读取本地文件清单，远端历史由现有文件选择、刷新历史或显式打开历史命令触发；写后历史刷新仍源于用户写操作。恢复的 CVS 修订 URI 不再直接取服务器；只有当前会话通过显式差异入口签发的 URI 才读取远端，保持队列内 BASE 解析、动态失效和独立边界预检。这是“打开不连网”优先于 0.6.0 自动恢复 CVS 内容的明确行为调整，没有新增控件。
+
+
+E1 追加视觉决定（2026-11-03）：用户否定 6 万列表观感，以 `local-changes.html` 的交互和 `components.html`「2 树行」为准，不新增控件。树行统一基础内边距 6px、每级 16px、行高 20px／字号 12px，箭头槽 14px 内放 12px 箭头、间距 5px、右留白 8px；覆盖 D1 的窄栏 8px 树基础内边距。类别标题 600，仓库／目录／文件 400；仓库仍是逻辑分组，保留 CVS/Git 标签，不把单文件仓库合并。目录用既有灰色文件夹，文件图标 16px 读取当前安装主题：公开 `vscode.extensions` 贡献和 workbench.iconTheme，限主题目录内的图片，批量读取仅可视文件，浅深色由 webview 主题类选择；无图片主题时沿用已有图标回落。字体图标主题的字体渲染不在本次范围。仓库按自然名称排序并以类型、根路径确定同名顺序。文件选择的背景横跨整行，活动／离焦分别消费宿主 list.activeSelectionBackground／list.inactiveSelectionBackground，移除文件和树标签描边；提交表单与工具按钮保留焦点标识。文件名只占剩余宽度，过长省略，不挤走图标。

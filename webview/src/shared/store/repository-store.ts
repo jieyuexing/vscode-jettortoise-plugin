@@ -1,13 +1,19 @@
 import { create } from "zustand";
 import { bridge } from "../bridge";
 import { setBridgeRepository } from "../bridge/vscode-bridge";
-import type { RepositoryInfo, RepositorySnapshot } from "../models/changes";
+import {
+  applySnapshotDelta,
+  type RepositoryInfo,
+  type RepositorySnapshot,
+  type SnapshotDelta,
+} from "../models/changes";
 export interface WorkspaceState {
   repositories: RepositoryInfo[];
   snapshots: RepositorySnapshot[];
   logRepositoryId?: string;
   commitRepositoryId?: string;
   activeFile?: string;
+  historyRequest?: { repositoryId: string; sequence: number };
 }
 interface RepositoryStore extends WorkspaceState {
   ready: boolean;
@@ -30,23 +36,49 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   ready: false,
   apply(state) {
     bind(state);
-    set({ ...state, ready: true });
+    set({
+      ...state,
+      logRepositoryId: state.logRepositoryId,
+      commitRepositoryId: state.commitRepositoryId,
+      activeFile: state.activeFile,
+      historyRequest: state.historyRequest,
+      ready: true,
+    });
   },
   async load() {
     get().apply((await bridge.request("getRepositories")) as WorkspaceState);
   },
   async select(id, surface) {
-    get().apply(
-      (await bridge.request("selectRepository", {
-        repositoryId: id,
-        surface,
-      })) as WorkspaceState,
-    );
+    const metadata = (await bridge.request("selectRepository", {
+      repositoryId: id,
+      surface,
+    })) as Omit<WorkspaceState, "snapshots">;
+    get().apply({ ...get(), ...metadata });
   },
 }));
 bridge.onEvent((event, data) => {
   if (event === "repositoriesChanged")
     useRepositoryStore.getState().apply(data as WorkspaceState);
+  if (event === "repositoryList") {
+    const metadata = data as Omit<WorkspaceState, "snapshots">;
+    const current = useRepositoryStore.getState();
+    current.apply({
+      ...metadata,
+      snapshots: current.snapshots.filter((snapshot) =>
+        metadata.repositories.some((repo) => repo.id === snapshot.repositoryId),
+      ),
+    });
+  }
+  if (event === "repositorySnapshotDelta") {
+    const delta = data as SnapshotDelta;
+    useRepositoryStore.setState((state) => ({
+      snapshots: state.snapshots.map((snapshot) =>
+        snapshot.repositoryId === delta.repositoryId
+          ? applySnapshotDelta(snapshot, delta)
+          : snapshot,
+      ),
+    }));
+  }
   if (event === "repositorySnapshot") {
     const snapshot = data as RepositorySnapshot;
     useRepositoryStore.setState((state) => ({

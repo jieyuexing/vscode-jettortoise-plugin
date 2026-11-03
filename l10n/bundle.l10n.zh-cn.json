@@ -206,5 +206,6 @@
   "Shelf patch cannot be a symbolic link": "搁置补丁不能是符号链接",
   "Shelf metadata cannot be a symbolic link": "搁置元数据不能是符号链接",
   "Invalid request field: {0}": "请求字段无效：{0}",
-  "Forbidden request field: {0}": "禁止的请求字段：{0}"
+  "Forbidden request field: {0}": "禁止的请求字段：{0}",
+  "Open the file diff or history again to load CVS revisions.": "请重新打开文件差异或历史以读取 CVS 修订。"
 }

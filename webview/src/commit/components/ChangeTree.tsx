@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { IconFolder } from "../../panel/utils/file-icons";
 import { bridge } from "../../shared/bridge";
 import { fileCount, t } from "../../shared/i18n";
 import {
@@ -40,7 +41,51 @@ export function ChangeTree({
 }) {
   const { repositories, snapshots } = useRepositoryStore();
   const state = useCommitStore();
-  const groups = groupChanges(repositories, snapshots);
+  const groups = useMemo(
+    () => groupChanges(repositories, snapshots),
+    [repositories, snapshots],
+  );
+  const treeRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<number | undefined>(undefined);
+  const activeIndex = useRef(-1);
+  const [viewport, setViewport] = useState({
+    top: 0,
+    height: 400,
+    rowHeight: 20,
+  });
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const resize = () =>
+      setViewport((value) => ({
+        ...value,
+        height: tree.clientHeight || 400,
+        rowHeight:
+          Number.parseFloat(
+            getComputedStyle(tree).getPropertyValue("--etech-row-height"),
+          ) || 20,
+      }));
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(tree);
+    return () => observer.disconnect();
+  }, []);
+  const [icons, setIcons] = useState<
+    Record<string, { light: string; dark: string } | null>
+  >({});
+  const pendingIcons = useRef(new Set<string>());
+  const iconGeneration = useRef(0);
+  useEffect(
+    () =>
+      bridge.onEvent((event) => {
+        if (event === "fileIconsChanged") {
+          iconGeneration.current++;
+          pendingIcons.current.clear();
+          setIcons({});
+        }
+      }),
+    [],
+  );
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -83,7 +128,7 @@ export function ChangeTree({
       : !state.collapsedDirs.has(key);
     return (
       <div
-        className="changes-row"
+        className={`changes-row ${category ? "category" : key.startsWith("repository:") ? "repository" : "directory"}`}
         style={{
           paddingInlineStart: `calc(var(--changes-base-inset, 6px) + ${level} * var(--etech-indent))`,
         }}
@@ -100,6 +145,7 @@ export function ChangeTree({
           <Chevron open={open} />
         </button>
         {checkbox(files, t("Select {0}", label))}
+        {key.startsWith("directory:") && <IconFolder />}
         <button
           type="button"
           className="changes-row-label"
@@ -147,7 +193,6 @@ export function ChangeTree({
               {file.path.split("/").pop()}
             </button>
           </div>
-          {open && lazy[key]?.map((child) => fileRow(child, level + 1))}
         </div>
       );
     }
@@ -161,6 +206,7 @@ export function ChangeTree({
       >
         <FileItem
           file={file}
+          icon={icons[file.path]}
           selected={state.selectedFiles.has(key)}
           highlighted={state.highlightedFiles.has(key)}
           showCheckbox={state.commitMode}
@@ -179,81 +225,209 @@ export function ChangeTree({
       </div>
     );
   };
-  const repoRows = (kind: "changes" | "unversioned" | "incoming") =>
-    groups
-      .filter(
-        (group) =>
-          group[kind].length ||
-          (kind === "changes" && (group.error || group.refreshing)),
-      )
-      .map((group) => {
+  const rows = useMemo(() => {
+    const result: {
+      key: string;
+      level: number;
+      file?: ChangeFile;
+      label?: string;
+      files?: ChangeFile[];
+      content?: React.ReactNode;
+      category?: boolean;
+      notice?: string;
+    }[] = [];
+    const addFile = (file: ChangeFile, level: number) => {
+      const key = fileKey(file);
+      result.push({ key, file, level });
+      if (file.directory && state.expandedGroups.has(`lazy:${key}`))
+        for (const child of lazy[key] ?? []) addFile(child, level + 1);
+    };
+    const addRepos = (kind: "changes" | "unversioned" | "incoming") => {
+      for (const group of groups) {
+        if (
+          !group[kind].length &&
+          !(kind === "changes" && (group.error || group.refreshing))
+        )
+          continue;
         const key = `repository:${kind}:${group.id}`;
-        const open = !state.collapsedDirs.has(key);
         const branch = snapshots.find(
           (snapshot) => snapshot.repositoryId === group.id,
         )?.branch;
-        return (
-          <section key={group.id} aria-label={`${group.name} ${group.kind}`}>
-            {row(
-              key,
-              group.name,
-              group[kind],
-              1,
-              <>
-                <span className="changes-tag">
-                  {group.kind === "git" ? "Git" : "CVS"}
-                </span>
+        result.push({
+          key,
+          level: 1,
+          label: group.name,
+          files: group[kind],
+          content: (
+            <>
+              <span className="changes-tag">
+                {group.kind === "git" ? "Git" : "CVS"}
+              </span>
+              <span className="changes-count">
+                {fileCount(group[kind].length)}
+              </span>
+              {branch && <span className="changes-branch">{branch}</span>}
+            </>
+          ),
+        });
+        if (group.error)
+          result.push({ key: `error:${key}`, level: 1, notice: group.error });
+        if (group.refreshing)
+          result.push({
+            key: `progress:${key}`,
+            level: 1,
+            notice: t("Checking remote updates…"),
+          });
+        if (state.collapsedDirs.has(key)) continue;
+        if (kind === "changes" && state.groupByDirectory) {
+          for (const file of group.rootFiles) addFile(file, 2);
+          for (const directory of group.directories) {
+            const dirKey = `directory:${group.id}:${directory.path}`;
+            result.push({
+              key: dirKey,
+              level: 2,
+              label: directory.path,
+              files: directory.files,
+              content: (
                 <span className="changes-count">
-                  {fileCount(group[kind].length)}
+                  {fileCount(directory.files.length)}
                 </span>
-                {branch && <span className="changes-branch">{branch}</span>}
-              </>,
-            )}
-            {group.error && (
-              <div className="repository-error" role="alert">
-                {group.error}
-              </div>
-            )}
-            {group.refreshing && (
-              <div className="repository-progress" role="status">
-                {t("Checking remote updates…")}
-              </div>
-            )}
-            {open &&
-              (kind === "changes" && state.groupByDirectory ? (
-                <>
-                  {group.rootFiles.map((file) => fileRow(file, 2))}
-                  {group.directories.map((directory) => {
-                    const dirKey = `directory:${group.id}:${directory.path}`;
-                    return (
-                      <div key={dirKey}>
-                        {row(
-                          dirKey,
-                          directory.path,
-                          directory.files,
-                          2,
-                          <span className="changes-count">
-                            {fileCount(directory.files.length)}
-                          </span>,
-                        )}
-                        {!state.collapsedDirs.has(dirKey) &&
-                          directory.files.map((file) => fileRow(file, 3))}
-                      </div>
-                    );
-                  })}
-                </>
-              ) : (
-                group[kind].map((file) => fileRow(file, 2))
-              ))}
-          </section>
-        );
+              ),
+            });
+            if (!state.collapsedDirs.has(dirKey))
+              for (const file of directory.files) addFile(file, 3);
+          }
+        } else for (const file of group[kind]) addFile(file, 2);
+      }
+    };
+    for (const [kind, label] of [
+      ["changes", t("Changes")],
+      ["unversioned", t("Unversioned Files")],
+      ["ignored", t("Ignored")],
+      ["incoming", t("Incoming")],
+    ] as const) {
+      const files =
+        kind === "ignored" ? [] : groups.flatMap((group) => group[kind]);
+      if (kind === "incoming" && !files.length) continue;
+      result.push({
+        key: kind,
+        label,
+        files: kind === "changes" ? files : [],
+        level: 0,
+        category: true,
+        content:
+          kind === "ignored" ? undefined : (
+            <span className="changes-count">{fileCount(files.length)}</span>
+          ),
       });
-  const allChanges = groups.flatMap((group) => group.changes);
-  const unversioned = groups.flatMap((group) => group.unversioned);
-  const incoming = groups.flatMap((group) => group.incoming);
+      if (!state.expandedGroups.has(kind)) continue;
+      if (kind === "ignored")
+        result.push({
+          key: "ignored-notice",
+          level: 0,
+          notice: t("Ignored files are excluded from the change scan."),
+        });
+      else addRepos(kind);
+    }
+    return result;
+  }, [
+    groups,
+    snapshots,
+    state.expandedGroups,
+    state.collapsedDirs,
+    state.groupByDirectory,
+    lazy,
+  ]);
+  const start = Math.max(
+    0,
+    Math.min(
+      rows.length - 1,
+      Math.floor((viewport.top - 4) / viewport.rowHeight) - 6,
+    ),
+  );
+  const end = Math.min(
+    rows.length,
+    Math.ceil((viewport.top + viewport.height) / viewport.rowHeight) + 6,
+  );
+  const visibleIconPaths = rows
+    .slice(start, end)
+    .flatMap((item) =>
+      item.file && !item.file.directory ? [item.file.path] : [],
+    );
+  const iconPathKey = JSON.stringify(visibleIconPaths);
+  useEffect(() => {
+    const paths = (JSON.parse(iconPathKey) as string[]).filter(
+      (name) => !Object.hasOwn(icons, name) && !pendingIcons.current.has(name),
+    );
+    if (!paths.length) return;
+    for (const name of paths) pendingIcons.current.add(name);
+    const generation = iconGeneration.current;
+    void bridge
+      .request("getFileIcons", { filePaths: paths })
+      .then(
+        (data) => {
+          if (generation !== iconGeneration.current) return;
+          const result =
+            data && !Array.isArray(data) && typeof data === "object"
+              ? (data as Record<string, { light: string; dark: string } | null>)
+              : {};
+          setIcons((value) => ({
+            ...value,
+            ...Object.fromEntries(
+              paths.map((name) => [name, result[name] ?? null]),
+            ),
+          }));
+        },
+        () => {
+          if (generation === iconGeneration.current)
+            setIcons((value) => ({
+              ...value,
+              ...Object.fromEntries(paths.map((name) => [name, null])),
+            }));
+        },
+      )
+      .finally(() => {
+        if (generation === iconGeneration.current)
+          for (const name of paths) pendingIcons.current.delete(name);
+      });
+  }, [iconPathKey, icons]);
+  useLayoutEffect(() => {
+    const index = pendingFocus.current;
+    if (index === undefined) return;
+    const element = treeRef.current?.querySelector<HTMLElement>(
+      `[data-row-index="${index}"] .commit-file-item,[data-row-index="${index}"] .changes-row-label`,
+    );
+    if (element) {
+      element.focus({ preventScroll: true });
+      pendingFocus.current = undefined;
+    }
+  });
+  useLayoutEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const max = Math.max(
+      0,
+      rows.length * viewport.rowHeight + 8 - viewport.height,
+    );
+    if (viewport.top > max) {
+      tree.scrollTop = max;
+      setViewport((value) => ({ ...value, top: max }));
+    }
+  }, [rows.length, viewport.height, viewport.top, viewport.rowHeight]);
   return (
     <div
+      ref={treeRef}
       className="changes-tree"
+      onScroll={(event) => {
+        const top = event.currentTarget.scrollTop;
+        setViewport((value) => ({ ...value, top }));
+      }}
+      onFocusCapture={(event) => {
+        const wrapper = (event.target as HTMLElement).closest<HTMLElement>(
+          "[data-row-index]",
+        );
+        if (wrapper) activeIndex.current = Number(wrapper.dataset.rowIndex);
+      }}
       aria-label={t("Changed Files")}
       onKeyDown={(event) => {
         if (
@@ -261,66 +435,81 @@ export function ChangeTree({
           (event.target as HTMLElement).tagName === "INPUT"
         )
           return;
-        const elements = Array.from(
-          event.currentTarget.querySelectorAll<HTMLElement>(
-            ".commit-file-item,.changes-row-label",
-          ),
-        );
-        const current = elements.indexOf(document.activeElement as HTMLElement);
-        const index =
+        let index =
           event.key === "Home"
             ? 0
             : event.key === "End"
-              ? elements.length - 1
+              ? rows.length - 1
               : Math.max(
                   0,
                   Math.min(
-                    elements.length - 1,
-                    current + (event.key === "ArrowDown" ? 1 : -1),
+                    rows.length - 1,
+                    activeIndex.current + (event.key === "ArrowDown" ? 1 : -1),
                   ),
                 );
+        const direction =
+          event.key === "ArrowUp" || event.key === "End" ? -1 : 1;
+        while (rows[index]?.notice && index >= 0 && index < rows.length)
+          index += direction;
+        if (!rows[index]) return;
         event.preventDefault();
-        elements[index]?.focus();
-        elements[index]?.scrollIntoView({ block: "nearest" });
+        activeIndex.current = index;
+        pendingFocus.current = index;
+        const tree = event.currentTarget;
+        const top = index * viewport.rowHeight + 4;
+        const next =
+          top < viewport.top
+            ? top - 4
+            : top + viewport.rowHeight > viewport.top + viewport.height
+              ? top + viewport.rowHeight - viewport.height
+              : viewport.top;
+        tree.scrollTop = next;
+        setViewport((value) => ({ ...value, top: next }));
       }}
     >
-      {row(
-        "changes",
-        t("Changes"),
-        allChanges,
-        0,
-        <span className="changes-count">{fileCount(allChanges.length)}</span>,
-        true,
-      )}
-      {state.expandedGroups.has("changes") && repoRows("changes")}
-      {row(
-        "unversioned",
-        t("Unversioned Files"),
-        [],
-        0,
-        <span className="changes-count">{fileCount(unversioned.length)}</span>,
-        true,
-      )}
-      {state.expandedGroups.has("unversioned") && repoRows("unversioned")}
-      {row("ignored", t("Ignored"), [], 0, undefined, true)}
-      {state.expandedGroups.has("ignored") && (
-        <div className="changes-tree-notice">
-          {t("Ignored files are excluded from the change scan.")}
-        </div>
-      )}
-      {incoming.length > 0 && (
-        <>
-          {row(
-            "incoming",
-            t("Incoming"),
-            [],
-            0,
-            <span className="changes-count">{fileCount(incoming.length)}</span>,
-            true,
-          )}
-          {state.expandedGroups.has("incoming") && repoRows("incoming")}
-        </>
-      )}
+      <div
+        style={{
+          height: rows.length * viewport.rowHeight,
+          position: "relative",
+        }}
+      >
+        {rows.slice(start, end).map((item, offset) => (
+          <div
+            key={item.key}
+            data-row-index={start + offset}
+            style={{
+              position: "absolute",
+              top: (start + offset) * viewport.rowHeight,
+              height: viewport.rowHeight,
+              width: "100%",
+            }}
+          >
+            {item.file ? (
+              fileRow(item.file, item.level)
+            ) : item.notice ? (
+              <div
+                className={
+                  item.key.startsWith("error:")
+                    ? "repository-error"
+                    : "repository-progress"
+                }
+                title={item.notice}
+              >
+                {item.notice}
+              </div>
+            ) : (
+              row(
+                item.key,
+                item.label ?? "",
+                item.files ?? [],
+                item.level,
+                item.content,
+                item.category,
+              )
+            )}
+          </div>
+        ))}
+      </div>
       {menu && (
         <CommitFileContextMenu {...menu} onClose={() => setMenu(null)} />
       )}

@@ -409,6 +409,7 @@ input:focus-visible {
   --dim: var(--vscode-descriptionForeground);
   --accent: var(--vscode-focusBorder);
   --sel: var(--vscode-list-activeSelectionBackground);
+  --selin: var(--vscode-list-inactiveSelectionBackground);
   --hover: var(--vscode-list-hoverBackground);
   --mod: var(--vscode-gitDecoration-modifiedResourceForeground);
   --add: var(--vscode-gitDecoration-addedResourceForeground);
@@ -490,6 +491,7 @@ input:focus-visible {
   background: var(--sel);
 }
 .changes-tree {
+  overflow-anchor: none;
   flex: 1;
   min-height: 0;
   padding: 4px 0;
@@ -500,9 +502,10 @@ input:focus-visible {
 .changes-file-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   height: var(--etech-row-height);
   min-height: var(--etech-row-height);
+  padding-inline-end: 8px;
   white-space: nowrap;
   box-sizing: border-box;
 }
@@ -524,7 +527,8 @@ input:focus-visible {
   gap: 4px;
 }
 .changes-twisty {
-  width: 12px;
+  width: 14px;
+  justify-content: center;
   flex: none;
   display: flex;
   align-items: center;
@@ -554,7 +558,7 @@ input:focus-visible {
   line-height: 14px;
 }
 .changes-file-row.selected {
-  background: var(--vscode-list-inactiveSelectionBackground);
+  background: var(--selin);
   color: var(--vscode-list-inactiveSelectionForeground, var(--text));
 }
 .changes-tree:focus-within .changes-file-row.selected {
@@ -567,7 +571,7 @@ input:focus-visible {
 .local-changes .commit-file-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
   width: 100%;
   padding: 0;
@@ -581,13 +585,14 @@ input:focus-visible {
   background: transparent;
 }
 .changes-file-indent {
-  width: 12px;
+  width: 14px;
   flex: none;
 }
 .local-changes .commit-file-name {
-  flex: none;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .local-changes .commit-file-status {
   display: none;
@@ -950,5 +955,47 @@ input:focus-visible {
   visibility: visible;
 }
 .narrow .changes-tree {
-  --changes-base-inset: 8px;
+  --changes-base-inset: 6px;
+}
+
+/* 树行焦点只用整行底色；按钮、输入和提交表单仍有自己的焦点标识。 */
+.changes-tree
+:is(.commit-file-item, .changes-row-label, .changes-twisty):focus-visible,
+.changes-tree
+  :is(.commit-file-item, .changes-row-label, .changes-twisty):focus {
+  outline: none;
+  box-shadow: none;
+}
+.changes-row:focus-within {
+  background: var(--hover);
+}
+.changes-row.category > .changes-row-label {
+  font-weight: 600;
+}
+.changes-row > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.commit-file-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.commit-file-icon :is(img, svg) {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.file-icon-dark {
+  display: none;
+}
+body:is(.vscode-dark, .vscode-high-contrast) .file-icon-light {
+  display: none;
+}
+body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
+  display: block;
 }

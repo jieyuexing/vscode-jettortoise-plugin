@@ -216,6 +216,7 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
     await metadata(wc, "demo", "/ordinary.txt/1.1///\n");
     const project = path.resolve(import.meta.dirname, "..");
     const bundle = path.join(base, "session.cjs");
+    globalThis.__cvsBoundaryWarnings = [];
     await build({
       entryPoints: [path.join(project, "src/cvs/session.ts")],
       bundle: true, platform: "node", format: "cjs", outfile: bundle,
@@ -226,7 +227,7 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
           exports.workspace = { isTrusted: true, getConfiguration: () => ({get: () => ${JSON.stringify(path.join(base, "missing-cvs"))}}) };
           exports.l10n = { t: text => text };
           exports.ProgressLocation = { Notification: 1 };
-          exports.window = { withProgress: (_options, run) => run({}, {onCancellationRequested: () => ({dispose() {}})}) };
+          exports.window = { showWarningMessage: text => {globalThis.__cvsBoundaryWarnings.push(text);return Promise.resolve();}, withProgress: (_options, run) => run({}, {onCancellationRequested: () => ({dispose() {}})}) };
         ` }));
       } }],
     });
@@ -247,7 +248,12 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
     assert.ok(checks >= 2);
     await fs.rm(path.join(wc, "CVS", "Repository"));
     await session.refresh();
-    assert.match(lastSnapshot.error, /Repository boundaries could not be fully verified/);
+    assert.equal(lastSnapshot.error, undefined);
+    assert.match(globalThis.__cvsBoundaryWarnings[0], /Repository boundaries could not be fully verified/);
+    const stoppedChecks = checks;
+    await session.refresh();
+    assert.equal(checks, stoppedChecks);
+    assert.equal(globalThis.__cvsBoundaryWarnings.length, 1);
     session.dispose();
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });

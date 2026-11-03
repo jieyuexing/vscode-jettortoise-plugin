@@ -74,6 +74,7 @@ export function createVSCodeBridge(): Bridge {
         const owner = repositoryId;
         const globalCommand = [
           "getRepositories",
+          "getFileIcons",
           "getRepositoryChanges",
           "refreshRepositories",
           "collapseLocalChanges",

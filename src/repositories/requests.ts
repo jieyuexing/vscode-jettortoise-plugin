@@ -2,6 +2,7 @@ import { safeRelativePath } from "../git/security";
 
 const fields: Record<string, readonly string[]> = {
   getRepositories: [],
+  getFileIcons: ["filePaths"],
   getRepositoryChanges: [],
   refreshRepositories: [],
   collapseLocalChanges: [],

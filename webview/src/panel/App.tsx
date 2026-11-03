@@ -315,8 +315,15 @@ function CloseIcon() {
 }
 
 export function PanelApp() {
-  const { repositories, logRepositoryId, activeFile, ready, load, select } =
-    useRepositoryStore();
+  const {
+    repositories,
+    logRepositoryId,
+    activeFile,
+    historyRequest,
+    ready,
+    load,
+    select,
+  } = useRepositoryStore();
   const repository = repositories.find((item) => item.id === logRepositoryId);
   useEffect(() => {
     void load();
@@ -389,6 +396,11 @@ export function PanelApp() {
             key={repository.id}
             repositoryId={repository.id}
             activeFile={activeFile}
+            requestId={
+              historyRequest?.repositoryId === repository.id
+                ? historyRequest?.sequence
+                : undefined
+            }
           />
         ) : (
           <GitPanelApp key={repository.id} />

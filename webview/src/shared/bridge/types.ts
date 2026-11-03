@@ -22,6 +22,7 @@ export interface EventMessage {
 export type Message = RequestMessage | ResponseMessage | EventMessage;
 
 export type CommandType =
+  | "getFileIcons"
   | "getLog"
   | "getGraphData"
   | "loadMoreLog"

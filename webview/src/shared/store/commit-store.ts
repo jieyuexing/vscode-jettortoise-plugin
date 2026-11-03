@@ -492,8 +492,6 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
 
 // 快照只影响对应仓库，保留其它仓库的选择和提交说明。
 bridge.onEvent((event, data) => {
-  if (["repositoriesChanged", "repositorySnapshot"].includes(event))
-    void useCommitStore.getState().fetchChanges();
   if (event === "commitCommand") {
     const command = (data as { command: string }).command;
     const store = useCommitStore.getState();
@@ -503,4 +501,24 @@ bridge.onEvent((event, data) => {
     if (command === "shelve") store.setActiveTab("shelf");
     if (command === "unshelve") store.setActiveTab("shelf");
   }
+});
+
+// 消费已到达的快照，不因每个通知再次向宿主索取全部文件。
+useRepositoryStore.subscribe((state, previous) => {
+  if (
+    state.snapshots === previous.snapshots &&
+    state.repositories === previous.repositories
+  )
+    return;
+  const changes = groupChanges(state.repositories, state.snapshots).flatMap(
+    (group) => [...group.changes, ...group.unversioned, ...group.incoming],
+  );
+  const store = useCommitStore.getState();
+  const valid = new Set(changes.filter(canCommit).map(fileKey));
+  useCommitStore.setState({
+    changes,
+    selectedFiles: new Set(
+      [...store.selectedFiles].filter((key) => valid.has(key)),
+    ),
+  });
 });

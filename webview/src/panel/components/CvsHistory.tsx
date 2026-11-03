@@ -12,9 +12,11 @@ interface Revision {
 export function CvsHistory({
   repositoryId,
   activeFile,
+  requestId = 0,
 }: {
   repositoryId: string;
   activeFile?: string;
+  requestId?: number;
 }) {
   const [files, setFiles] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
@@ -22,6 +24,7 @@ export function CvsHistory({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const fileGeneration = useRef(0);
+  const handledRequest = useRef(0);
   const historyGeneration = useRef(0);
   const loadFiles = useCallback(async () => {
     const generation = ++fileGeneration.current;
@@ -38,40 +41,56 @@ export function CvsHistory({
             ? value
             : (names[0] ?? ""),
       );
+      return activeFile && names.includes(activeFile) ? activeFile : names[0];
     } catch (error) {
       if (generation === fileGeneration.current) setError(String(error));
     }
   }, [repositoryId, activeFile]);
-  const loadHistory = useCallback(async () => {
-    const generation = ++historyGeneration.current;
-    if (!selected) return;
-    setLoading(true);
-    setError("");
-    setRevisions([]);
-    try {
-      const result = (await bridge.request("getCvsHistory", {
-        repositoryId,
-        filePath: selected,
-      })) as Revision[];
-      if (generation === historyGeneration.current) setRevisions(result);
-    } catch (error) {
-      if (generation === historyGeneration.current) setError(String(error));
-    } finally {
-      if (generation === historyGeneration.current) setLoading(false);
-    }
-  }, [repositoryId, selected]);
+  const loadHistory = useCallback(
+    async (name = selected) => {
+      const generation = ++historyGeneration.current;
+      if (!name) return;
+      setLoading(true);
+      setError("");
+      setRevisions([]);
+      try {
+        const result = (await bridge.request("getCvsHistory", {
+          repositoryId,
+          filePath: name,
+        })) as Revision[];
+        if (generation === historyGeneration.current) setRevisions(result);
+      } catch (error) {
+        if (generation === historyGeneration.current) setError(String(error));
+      } finally {
+        if (generation === historyGeneration.current) setLoading(false);
+      }
+    },
+    [repositoryId, selected],
+  );
   useEffect(() => {
+    historyGeneration.current++;
+    setRevisions([]);
+    setError("");
+    setLoading(false);
     void loadFiles();
     return () => {
       fileGeneration.current++;
     };
   }, [loadFiles]);
   useEffect(() => {
-    void loadHistory();
-    return () => {
+    if (requestId && handledRequest.current !== requestId) {
+      handledRequest.current = requestId;
+      void loadFiles().then((name) => {
+        if (name) return loadHistory(name);
+      });
+    }
+  }, [requestId, loadFiles, loadHistory]);
+  useEffect(
+    () => () => {
       historyGeneration.current++;
-    };
-  }, [loadHistory]);
+    },
+    [],
+  );
   useEffect(
     () =>
       bridge.onEvent((event, data) => {
@@ -93,7 +112,10 @@ export function CvsHistory({
         <select
           id="cvs-history-file"
           value={selected}
-          onChange={(event) => setSelected(event.target.value)}
+          onChange={(event) => {
+            setSelected(event.target.value);
+            void loadHistory(event.target.value);
+          }}
         >
           {!files.length && <option value="">{t("No versioned file")}</option>}
           {files.map((file) => (

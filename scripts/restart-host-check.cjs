@@ -41,7 +41,7 @@ async function main(){
   await assert.rejects(manager.request('collapseLocalChanges',{command:'anything'}),/Unexpected request field/);
   const sent=[];const subscribers=new Set();let receive;
   connection=manager.connect({postMessage:msg=>{sent.push(msg);for(const fn of subscribers)fn(msg);return Promise.resolve(true)},onDidReceiveMessage:fn=>{receive=fn;return disposable()}});
-  const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=msg=>{if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});
+  const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=raw=>{const msg=raw.event==='repositorySnapshotDelta'?{event:'repositorySnapshot',data:manager.state().snapshots.find(s=>s.repositoryId===raw.data.repositoryId)}:raw;if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});
   await manager.scan();await manager.request('refreshRepositories');
   const state=manager.state();assert.equal(state.repositories.length,3);const a=state.repositories.find(r=>r.root===first),b=state.repositories.find(r=>r.root===second),c=state.repositories.find(r=>r.root===wc);assert.ok(a&&b&&c);
   // 资源命令必须选择右键资源所属仓库，不能沿用前一个编辑器/提交区的仓库。
@@ -54,6 +54,8 @@ async function main(){
   assert.equal(manager.state().logRepositoryId,a.id);assert.equal(manager.state().activeFile,'same.txt');
   await manager.execute('jettortoise.openHistory',Uri.file(wc));
   assert.equal(manager.state().logRepositoryId,c.id);assert.equal(manager.state().activeFile,undefined);
+  assert.equal(manager.state().historyRequest.repositoryId,c.id);
+  await manager.follow(Uri.file(path.join(first,'same.txt')));assert.equal(manager.state().historyRequest,undefined,'automatic editor following retained an old history request');
   let resourceUpdates=0;const resourceSession=manager.entries.get(b.id).git;const originalResourceUpdate=resourceSession.update;
   resourceSession.update=async()=>{resourceUpdates++};
   try {await manager.execute('jettortoise.updateProject',Uri.file(second));assert.equal(resourceUpdates,1)} finally {resourceSession.update=originalResourceUpdate}
@@ -118,7 +120,8 @@ async function main(){
   require(historyBundle).CvsHistory({repositoryId:c.id,activeFile:'same.txt'});
   historyCleanups=historyEffects.map(effect=>effect()).filter(fn=>typeof fn==='function');
   const drainHistory=async()=>{for(let index=0;index<historyRequests.length;index++)await historyRequests[index].request};
-  await drainHistory();const historyReadsBefore=historyRequests.filter(item=>item.command==='getCvsHistory').length;
+  await drainHistory();assert.equal(historyRequests.filter(item=>item.command==='getCvsHistory').length,0,'mount contacted CVS history');
+  manager.broadcast('repositoryWritten',{repositoryId:c.id});await drainHistory();const historyReadsBefore=historyRequests.filter(item=>item.command==='getCvsHistory').length;
   // CVS 只读查询（预览、文件历史）进度放状态栏，不弹通知。
   const progressAt=title=>progress.filter(item=>item.title.endsWith(title)).map(item=>item.location);
   for(const title of ['CVS revision','CVS File History'])assert.ok(progressAt(title).length&&progressAt(title).every(location=>location===10),title+' progress must use the status bar');
@@ -165,11 +168,13 @@ async function main(){
   await cvsSession.operate('fixture queue barrier',async()=>{});
   const cvsRunner=cvsSession.adapter.process,originalRun=cvsRunner.run.bind(cvsRunner);let networkRuns=0;
   cvsRunner.run=async(...args)=>{networkRuns++;return originalRun(...args)};
-  const focusSnapshot=waitFor(msg=>msg.event==='repositorySnapshot'&&msg.data.repositoryId===c.id&&!msg.data.refreshing);
-  events.focus.fire({focused:true});await focusSnapshot;assert.equal(networkRuns,0,'focus refresh invoked CVS');
+  const originalRefresh=cvsSession.refresh.bind(cvsSession);let completed;
+  cvsSession.refresh=async(...args)=>{await originalRefresh(...args);completed?.()};
+  const focusComplete=new Promise(resolve=>{completed=resolve});
+  events.focus.fire({focused:true});await focusComplete;assert.equal(networkRuns,0,'focus refresh invoked CVS');
   const originalLocal=cvsSession.adapter.localStatus.bind(cvsSession.adapter);const pathsRead=[];cvsSession.adapter.localStatus=async paths=>{pathsRead.push(paths);return originalLocal(paths)};
-  // 焦点只走本地；保存只读取这一文件，未保存编辑器阻止提交。
-  const savedBefore=sent.length;events.save.fire({uri:Uri.file(path.join(wc,'same.txt'))});await waitFor(msg=>msg.event==='repositorySnapshot'&&msg.data.repositoryId===c.id);assert.ok(sent.length>savedBefore);assert.deepEqual(pathsRead.at(-1),['same.txt']);assert.equal(networkRuns,0,'save invoked CVS');cvsSession.adapter.localStatus=originalLocal;cvsRunner.run=originalRun;
+  // 焦点只走本地；保存只读取这一文件。相同快照不再重复发送。
+  const savedBefore=sent.length;const saveComplete=new Promise(resolve=>{completed=resolve});events.save.fire({uri:Uri.file(path.join(wc,'same.txt'))});await saveComplete;assert.equal(sent.length,savedBefore);assert.deepEqual(pathsRead.at(-1),['same.txt']);assert.equal(networkRuns,0,'save invoked CVS');cvsSession.adapter.localStatus=originalLocal;cvsRunner.run=originalRun;cvsSession.refresh=originalRefresh;
   const beforeRollback=changedUris.length;await manager.request('rollbackFiles',{repositoryId:c.id,filePaths:['excluded.txt']});assert.ok(changedUris.length>beforeRollback,'rollback did not invalidate revision content');assert.ok(changedUris.slice(beforeRollback).every(uri=>uri.authority===c.id),'CVS rollback invalidated another repository');const backups=(await fs.readdir(wc)).filter(file=>file.startsWith('excluded.txt.jettortoise-backup-'));assert.equal(backups.length,1);assert.equal(await fs.readFile(path.join(wc,backups[0]),'utf8'),'CVS excluded text\n');
   vscode.workspace.textDocuments=[{isDirty:true,uri:Uri.file(path.join(second,'same.txt'))}];await fs.writeFile(path.join(second,'same.txt'),'dirty editor candidate\n');await manager.request('refreshRepositories');await assert.rejects(manager.request('commitRepositories',{message:'dirty',files:[{repositoryId:b.id,path:'same.txt'}]}),/unsaved/);vscode.workspace.textDocuments=[];
   // 未登记 build 不出现在父清单，显式 -l 更新跳过它；登记后的异 Root 仍拦截。
@@ -195,7 +200,10 @@ async function main(){
   try{
     require(activationBundle).activate({extensionUri:Uri.file(process.cwd()),subscriptions:activationSubscriptions});
     const restoredRead=textProvider.provideTextDocumentContent(baseUri);await discoveryReady;releaseDiscovery();
-    assert.equal(await restoredRead,'CVS selected text\n','restored URI read raced discovery');
+    await assert.rejects(restoredRead,/Open the file diff or history again/);
+    const restoredManagerForDiff=registeredViews[0].manager;
+    await restoredManagerForDiff.request('showDiffForWorkingFile',{repositoryId:c.id,filePath:'same.txt',staged:false});
+    assert.equal(await textProvider.provideTextDocumentContent(baseUri),'CVS selected text\n');
     assert.equal(Buffer.from(await fileProvider.readFile(baseUri)).toString(),'CVS selected text\n');
     const textChanges=[];textProvider.onDidChange(uri=>textChanges.push(uri));
     const restoredManager=registeredViews[0].manager,restoredEntry=restoredManager.entries.get(c.id);
@@ -216,7 +224,7 @@ async function main(){
     }
 
   }finally{releaseDiscovery();fs.readdir=originalReaddirForActivation;for(const subscription of activationSubscriptions.splice(0))subscription.dispose()}
-  console.log(JSON.stringify({restoredUriBeforeView:true,textAndBinaryInvalidation:true,baseAfterCommit:true,historyReloadAfterCommit:true,multiRepository:true,selectedPaths:true,indexPreserved:true,cvsHistory:true,revisionDiff:true,lazyUnknownDirectory:true,ignoreAtManagedParent:true,nestedWriteProtection:true,isolatedErrors:true,dirtyEditors:true,untrusted:true,localOnlyFocus:true,targetedSave:true,incomingCannotCommit:true,rollbackBackup:true,confirmationLiveness:true}));
+  console.log(JSON.stringify({restoredUriNoImplicitNetwork:true,textAndBinaryInvalidation:true,baseAfterCommit:true,historyReloadAfterCommit:true,multiRepository:true,selectedPaths:true,indexPreserved:true,cvsHistory:true,revisionDiff:true,lazyUnknownDirectory:true,ignoreAtManagedParent:true,nestedWriteProtection:true,isolatedErrors:true,dirtyEditors:true,untrusted:true,localOnlyFocus:true,targetedSave:true,incomingCannotCommit:true,rollbackBackup:true,confirmationLiveness:true}));
  }finally{for(const cleanup of historyCleanups)cleanup();for(const subscription of activationSubscriptions)subscription.dispose();connection?.dispose();manager?.dispose();delete global.__restartHistory;delete global.__restartVscode;await fs.rm(base,{recursive:true,force:true})}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

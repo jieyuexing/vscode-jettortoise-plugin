@@ -6,8 +6,9 @@ import * as vscode from "vscode";
 import { CvsSession } from "../cvs/session";
 import { resolveWorktreePath } from "../git/security";
 import { createGitRepositorySession } from "../git/session";
-import { localizeError } from "../messages/errors";
+import { isScanLimit, localizeError } from "../messages/errors";
 import { ignorePaths } from "../scm/ignore";
+import { clearFileIconCache, getFileIcons } from "../views/file-icons";
 import {
   assertOwnedPath,
   boundariesForPaths,
@@ -15,7 +16,7 @@ import {
   within,
 } from "./boundaries.cjs";
 import type { ChangeFile, RepositoryInfo, RepositorySnapshot } from "./changes";
-import { canCommit } from "./changes";
+import { canCommit, compareRepositories, snapshotDelta } from "./changes";
 import { discoverRepositoryRoots } from "./discovery";
 import { hasDirtyEditors } from "./editor-documents";
 import { repositoryPath, validateRepositoryRequest } from "./requests";
@@ -27,6 +28,7 @@ interface Entry {
   cvs?: CvsSession;
   snapshot: RepositorySnapshot;
   disposables: vscode.Disposable[];
+  scanStopped?: boolean;
 }
 export class RepositoryManager implements vscode.Disposable {
   private readonly revisionChanges = new vscode.EventEmitter<vscode.Uri>();
@@ -34,6 +36,7 @@ export class RepositoryManager implements vscode.Disposable {
   private readonly revisionUris = new Map<string, vscode.Uri>();
   private readonly requestLiveness = new AsyncLocalStorage<() => void>();
   private readonly entries = new Map<string, Entry>();
+  private readonly publishedSnapshots = new Map<string, RepositorySnapshot>();
   private readonly views = new Set<vscode.Webview>();
   private readonly disposables: vscode.Disposable[] = [];
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -42,9 +45,20 @@ export class RepositoryManager implements vscode.Disposable {
   private logId?: string;
   private commitId?: string;
   private activeFile?: string;
+  private historyRequest?: { repositoryId: string; sequence: number };
+  private historySequence = 0;
   private editorOwnerId?: string;
   private disposed = false;
   constructor(private readonly context: vscode.ExtensionContext) {
+    const configuration = vscode.workspace.onDidChangeConfiguration?.(
+      (event) => {
+        if (event.affectsConfiguration("workbench.iconTheme")) {
+          clearFileIconCache();
+          this.broadcast("fileIconsChanged", {});
+        }
+      },
+    );
+    if (configuration) this.disposables.push(configuration);
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         void this.scan();
@@ -66,7 +80,9 @@ export class RepositoryManager implements vscode.Disposable {
     );
   }
   get repositories() {
-    return [...this.entries.values()].map((entry) => entry.info);
+    return [...this.entries.values()]
+      .map((entry) => entry.info)
+      .sort(compareRepositories);
   }
   state() {
     return {
@@ -74,6 +90,7 @@ export class RepositoryManager implements vscode.Disposable {
       snapshots: [...this.entries.values()].map((entry) => entry.snapshot),
       logRepositoryId: this.logId,
       commitRepositoryId: this.commitId,
+      historyRequest: this.historyRequest,
       activeFile:
         this.logId === this.editorOwnerId ? this.activeFile : undefined,
     };
@@ -82,8 +99,21 @@ export class RepositoryManager implements vscode.Disposable {
     for (const view of this.views)
       void view.postMessage({ type: "event", event, data });
   }
+  private metadata() {
+    const { snapshots: _snapshots, ...metadata } = this.state();
+    return metadata;
+  }
   private publish() {
-    this.broadcast("repositoriesChanged", this.state());
+    this.broadcast("repositoryList", this.metadata());
+  }
+  private publishSnapshot(snapshot: RepositorySnapshot) {
+    const previous = this.publishedSnapshots.get(snapshot.repositoryId);
+    this.publishedSnapshots.set(snapshot.repositoryId, snapshot);
+    if (!previous) this.broadcast("repositorySnapshot", snapshot);
+    else {
+      const delta = snapshotDelta(previous, snapshot);
+      if (delta) this.broadcast("repositorySnapshotDelta", delta);
+    }
   }
   private selected(id?: unknown) {
     const selected = typeof id === "string" ? id : this.logId;
@@ -213,7 +243,7 @@ export class RepositoryManager implements vscode.Disposable {
     else {
       entry.cvs = new CvsSession(id, root, guard, (snapshot) => {
         entry.snapshot = snapshot;
-        this.broadcast("repositorySnapshot", snapshot);
+        this.publishSnapshot(snapshot);
       });
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(root, "**/*"),
@@ -232,7 +262,7 @@ export class RepositoryManager implements vscode.Disposable {
       entry.disposables.push(watcher);
     }
     this.publish();
-    void this.refresh(entry, true);
+    void this.refresh(entry, false);
     return id;
   }
   private remove(id: string) {
@@ -242,6 +272,7 @@ export class RepositoryManager implements vscode.Disposable {
     entry.cvs?.dispose();
     for (const disposable of entry.disposables) disposable.dispose();
     this.entries.delete(id);
+    this.publishedSnapshots.delete(id);
     for (const [key, uri] of this.revisionUris)
       if (uri.authority === id) this.revisionUris.delete(key);
     const timer = this.timers.get(id);
@@ -266,6 +297,7 @@ export class RepositoryManager implements vscode.Disposable {
     );
   }
   private async refresh(entry: Entry, network: boolean, paths?: string[]) {
+    if (entry.scanStopped) return;
     try {
       await this.guard(entry);
       if (entry.cvs) {
@@ -289,6 +321,13 @@ export class RepositoryManager implements vscode.Disposable {
         branch: (await git.service.getCurrentBranch()) ?? undefined,
       };
     } catch (error) {
+      if (isScanLimit(error)) {
+        entry.scanStopped = true;
+        void vscode.window.showWarningMessage(
+          `${entry.info.name}: ${localizeError(error)}`,
+        );
+        return;
+      }
       entry.snapshot = {
         ...entry.snapshot,
         error: localizeError(
@@ -296,7 +335,7 @@ export class RepositoryManager implements vscode.Disposable {
         ),
       };
     }
-    this.broadcast("repositorySnapshot", entry.snapshot);
+    this.publishSnapshot(entry.snapshot);
   }
   private async owner(uri?: vscode.Uri) {
     if (!uri || uri.scheme !== "file") return;
@@ -314,6 +353,7 @@ export class RepositoryManager implements vscode.Disposable {
       if (!entry || !uri) return;
       await this.guard(entry);
       this.logId = entry.info.id;
+      this.historyRequest = undefined;
       this.editorOwnerId = entry.info.id;
       this.activeFile = path
         .relative(entry.info.root, uri.fsPath)
@@ -424,6 +464,11 @@ export class RepositoryManager implements vscode.Disposable {
           : "workbench.action.closeSidebar",
       );
     }
+    if (command === "getFileIcons") {
+      const files = this.paths(values.filePaths);
+      if (files.length > 128) throw new Error(vscode.l10n.t("Select files."));
+      return getFileIcons(files);
+    }
     if (command === "getRepositories") return this.state();
     if (command === "selectRepository") {
       const entry = this.selected(repositoryId);
@@ -431,14 +476,13 @@ export class RepositoryManager implements vscode.Disposable {
       if (values.surface === "commit") this.commitId = entry.info.id;
       else this.logId = entry.info.id;
       this.publish();
-      return this.state();
+      return this.metadata();
     }
     if (command === "getRepositoryChanges") return this.state();
     if (command === "refreshRepositories") {
-      await Promise.all(
-        [...this.entries.values()].map((entry) => this.refresh(entry, true)),
-      );
-      return this.state();
+      for (const entry of this.entries.values())
+        await this.refresh(entry, true);
+      return this.metadata();
     }
     if (command === "commitRepositories") return this.commit(values);
     const entry = this.selected(
@@ -477,7 +521,7 @@ export class RepositoryManager implements vscode.Disposable {
           action,
           true,
         );
-      await this.refresh(entry, true);
+      await this.refresh(entry, false);
       return { success: true };
     }
     if (command === "addUnversioned") {
@@ -514,7 +558,8 @@ export class RepositoryManager implements vscode.Disposable {
         repositoryPath(values.filePath),
         String(values.revision),
       );
-    if (command === "getCvsFiles")
+    if (command === "getCvsFiles") {
+      if (!cvs.scanAvailable) return [];
       return await cvs.operate(
         vscode.l10n.t("CVS files"),
         async (adapter) => {
@@ -526,6 +571,7 @@ export class RepositoryManager implements vscode.Disposable {
         false,
         vscode.ProgressLocation.Window,
       );
+    }
     if (command === "showDiffForWorkingFile")
       return cvs.diff(repositoryPath(values.filePath));
     if (command === "rollbackFiles" || command === "openRollbackPanel") {
@@ -735,6 +781,10 @@ export class RepositoryManager implements vscode.Disposable {
         return;
       }
       this.logId = entry.info.id;
+      this.historyRequest = {
+        repositoryId: entry.info.id,
+        sequence: ++this.historySequence,
+      };
       this.editorOwnerId = undefined;
       this.activeFile = undefined;
       if (command === "jettortoise.showFileHistory" && uri) {

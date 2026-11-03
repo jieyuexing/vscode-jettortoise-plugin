@@ -6,9 +6,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CvsHistory } from "../panel/components/CvsHistory";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitApp } from "./App";
+import { ChangeTree } from "./components/ChangeTree";
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("../shared/bridge", () => ({
     },
   },
 }));
+vi.mock("../panel/utils/file-icons", () => ({ IconFolder: () => <svg /> }));
 vi.mock("./utils/file-icon", () => ({
   getCommitFileIcon: () => () => <svg />,
 }));
@@ -142,7 +145,7 @@ describe("本地更改三态", () => {
       ),
     ).toBe(false);
     fireEvent.doubleClick(
-      view.container.querySelector(".changes-tree .commit-file-name")!,
+      view.getByText("app.txt", { selector: ".commit-file-name" }),
     );
     await waitFor(() =>
       expect(mocks.request).toHaveBeenCalledWith(
@@ -345,4 +348,161 @@ describe("D1 narrow local changes", () => {
     fireEvent.click(view.getByRole("button", { name: "More Actions" }));
     expect(view.getByRole("button", { name: "Update Project" })).toBeTruthy();
   });
+});
+
+describe("大变更树", () => {
+  it("只挂载视口行，滚动和 End/ArrowUp 能抵达未挂载文件", async () => {
+    const many = Array.from({ length: 1000 }, (_, i) => ({
+      repositoryId: "a",
+      path: `file-${String(i).padStart(5, "0")}.txt`,
+      status: "modified" as const,
+      staged: false,
+    }));
+    useRepositoryStore.setState({
+      repositories: [repositories[0]],
+      snapshots: [{ repositoryId: "a", files: many }],
+    });
+    const view = render(<ChangeTree onSelect={() => {}} />);
+    expect(view.getByText("file-00000.txt")).toBeTruthy();
+    expect(
+      view.container.querySelectorAll(".changes-file-row").length,
+    ).toBeLessThan(80);
+    const tree = view.getByLabelText("Changed Files");
+    fireEvent.keyDown(tree, { key: "End" });
+    fireEvent.keyDown(tree, { key: "ArrowUp" });
+    fireEvent.keyDown(tree, { key: "ArrowUp" });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain("file-00999.txt"),
+    );
+    fireEvent.keyDown(tree, { key: "Home" });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain("Changes"),
+    );
+    Object.defineProperty(tree, "scrollTop", {
+      configurable: true,
+      value: 10000,
+      writable: true,
+    });
+    fireEvent.scroll(tree);
+    await waitFor(() => expect(view.getByText("file-00500.txt")).toBeTruthy());
+    expect(view.queryByText("file-00000.txt")).toBeNull();
+    expect(
+      view.container.querySelectorAll(".changes-file-row").length,
+    ).toBeLessThan(80);
+  });
+});
+
+it("快照增量更新保留其它仓库、说明与勾选，通知不重新请求全部数据", async () => {
+  useCommitStore.setState({
+    selectedFiles: new Set(['["b","src/cvs.txt"]']),
+    commitMessage: "保留说明",
+  });
+  const view = render(<ChangeTree onSelect={() => {}} />);
+  mocks.request.mockClear();
+  act(() => {
+    for (const receive of mocks.events)
+      receive("repositorySnapshotDelta", {
+        repositoryId: "a",
+        changed: [{ ...files[0], path: "replacement.txt" }],
+        removed: ['["a","app.txt"]'],
+      });
+  });
+  expect(view.queryByText("app.txt")).toBeNull();
+  expect(view.getByText("replacement.txt")).toBeTruthy();
+  expect(view.getByText("cvs.txt")).toBeTruthy();
+  expect(
+    useCommitStore.getState().selectedFiles.has('["b","src/cvs.txt"]'),
+  ).toBe(true);
+  expect(useCommitStore.getState().commitMessage).toBe("保留说明");
+  expect(
+    mocks.request.mock.calls.some(
+      ([command]) => command === "getRepositoryChanges",
+    ),
+  ).toBe(false);
+});
+
+it("CVS 历史挂载和编辑器跟随不联网，显式选文件与打开历史才查询", async () => {
+  mocks.request.mockImplementation(async (command) =>
+    command === "getCvsFiles" ? ["app.txt", "other.txt"] : [],
+  );
+  const view = render(<CvsHistory repositoryId="b" activeFile="app.txt" />);
+  await waitFor(() =>
+    expect(view.getByRole("combobox").textContent).toContain("other.txt"),
+  );
+  expect(
+    mocks.request.mock.calls.some(([command]) => command === "getCvsHistory"),
+  ).toBe(false);
+  view.rerender(<CvsHistory repositoryId="b" activeFile="other.txt" />);
+  await waitFor(() =>
+    expect((view.getByRole("combobox") as HTMLSelectElement).value).toBe(
+      "other.txt",
+    ),
+  );
+  expect(
+    mocks.request.mock.calls.some(([command]) => command === "getCvsHistory"),
+  ).toBe(false);
+  fireEvent.change(view.getByRole("combobox"), {
+    target: { value: "app.txt" },
+  });
+  await waitFor(() =>
+    expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+      repositoryId: "b",
+      filePath: "app.txt",
+    }),
+  );
+  mocks.request.mockClear();
+  view.rerender(
+    <CvsHistory repositoryId="b" activeFile="other.txt" requestId={1} />,
+  );
+  await waitFor(() =>
+    expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+      repositoryId: "b",
+      filePath: "other.txt",
+    }),
+  );
+});
+
+it("仓库按自然名称排序，所有文件保留图标槽，长文件名使用剩余空间", async () => {
+  const repos = ["cvs-10", "cvs-2", "cvs-01"].map((name) => ({
+    id: name,
+    kind: "cvs" as const,
+    root: `/fixture/${name}`,
+    name,
+  }));
+  useRepositoryStore.setState({
+    repositories: repos,
+    snapshots: repos.map((repo) => ({
+      repositoryId: repo.id,
+      files: [
+        {
+          repositoryId: repo.id,
+          path: "app.txt",
+          status: "modified" as const,
+          staged: false,
+        },
+      ],
+    })),
+  });
+  const view = render(<ChangeTree onSelect={() => {}} />);
+  expect(
+    [
+      ...view.container.querySelectorAll(
+        ".changes-row.repository .changes-row-label",
+      ),
+    ].map((n) => n.textContent),
+  ).toEqual(["cvs-01", "cvs-2", "cvs-10"]);
+  expect(view.container.querySelectorAll(".commit-file-icon").length).toBe(3);
+});
+
+it("宿主省略空字段时清除上一次历史请求，自动选仓不会重放旧意图", () => {
+  useRepositoryStore.setState({
+    historyRequest: { repositoryId: "b", sequence: 1 },
+    activeFile: "old.txt",
+  });
+  act(() => {
+    for (const receive of mocks.events)
+      receive("repositoryList", { repositories, logRepositoryId: "a" });
+  });
+  expect(useRepositoryStore.getState().historyRequest).toBeUndefined();
+  expect(useRepositoryStore.getState().activeFile).toBeUndefined();
 });

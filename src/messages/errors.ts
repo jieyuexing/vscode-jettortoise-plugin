@@ -115,3 +115,10 @@ export function localizeError(error: unknown): string {
       : vscode.l10n.t("Forbidden request field: {0}", invalid[2]);
   return message;
 }
+
+/** 超限或无法完成的边界盘点停止本次会话的该段扫描；写入仍独立预检。 */
+export function isScanLimit(error: unknown): boolean {
+  return ["inventoryLimit", "BOUNDARY_UNAVAILABLE", "path"].includes(
+    String((error as { code?: string })?.code),
+  );
+}

@@ -36,11 +36,25 @@ export const canCommit = (file: ChangeFile) =>
 export function initialSelection(_groups: unknown): Set<string> {
   return new Set();
 }
+const repositoryOrder = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+export function compareRepositories(
+  a: RepositoryInfo,
+  b: RepositoryInfo,
+): number {
+  return (
+    repositoryOrder.compare(a.name, b.name) ||
+    a.kind.localeCompare(b.kind) ||
+    a.root.localeCompare(b.root)
+  );
+}
 export function groupChanges(
   repositories: RepositoryInfo[],
   snapshots: RepositorySnapshot[],
 ) {
-  return repositories.map((repository) => {
+  return [...repositories].sort(compareRepositories).map((repository) => {
     const snapshot = snapshots.find(
       (item) => item.repositoryId === repository.id,
     );
@@ -106,4 +120,45 @@ export function groupChanges(
       incomingExpanded: false,
     };
   });
+}
+
+export interface SnapshotDelta extends Omit<RepositorySnapshot, "files"> {
+  changed: ChangeFile[];
+  removed: string[];
+}
+export function snapshotDelta(
+  previous: RepositorySnapshot,
+  next: RepositorySnapshot,
+): SnapshotDelta | undefined {
+  const old = new Map(previous.files.map((file) => [fileKey(file), file]));
+  const changed: ChangeFile[] = [];
+  for (const file of next.files) {
+    const key = fileKey(file),
+      before = old.get(key);
+    if (!before || JSON.stringify(before) !== JSON.stringify(file))
+      changed.push(file);
+    old.delete(key);
+  }
+  const { files: _files, ...metadata } = next;
+  const removed = [...old.keys()];
+  if (
+    !changed.length &&
+    !removed.length &&
+    previous.error === next.error &&
+    previous.refreshing === next.refreshing &&
+    previous.branch === next.branch &&
+    JSON.stringify(previous.nestedPaths) === JSON.stringify(next.nestedPaths)
+  )
+    return;
+  return { ...metadata, changed, removed };
+}
+export function applySnapshotDelta(
+  previous: RepositorySnapshot,
+  delta: SnapshotDelta,
+): RepositorySnapshot {
+  const files = new Map(previous.files.map((file) => [fileKey(file), file]));
+  for (const key of delta.removed) files.delete(key);
+  for (const file of delta.changed) files.set(fileKey(file), file);
+  const { changed: _changed, removed: _removed, ...metadata } = delta;
+  return { ...metadata, files: [...files.values()] };
 }

@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { CvsComparisonResolver } from "../comparison/resolver";
-import { localizeError } from "../messages/errors";
+import { isScanLimit, localizeError } from "../messages/errors";
 import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import type { ChangeFile, RepositorySnapshot } from "../repositories/changes";
 import { hasDirtyEditors } from "../repositories/editor-documents";
@@ -58,11 +58,13 @@ const core = require("./core.mjs") as {
 
 export class CvsSession {
   private readonly queue = new core.SerialQueue();
+  private readonly issuedRevisions = new Set<string>();
   private readonly adapter: Adapter;
   private files: CvsFile[] = [];
   private localTail: Promise<void> = Promise.resolve();
   private network: Promise<void> | undefined;
   private disposed = false;
+  private scanStopped = false;
   private error: string | undefined;
   constructor(
     readonly id: string,
@@ -81,7 +83,14 @@ export class CvsSession {
         await guard();
         if (this.disposed)
           throw new Error(vscode.l10n.t("Repository removed."));
-        return process.run(...args);
+        return process.run(args[0], args[1], args[2], args[3], {
+          ...args[4],
+          beforeStart: async () => {
+            await guard();
+            if (this.disposed)
+              throw new Error(vscode.l10n.t("Repository removed."));
+          },
+        });
       },
     });
   }
@@ -117,8 +126,12 @@ export class CvsSession {
         refreshing,
       });
   }
+  get scanAvailable() {
+    return !this.scanStopped;
+  }
   async refresh(paths?: string[], network = false): Promise<void> {
     const job = async () => {
+      if (this.scanStopped || this.disposed) return;
       await this.guard();
       const previous = new Map(this.files.map((file) => [file.newPath, file]));
       const local = (await this.adapter.localStatus(paths)).map((file) => {
@@ -143,11 +156,11 @@ export class CvsSession {
     };
     const next = this.localTail.then(job, job);
     this.localTail = next.catch((error) => {
-      this.error = cvsErrorText(error);
+      this.refreshError(error);
       this.emit();
     });
     await this.localTail;
-    if (network && !this.network && !this.disposed) {
+    if (network && !this.network && !this.disposed && !this.scanStopped) {
       this.network = this.queue
         .run(async (signal) => {
           await this.guard();
@@ -173,7 +186,7 @@ export class CvsSession {
           this.error = undefined;
         })
         .catch((error) => {
-          this.error = cvsErrorText(error);
+          this.refreshError(error);
         })
         .finally(() => {
           this.network = undefined;
@@ -181,6 +194,16 @@ export class CvsSession {
         });
       this.emit(true);
     }
+  }
+  private refreshError(error: unknown) {
+    if (isScanLimit(error)) {
+      if (!this.scanStopped)
+        void vscode.window.showWarningMessage(
+          `${path.basename(this.root)}: ${cvsErrorText(error)}`,
+        );
+      this.scanStopped = true;
+      this.error = undefined;
+    } else this.error = cvsErrorText(error);
   }
   async operate<T>(
     label: string,
@@ -281,12 +304,14 @@ export class CvsSession {
     );
   }
   private uri(file: string, revision: string) {
-    return vscode.Uri.from({
+    const uri = vscode.Uri.from({
       scheme: "jettortoise",
       authority: this.id,
       path: `/${file}`,
       query: new URLSearchParams({ ref: revision }).toString(),
     });
+    this.issuedRevisions.add(uri.toString());
+    return uri;
   }
   async preview(file: string) {
     return this.operate(
@@ -341,6 +366,12 @@ export class CvsSession {
   }
   async readFile(uri: vscode.Uri) {
     await this.guard();
+    if (!this.issuedRevisions.has(uri.toString()))
+      throw new Error(
+        vscode.l10n.t(
+          "Open the file diff or history again to load CVS revisions.",
+        ),
+      );
     if (uri.authority !== this.id)
       throw new Error(vscode.l10n.t("Repository mismatch."));
     const file = uri.path.slice(1);

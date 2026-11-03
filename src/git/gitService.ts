@@ -10,6 +10,7 @@ import {
   boundariesForPaths,
   NestedRepositoryError,
 } from "../repositories/boundaries.cjs";
+import { runNetwork } from "../repositories/network.cjs";
 import { GitCache } from "./cache";
 import { computeGraphLayout } from "./graphLayout";
 import {
@@ -171,17 +172,18 @@ export class GitService {
     args: string[],
     maxBuffer = MAX_BUFFER,
   ): Promise<string> {
-    await this.ensureAvailable?.();
-    const { stdout } = await execFileAsync("git", args, {
-      cwd: this.cwd,
-      maxBuffer,
-      env: {
-        ...process.env,
-        LC_ALL: "C",
-        GIT_TERMINAL_PROMPT: "0",
-      },
-    });
-    return stdout;
+    const execute = async () => {
+      await this.ensureAvailable?.();
+      const { stdout } = await execFileAsync("git", args, {
+        cwd: this.cwd,
+        maxBuffer,
+        env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
+      });
+      return stdout;
+    };
+    return ["fetch", "pull", "push", "ls-remote", "clone"].includes(args[0])
+      ? runNetwork(execute)
+      : execute();
   }
 
   async checkGitAvailable(): Promise<boolean> {
@@ -1005,23 +1007,27 @@ export class GitService {
     // Repeat the Host identity/editor guard after all asynchronous preflight reads.
     await revalidate();
     await this.assertWholeWorktreeOwned();
-    await execFileAsync(
-      "git",
-      [
-        "pull",
-        "--ff-only",
-        "--no-rebase",
-        "--no-autostash",
-        "--no-recurse-submodules",
-      ],
-      {
-        cwd: this.cwd,
-        maxBuffer: MAX_BUFFER,
-        timeout: 60_000,
-        signal,
-        env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
-      },
-    );
+    await runNetwork(async () => {
+      await revalidate();
+      await this.assertWholeWorktreeOwned();
+      await execFileAsync(
+        "git",
+        [
+          "pull",
+          "--ff-only",
+          "--no-rebase",
+          "--no-autostash",
+          "--no-recurse-submodules",
+        ],
+        {
+          cwd: this.cwd,
+          maxBuffer: MAX_BUFFER,
+          timeout: 60_000,
+          signal,
+          env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
+        },
+      );
+    }, signal);
     this.invalidateCache();
   }
 

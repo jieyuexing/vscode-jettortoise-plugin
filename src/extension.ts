@@ -74,6 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
     "updateProject",
     "openCommitPanel",
     "openHistory",
+    "synchronizeRepository",
     "nextDiff",
     "prevDiff",
     "editSource",

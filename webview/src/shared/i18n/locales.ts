@@ -1,4 +1,8 @@
 export const en = {
+  "Synchronized at {0}": "Synchronized at {0}",
+  "Remove from synchronization": "Remove from synchronization",
+  "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’":
+    "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’",
   Shelf: "Shelf",
   Stash: "Stash",
   "Working Tree": "Working Tree",
@@ -315,6 +319,10 @@ export const en = {
 } as const;
 
 export const zhCn: Partial<Record<keyof typeof en, string>> = {
+  "Synchronized at {0}": "同步于 {0}",
+  "Remove from synchronization": "从同步中移除",
+  "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’":
+    "另有 {0} 个 CVS 仓库未同步，右键「与资源库同步」",
   Shelf: "搁置",
   Stash: "储藏",
   "Working Tree": "工作区",

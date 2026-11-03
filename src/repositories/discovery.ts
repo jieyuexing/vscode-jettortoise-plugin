@@ -249,3 +249,30 @@ export async function discoverRepositoryRoots(
   emit(true);
   return { roots: [...roots.values()], incomplete, cancelled, errors };
 }
+
+/** 菜单只接受独立 CVS 根，连续目录和嵌套 checkout 均不放入口。 */
+export async function isCvsSyncRoot(root: string): Promise<boolean> {
+  try {
+    const [directory, admin, marker, parent] = await Promise.all([
+      fs.lstat(root),
+      fs.lstat(path.join(root, "CVS")),
+      fs.lstat(path.join(root, "CVS", "Root")),
+      fs.lstat(path.join(path.dirname(root), "CVS")).catch((error) => {
+        if (isAbsent(error)) return undefined;
+        throw error;
+      }),
+    ]);
+    return (
+      directory.isDirectory() &&
+      !directory.isSymbolicLink() &&
+      admin.isDirectory() &&
+      !admin.isSymbolicLink() &&
+      marker.isFile() &&
+      !marker.isSymbolicLink() &&
+      !parent
+    );
+  } catch (error) {
+    if (isAbsent(error)) return false;
+    throw error;
+  }
+}

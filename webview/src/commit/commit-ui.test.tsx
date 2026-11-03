@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CvsHistory } from "../panel/components/CvsHistory";
+import { initializeI18n } from "../shared/i18n";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitApp } from "./App";
@@ -100,6 +101,7 @@ beforeEach(() => {
   useRepositoryStore.setState({
     repositories,
     snapshots,
+    unsyncedCvsCount: 0,
     commitRepositoryId: "a",
     logRepositoryId: "a",
     select: async (id) => {
@@ -505,4 +507,50 @@ it("宿主省略空字段时清除上一次历史请求，自动选仓不会重�
   });
   expect(useRepositoryStore.getState().historyRequest).toBeUndefined();
   expect(useRepositoryStore.getState().activeFile).toBeUndefined();
+});
+
+describe("CVS 按需同步", () => {
+  beforeEach(() => initializeI18n("zh-cn"));
+  afterEach(() => initializeI18n("en"));
+  it("显示未同步计数，归零不渲染，纯 CVS 工作区仍显示提示", async () => {
+    useRepositoryStore.setState({ unsyncedCvsCount: 3 });
+    const view = render(<CommitApp />);
+    expect(
+      await view.findByText("另有 3 个 CVS 仓库未同步，右键「与资源库同步」"),
+    ).toBeTruthy();
+    act(() => useRepositoryStore.setState({ unsyncedCvsCount: 0 }));
+    expect(view.queryByText(/另有 .* 个 CVS 仓库未同步/)).toBeNull();
+    act(() =>
+      useRepositoryStore.setState({
+        repositories: [],
+        snapshots: [],
+        unsyncedCvsCount: 2,
+      }),
+    );
+    expect(
+      await view.findByText("另有 2 个 CVS 仓库未同步，右键「与资源库同步」"),
+    ).toBeTruthy();
+    expect(view.queryByText("此工作区没有 Git 或 CVS 仓库。")).toBeNull();
+  });
+  it("CVS 行在分支后显示同步时间并通过已有 bridge 移除，干净仓库也保留行", async () => {
+    useRepositoryStore.setState({
+      repositories: [
+        {
+          ...repositories[1],
+          syncedAt: new Date(2026, 10, 3, 14, 32).getTime(),
+        },
+      ],
+      snapshots: [{ repositoryId: "b", files: [], branch: "GWH_R2_BRANCH" }],
+    });
+    const view = render(<ChangeTree onSelect={() => {}} />);
+    expect(await view.findByText("同步于 14:32")).toBeTruthy();
+    expect(view.getByText("GWH_R2_BRANCH")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "从同步中移除" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith(
+        "removeSynchronizedRepository",
+        { repositoryId: "b" },
+      ),
+    );
+  });
 });

@@ -17,8 +17,13 @@ import { ShelfTab } from "./ShelfTab";
 import { Toolbar } from "./Toolbar";
 
 export function CommitTab() {
-  const { repositories, commitRepositoryId, logRepositoryId, select } =
-    useRepositoryStore();
+  const {
+    repositories,
+    commitRepositoryId,
+    logRepositoryId,
+    select,
+    unsyncedCvsCount = 0,
+  } = useRepositoryStore();
   const state = useCommitStore();
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -94,7 +99,8 @@ export function CommitTab() {
     >
       {!repositories.length ? (
         <div className="changes-empty">
-          {t("No Git or CVS repositories found in this workspace.")}
+          {!unsyncedCvsCount &&
+            t("No Git or CVS repositories found in this workspace.")}
         </div>
       ) : (
         <div
@@ -254,6 +260,20 @@ export function CommitTab() {
               />
               <DiffPreview file={file} files={files} onSelect={selectPreview} />
             </>
+          )}
+        </div>
+      )}
+      {unsyncedCvsCount > 0 && (
+        <div
+          className="changes-unsynced-hint"
+          title={t(
+            "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’",
+            unsyncedCvsCount,
+          )}
+        >
+          {t(
+            "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’",
+            unsyncedCvsCount,
           )}
         </div>
       )}

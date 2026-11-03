@@ -19,5 +19,6 @@
   "contributes.configuration.properties.jettortoise.cvsPath.description": "Path to the CVS executable.",
   "cmd.updateProject": "Update Project",
   "cmd.openCommitPanel": "Commit...",
-  "cmd.openHistory": "Show History"
+  "cmd.openHistory": "Show History",
+  "cmd.synchronizeRepository": "Synchronize with Repository"
 }

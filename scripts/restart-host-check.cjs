@@ -42,7 +42,7 @@ async function main(){
   const sent=[];const subscribers=new Set();let receive;
   connection=manager.connect({postMessage:msg=>{sent.push(msg);for(const fn of subscribers)fn(msg);return Promise.resolve(true)},onDidReceiveMessage:fn=>{receive=fn;return disposable()}});
   const waitFor=(predicate)=>new Promise((resolve,reject)=>{const check=raw=>{const msg=raw.event==='repositorySnapshotDelta'?{event:'repositorySnapshot',data:manager.state().snapshots.find(s=>s.repositoryId===raw.data.repositoryId)}:raw;if(predicate(msg)){clearTimeout(timer);subscribers.delete(check);resolve(msg)}};const timer=setTimeout(()=>{subscribers.delete(check);reject(new Error('snapshot timeout'))},10000);subscribers.add(check);});
-  await manager.scan();await manager.request('refreshRepositories');
+  await manager.scan();await manager.execute('jettortoise.synchronizeRepository',Uri.file(wc));await manager.request('refreshRepositories');
   const state=manager.state();assert.equal(state.repositories.length,3);const a=state.repositories.find(r=>r.root===first),b=state.repositories.find(r=>r.root===second),c=state.repositories.find(r=>r.root===wc);assert.ok(a&&b&&c);
   // 资源命令必须选择右键资源所属仓库，不能沿用前一个编辑器/提交区的仓库。
   for (const command of ['jettortoise.updateProject', 'jettortoise.openCommitPanel', 'jettortoise.openHistory'])
@@ -200,8 +200,11 @@ async function main(){
   try{
     require(activationBundle).activate({extensionUri:Uri.file(process.cwd()),subscriptions:activationSubscriptions});
     const restoredRead=textProvider.provideTextDocumentContent(baseUri);await discoveryReady;releaseDiscovery();
-    await assert.rejects(restoredRead,/Open the file diff or history again/);
+    await assert.rejects(restoredRead,/Select an available repository/);
     const restoredManagerForDiff=registeredViews[0].manager;
+    assert.ok(restoredManagerForDiff.repositories.every(repo=>repo.kind==='git'),'new window retained CVS synchronization');
+    await restoredManagerForDiff.execute('jettortoise.synchronizeRepository',Uri.file(wc));
+    await assert.rejects(textProvider.provideTextDocumentContent(baseUri),/Open the file diff or history again/);
     await restoredManagerForDiff.request('showDiffForWorkingFile',{repositoryId:c.id,filePath:'same.txt',staged:false});
     assert.equal(await textProvider.provideTextDocumentContent(baseUri),'CVS selected text\n');
     assert.equal(Buffer.from(await fileProvider.readFile(baseUri)).toString(),'CVS selected text\n');

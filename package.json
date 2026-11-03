@@ -3,7 +3,7 @@
   "displayName": "%category.jettortoise%",
   "publisher": "jieyuexing",
   "description": "%description%",
-  "version": "0.6.8",
+  "version": "0.6.9-desk.1",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
@@ -175,6 +175,11 @@
         "command": "jettortoise.openHistory",
         "title": "%cmd.openHistory%",
         "category": "%category.jettortoise%"
+      },
+      {
+        "command": "jettortoise.synchronizeRepository",
+        "title": "%cmd.synchronizeRepository%",
+        "category": "%category.jettortoise%"
       }
     ],
     "menus": {
@@ -210,6 +215,11 @@
           "command": "jettortoise.showFileHistory",
           "when": "!explorerResourceIsFolder",
           "group": "git@1"
+        },
+        {
+          "command": "jettortoise.synchronizeRepository",
+          "when": "explorerResourceIsFolder && resourceScheme == file && resourcePath in jettortoise.cvsSyncRoots",
+          "group": "zz_jettortoise@1"
         }
       ]
     },

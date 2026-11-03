@@ -10,6 +10,7 @@ import {
 export interface WorkspaceState {
   repositories: RepositoryInfo[];
   snapshots: RepositorySnapshot[];
+  unsyncedCvsCount?: number;
   logRepositoryId?: string;
   commitRepositoryId?: string;
   activeFile?: string;
@@ -33,6 +34,7 @@ function bind(state: WorkspaceState) {
 export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   repositories: [],
   snapshots: [],
+  unsyncedCvsCount: 0,
   ready: false,
   apply(state) {
     bind(state);

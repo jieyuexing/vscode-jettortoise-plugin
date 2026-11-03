@@ -4,6 +4,7 @@ export interface RepositoryInfo {
   kind: RepositoryKind;
   root: string;
   name: string;
+  syncedAt?: number;
 }
 export interface ChangeFile {
   repositoryId: string;

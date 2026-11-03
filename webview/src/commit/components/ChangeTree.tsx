@@ -12,6 +12,7 @@ import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 import { CommitFileContextMenu } from "./CommitFileContextMenu";
 import { FileItem } from "./FileItem";
+import { ToolbarButton } from "./Toolbar";
 
 export async function changeAction(fn: () => Promise<unknown>) {
   try {
@@ -246,7 +247,10 @@ export function ChangeTree({
       for (const group of groups) {
         if (
           !group[kind].length &&
-          !(kind === "changes" && (group.error || group.refreshing))
+          !(
+            kind === "changes" &&
+            (group.error || group.refreshing || group.syncedAt !== undefined)
+          )
         )
           continue;
         const key = `repository:${kind}:${group.id}`;
@@ -267,6 +271,32 @@ export function ChangeTree({
                 {fileCount(group[kind].length)}
               </span>
               {branch && <span className="changes-branch">{branch}</span>}
+              {group.kind === "cvs" && group.syncedAt !== undefined && (
+                <>
+                  <span className="changes-synced-at">
+                    {t(
+                      "Synchronized at {0}",
+                      new Date(group.syncedAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      }),
+                    )}
+                  </span>
+                  <ToolbarButton
+                    label={t("Remove from synchronization")}
+                    path="M4 4l8 8M12 4l-8 8"
+                    className="changes-remove-sync"
+                    action={() =>
+                      void changeAction(() =>
+                        bridge.request("removeSynchronizedRepository", {
+                          repositoryId: group.id,
+                        }),
+                      )
+                    }
+                  />
+                </>
+              )}
             </>
           ),
         });

@@ -36,6 +36,37 @@ interface ToolbarProps {
   onTogglePreview: () => void;
   previewVisible: boolean;
 }
+/** 树行和工具栏共用图标按钮，显隐与尺寸由所在容器控制。 */
+export function ToolbarButton({
+  label,
+  path,
+  action,
+  disabled = false,
+  active,
+  className = "",
+}: {
+  label: string;
+  path: string;
+  action: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      className={`${className} ${active ? "active" : ""}`}
+      aria-pressed={active}
+      onClick={action}
+    >
+      <Icon path={path} />
+    </button>
+  );
+}
+
 export function Toolbar(props: ToolbarProps) {
   const state = useCommitStore();
   const [more, setMore] = useState(false);
@@ -46,17 +77,13 @@ export function Toolbar(props: ToolbarProps) {
     disabled = false,
     active = false,
   ) => (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
+    <ToolbarButton
+      label={label}
+      path={path}
+      action={action}
       disabled={disabled}
-      className={active ? "active" : ""}
-      aria-pressed={active}
-      onClick={action}
-    >
-      <Icon path={path} />
-    </button>
+      active={active}
+    />
   );
   const primary = (
     <>

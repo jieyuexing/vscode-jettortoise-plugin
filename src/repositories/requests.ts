@@ -5,6 +5,7 @@ const fields: Record<string, readonly string[]> = {
   getFileIcons: ["filePaths"],
   getRepositoryChanges: [],
   refreshRepositories: [],
+  removeSynchronizedRepository: [],
   collapseLocalChanges: [],
   selectRepository: ["surface"],
   commitRepositories: ["message", "files", "amend"],

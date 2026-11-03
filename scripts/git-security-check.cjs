@@ -116,8 +116,8 @@ async function main() {
     await fs.mkdir(path.join(workspace, "目录"));
     await service.saveMergedContent(unicodePath, "safe\n");
     await service.stageFile(unicodePath);
-    const staged = git(workspace, ["diff", "--cached", "--name-only"]).trim();
-    if (!staged.split("\n").includes(unicodePath)) throw new Error("Valid Unicode path was not staged");
+    const staged = git(workspace, ["diff", "--cached", "--name-only", "-z"]);
+    if (!staged.split("\0").includes(unicodePath)) throw new Error("Valid Unicode path was not staged");
     await service.importPatchAsShelf("Safe shelf", "diff --git a/a.txt b/a.txt\n");
     if (!(await service.getIdeaShelves()).some((entry) => entry.name === "Safe_shelf")) {
       throw new Error("Valid shelf was not readable");

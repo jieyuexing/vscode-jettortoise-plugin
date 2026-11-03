@@ -17,7 +17,11 @@ import {
 } from "./boundaries.cjs";
 import type { ChangeFile, RepositoryInfo, RepositorySnapshot } from "./changes";
 import { canCommit, compareRepositories, snapshotDelta } from "./changes";
-import { discoverRepositoryRoots } from "./discovery";
+import {
+  discoverRepositoryRoots,
+  isCvsSyncRoot,
+  readRepositoryReference,
+} from "./discovery";
 import { hasDirtyEditors } from "./editor-documents";
 import { repositoryPath, validateRepositoryRequest } from "./requests";
 
@@ -41,6 +45,7 @@ export class RepositoryManager implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private roots: string[] = [];
+  private syncRoots = new Set<string>();
   private scanController?: AbortController;
   private logId?: string;
   private commitId?: string;
@@ -79,15 +84,27 @@ export class RepositoryManager implements vscode.Disposable {
       }),
     );
   }
+  private listed(entry: Entry) {
+    return entry.info.kind === "git" || entry.info.syncedAt !== undefined;
+  }
   get repositories() {
     return [...this.entries.values()]
+      .filter((entry) => this.listed(entry))
       .map((entry) => entry.info)
       .sort(compareRepositories);
   }
   state() {
     return {
       repositories: this.repositories,
-      snapshots: [...this.entries.values()].map((entry) => entry.snapshot),
+      snapshots: [...this.entries.values()]
+        .filter((entry) => this.listed(entry))
+        .map((entry) => entry.snapshot),
+      unsyncedCvsCount: [...this.entries.values()].filter(
+        (entry) =>
+          entry.info.kind === "cvs" &&
+          !this.listed(entry) &&
+          this.syncRoots.has(entry.info.root),
+      ).length,
       logRepositoryId: this.logId,
       commitRepositoryId: this.commitId,
       historyRequest: this.historyRequest,
@@ -118,7 +135,7 @@ export class RepositoryManager implements vscode.Disposable {
   private selected(id?: unknown) {
     const selected = typeof id === "string" ? id : this.logId;
     const entry = selected ? this.entries.get(selected) : undefined;
-    if (!entry)
+    if (!entry || !this.listed(entry))
       throw new Error(vscode.l10n.t("Select an available repository."));
     return entry;
   }
@@ -199,7 +216,28 @@ export class RepositoryManager implements vscode.Disposable {
     if (controller.signal.aborted || this.disposed) return;
     if (!incomplete)
       for (const id of this.entries.keys()) if (!seen.has(id)) this.remove(id);
-    if (!this.logId || !this.entries.has(this.logId))
+    this.syncRoots = new Set(
+      (
+        await Promise.all(
+          [...this.entries.values()]
+            .filter((entry) => entry.info.kind === "cvs")
+            .map(async (entry) =>
+              (await isCvsSyncRoot(entry.info.root))
+                ? entry.info.root
+                : undefined,
+            ),
+        )
+      ).filter((root): root is string => root !== undefined),
+    );
+    await vscode.commands.executeCommand(
+      "setContext",
+      "jettortoise.cvsSyncRoots",
+      [...this.syncRoots].map((root) => vscode.Uri.file(root).path),
+    );
+    if (
+      !this.logId ||
+      !this.repositories.some((repo) => repo.id === this.logId)
+    )
       this.logId = this.repositories[0]?.id;
     if (this.commitId && !this.entries.has(this.commitId))
       this.commitId = undefined;
@@ -242,8 +280,9 @@ export class RepositoryManager implements vscode.Disposable {
       );
     else {
       entry.cvs = new CvsSession(id, root, guard, (snapshot) => {
-        entry.snapshot = snapshot;
-        this.publishSnapshot(snapshot);
+        if (this.entries.get(id) !== entry || !this.listed(entry)) return;
+        entry.snapshot = { ...snapshot, branch: entry.snapshot.branch };
+        this.publishSnapshot(entry.snapshot);
       });
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(root, "**/*"),
@@ -254,9 +293,8 @@ export class RepositoryManager implements vscode.Disposable {
         watcher.onDidDelete,
       ])
         entry.disposables.push(
-          subscribe((uri) => {
-            if (uri.path.includes("/CVS/") || uri.path.endsWith("/CVS"))
-              this.schedule(entry);
+          subscribe(() => {
+            if (this.listed(entry)) this.schedule(entry);
           }),
         );
       entry.disposables.push(watcher);
@@ -297,7 +335,7 @@ export class RepositoryManager implements vscode.Disposable {
     );
   }
   private async refresh(entry: Entry, network: boolean, paths?: string[]) {
-    if (entry.scanStopped) return;
+    if (entry.scanStopped || !this.listed(entry)) return;
     try {
       await this.guard(entry);
       if (entry.cvs) {
@@ -350,7 +388,7 @@ export class RepositoryManager implements vscode.Disposable {
   private async follow(uri?: vscode.Uri) {
     try {
       const entry = await this.owner(uri);
-      if (!entry || !uri) return;
+      if (!entry || !uri || !this.listed(entry)) return;
       await this.guard(entry);
       this.logId = entry.info.id;
       this.historyRequest = undefined;
@@ -470,6 +508,20 @@ export class RepositoryManager implements vscode.Disposable {
       return getFileIcons(files);
     }
     if (command === "getRepositories") return this.state();
+    if (command === "removeSynchronizedRepository") {
+      const entry = this.selected(repositoryId);
+      await this.guard(entry);
+      if (entry.info.kind !== "cvs")
+        throw new Error(vscode.l10n.t("Select a CVS repository root."));
+      const { root } = entry.info;
+      this.remove(entry.info.id);
+      this.add("cvs", root);
+      if (this.commitId === entry.info.id) this.commitId = undefined;
+      if (this.logId === entry.info.id) this.logId = this.repositories[0]?.id;
+      this.historyRequest = undefined;
+      this.publish();
+      return this.metadata();
+    }
     if (command === "selectRepository") {
       const entry = this.selected(repositoryId);
       await this.guard(entry);
@@ -750,6 +802,32 @@ export class RepositoryManager implements vscode.Disposable {
     return content;
   }
   async execute(command: string, ...args: unknown[]) {
+    if (command === "jettortoise.synchronizeRepository") {
+      const uri = args[0] as vscode.Uri | undefined;
+      const entry =
+        uri?.scheme === "file"
+          ? [...this.entries.values()].find(
+              (item) =>
+                item.info.kind === "cvs" && item.info.root === uri.fsPath,
+            )
+          : undefined;
+      if (!entry || !(await isCvsSyncRoot(entry.info.root)))
+        throw new Error(vscode.l10n.t("Select a CVS repository root."));
+      await this.guard(entry);
+      const tag = await readRepositoryReference("cvs", entry.info.root);
+      entry.snapshot.branch =
+        tag && /^[TN]/.test(tag) ? tag.slice(1) : undefined;
+      entry.info = { ...entry.info, syncedAt: Date.now() };
+      this.commitId = this.logId = entry.info.id;
+      this.historyRequest = undefined;
+      this.editorOwnerId = undefined;
+      this.activeFile = undefined;
+      this.publish();
+      await vscode.commands.executeCommand("jettortoise.commitPanel.focus");
+      await vscode.commands.executeCommand("jettortoise.gitLog.focus");
+      await this.refresh(entry, true);
+      return;
+    }
     if (
       [
         "jettortoise.updateProject",
@@ -769,7 +847,7 @@ export class RepositoryManager implements vscode.Disposable {
               ? this.commitId
               : undefined,
           );
-      if (!entry)
+      if (!entry || !this.listed(entry))
         throw new Error(vscode.l10n.t("Select an available repository."));
       await this.guard(entry);
       if (command === "jettortoise.updateProject")

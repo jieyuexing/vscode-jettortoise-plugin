@@ -546,10 +546,19 @@ input:focus-visible {
   margin-left: 6px;
 }
 .changes-branch {
+  min-width: 0;
+  flex-shrink: 1000000000;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.changes-row.repository :is(.changes-count, .changes-synced-at) {
+  min-width: 0;
+  flex-shrink: 1000;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .changes-tag {
+  flex: none;
   font-size: 10px;
   color: var(--dim);
   border: 1px solid var(--line);
@@ -1026,9 +1035,6 @@ body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 0;
-}
-.changes-row:has(.changes-synced-at) .changes-branch {
-  flex-shrink: 1000;
 }
 .changes-row .changes-remove-sync {
   display: flex;

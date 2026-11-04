@@ -31,3 +31,21 @@ assert.ok(groups.every(g=>![...g.changes,...g.unversioned,...g.incoming].some(f=
 assert.equal(groups[0].unversionedExpanded,false);
 assert.equal(groups[1].incomingExpanded,false);
 process.stdout.write("Repository/directory grouping, lazy directories, exclusions and selection checks passed.\n");
+
+// 其它仓库的通知不能反复展开六万条未变化的根仓文件。
+let pathReads = 0;
+const large = {
+  repositoryId: 'a',
+  files: Array.from({length: 60000}, (_, index) => ({
+    repositoryId: 'a', status: 'modified', staged: false,
+    get path() { pathReads++; return `files/${index}.txt`; },
+  })),
+};
+const first = groupChanges(repos, [large, {repositoryId:'b', files:[]}]);
+const reads = pathReads;
+const second = groupChanges(repos, [large, {repositoryId:'b', files:[f('other.txt')]}]);
+assert.equal(second[0].count, 60000);
+assert.equal(second[1].count, 1);
+assert.equal(pathReads, reads, 'unrelated repository rebuilt all root files');
+assert.equal(second[0].changes, first[0].changes, 'unchanged file groups were recreated');
+console.log('Large repository grouping stays incremental across other repositories.');

@@ -31,11 +31,23 @@ function bind(state: WorkspaceState) {
   const repository = state.repositories.find((item) => item.id === id);
   setBridgeRepository(id, repository?.kind);
 }
+// 首次绘制直接使用宿主 HTML 中的无文件摘要，完整状态仍走原消息通道。
+const initialWorkspace = (() => {
+  const value = document.getElementById("root")?.dataset.workspace;
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value) as WorkspaceState;
+  } catch {
+    return undefined;
+  }
+})();
+if (initialWorkspace) bind(initialWorkspace);
 export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   repositories: [],
   snapshots: [],
   unsyncedCvsCount: 0,
-  ready: false,
+  ...initialWorkspace,
+  ready: !!initialWorkspace,
   apply(state) {
     bind(state);
     set({

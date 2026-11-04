@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getFileIcon,
   IconFolder,
@@ -34,6 +34,7 @@ export interface FileTreeNode {
 
 export function buildFileTree(files: DiffFile[]): FileTreeNode[] {
   const roots: FileTreeNode[] = [];
+  const byPath = new Map<string, FileTreeNode>();
 
   for (const file of files) {
     const filePath = file.newPath || file.oldPath;
@@ -45,12 +46,8 @@ export function buildFileTree(files: DiffFile[]): FileTreeNode[] {
       const isLast = i === segments.length - 1;
       const fullPath = segments.slice(0, i + 1).join("/");
 
-      let existing = siblings.find(
-        (n) => n.name === seg && n.isLeaf === isLast,
-      );
-      if (!existing && !isLast) {
-        existing = siblings.find((n) => n.name === seg && !n.isLeaf);
-      }
+      const key = `${isLast ? "file" : "dir"}:${fullPath}`;
+      const existing = byPath.get(key);
 
       if (existing) {
         siblings = existing.children;
@@ -63,6 +60,7 @@ export function buildFileTree(files: DiffFile[]): FileTreeNode[] {
           file: isLast ? file : undefined,
           fileCount: 0,
         };
+        byPath.set(key, node);
         siblings.push(node);
         siblings = node.children;
       }
@@ -89,10 +87,11 @@ function computeFileCount(nodes: FileTreeNode[]): number {
   return total;
 }
 
+const fileOrder = new Intl.Collator(undefined, { sensitivity: "base" });
 function sortFileTreeNodes(nodes: FileTreeNode[]): void {
   nodes.sort((a, b) => {
     if (a.isLeaf !== b.isLeaf) return a.isLeaf ? 1 : -1;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    return fileOrder.compare(a.name, b.name);
   });
   for (const node of nodes) {
     if (!node.isLeaf && node.children.length > 0) {
@@ -149,6 +148,7 @@ export function collectVisibleFilePaths(
 // ---------------------------------------------------------------------------
 
 export interface FileTreeProps {
+  virtualized?: boolean;
   files: DiffFile[];
   viewMode: "tree" | "flat";
   selectedFiles: string[];
@@ -167,6 +167,7 @@ export interface FileTreeProps {
 // ---------------------------------------------------------------------------
 
 export function FileTree({
+  virtualized = false,
   files,
   viewMode,
   selectedFiles,
@@ -181,6 +182,23 @@ export function FileTree({
 }: FileTreeProps) {
   const tree = useMemo(() => buildFileTree(files), [files]);
 
+  if (virtualized)
+    return (
+      <VirtualFileTree
+        tree={tree}
+        files={files}
+        viewMode={viewMode}
+        selectedFiles={selectedFiles}
+        onFileClick={onFileClick}
+        onFileDoubleClick={onFileDoubleClick}
+        onFileContextMenu={onFileContextMenu}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        renderExtraColumns={renderExtraColumns}
+        renderDirExtra={renderDirExtra}
+        statusColorOverride={statusColorOverride}
+      />
+    );
   if (viewMode === "tree") {
     return (
       <TreeView
@@ -209,6 +227,123 @@ export function FileTree({
       renderExtraColumns={renderExtraColumns}
       statusColorOverride={statusColorOverride}
     />
+  );
+}
+
+// 沿用提交树的固定行高窗口，只创建可见 DOM；折叠和选择仍使用完整文件模型。
+function VirtualFileTree({
+  tree,
+  ...props
+}: FileTreeProps & { tree: FileTreeNode[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({
+    top: 0,
+    height: 400,
+    rowHeight: 22,
+  });
+  const rows = useMemo(() => {
+    const result: { node: FileTreeNode; depth: number }[] = [];
+    const visit = (nodes: FileTreeNode[], depth: number) => {
+      for (const node of nodes) {
+        result.push({ node, depth });
+        if (!node.isLeaf && !props.collapsed?.[node.fullPath])
+          visit(node.children, depth + 1);
+      }
+    };
+    if (props.viewMode === "tree") visit(tree, 0);
+    else {
+      for (const file of props.files) {
+        const fullPath = file.newPath || file.oldPath;
+        result.push({
+          node: {
+            name: fullPath.split("/").pop() ?? fullPath,
+            fullPath,
+            children: [],
+            file,
+            isLeaf: true,
+            fileCount: 1,
+          },
+          depth: 0,
+        });
+      }
+      result.sort((a, b) => fileOrder.compare(a.node.name, b.node.name));
+    }
+    return result;
+  }, [tree, props.files, props.viewMode, props.collapsed]);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const resize = () =>
+      setViewport((value) => ({
+        ...value,
+        height: element.clientHeight || 400,
+        rowHeight:
+          Number.parseFloat(
+            getComputedStyle(element).getPropertyValue("--etech-row-height"),
+          ) || 22,
+      }));
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const max = Math.max(0, rows.length * viewport.rowHeight - viewport.height);
+    if (viewport.top > max) {
+      if (ref.current) ref.current.scrollTop = max;
+      setViewport((value) => ({ ...value, top: max }));
+    }
+  }, [rows.length, viewport.height, viewport.rowHeight, viewport.top]);
+  const start = Math.max(
+    0,
+    Math.min(
+      rows.length - 1,
+      Math.floor(viewport.top / viewport.rowHeight) - 6,
+    ),
+  );
+  const end = Math.min(
+    rows.length,
+    Math.ceil((viewport.top + viewport.height) / viewport.rowHeight) + 6,
+  );
+  return (
+    <div
+      ref={ref}
+      className="virtual-file-tree"
+      style={{ height: "100%", overflow: "auto", overflowX: "hidden" }}
+      onScroll={(event) => {
+        const top = event.currentTarget.scrollTop;
+        setViewport((value) => ({ ...value, top }));
+      }}
+    >
+      <div
+        style={{
+          height: rows.length * viewport.rowHeight,
+          position: "relative",
+        }}
+      >
+        {rows.slice(start, end).map(({ node, depth }, offset) => (
+          <div
+            key={node.fullPath}
+            style={{
+              position: "absolute",
+              top: (start + offset) * viewport.rowHeight,
+              height: viewport.rowHeight,
+              width: "100%",
+            }}
+          >
+            <FileTreeNodeView
+              {...props}
+              node={node}
+              depth={depth}
+              collapsed={props.collapsed ?? {}}
+              onToggle={props.onToggle ?? (() => {})}
+              shallow
+              flat={props.viewMode === "flat"}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -264,6 +399,8 @@ function TreeView({
 }
 
 function FileTreeNodeView({
+  shallow,
+  flat,
   node,
   depth,
   collapsed,
@@ -276,6 +413,8 @@ function FileTreeNodeView({
   renderDirExtra,
   statusColorOverride,
 }: {
+  shallow?: boolean;
+  flat?: boolean;
   node: FileTreeNode;
   depth: number;
   collapsed: Record<string, boolean>;
@@ -294,6 +433,9 @@ function FileTreeNodeView({
       <FileRow
         file={node.file}
         name={node.name}
+        directoryHint={
+          flat ? filePath.split("/").slice(0, -1).join("/") : undefined
+        }
         depth={depth}
         isSelected={selectedFiles.includes(filePath)}
         onClick={(e) => node.file && onFileClick(e, node.file)}
@@ -370,7 +512,7 @@ function FileTreeNodeView({
           </span>
         )}
       </div>
-      {!isCollapsed && (
+      {!shallow && !isCollapsed && (
         <TreeView
           nodes={node.children}
           depth={depth + 1}
@@ -497,7 +639,7 @@ function FlatView({
     return [...files].sort((a, b) => {
       const nameA = (a.newPath || a.oldPath).split("/").pop() ?? "";
       const nameB = (b.newPath || b.oldPath).split("/").pop() ?? "";
-      return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+      return fileOrder.compare(nameA, nameB);
     });
   }, [files]);
 

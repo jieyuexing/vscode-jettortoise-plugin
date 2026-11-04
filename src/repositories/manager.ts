@@ -33,6 +33,7 @@ interface Entry {
   snapshot: RepositorySnapshot;
   disposables: vscode.Disposable[];
   scanStopped?: boolean;
+  refreshTask?: Promise<void>;
 }
 export class RepositoryManager implements vscode.Disposable {
   private readonly revisionChanges = new vscode.EventEmitter<vscode.Uri>();
@@ -54,6 +55,10 @@ export class RepositoryManager implements vscode.Disposable {
   private historySequence = 0;
   private editorOwnerId?: string;
   private disposed = false;
+  private publishTimer?: ReturnType<typeof setTimeout>;
+  private localActive = 0;
+  private readonly localWaiters: (() => void)[] = [];
+  private readonly streams = new Map<vscode.Webview, Map<string, symbol>>();
   constructor(private readonly context: vscode.ExtensionContext) {
     const configuration = vscode.workspace.onDidChangeConfiguration?.(
       (event) => {
@@ -121,15 +126,88 @@ export class RepositoryManager implements vscode.Disposable {
     return metadata;
   }
   private publish() {
-    this.broadcast("repositoryList", this.metadata());
+    if (this.publishTimer || this.disposed) return;
+    this.publishTimer = setTimeout(() => {
+      this.publishTimer = undefined;
+      if (!this.disposed) this.broadcast("repositoryList", this.metadata());
+    }, 50);
+  }
+  private summary(snapshot: RepositorySnapshot): RepositorySnapshot {
+    return {
+      ...snapshot,
+      files: [],
+      refreshing: snapshot.files.length > 0 || snapshot.refreshing,
+    };
+  }
+  summaryState(workspace = this.state()) {
+    return {
+      ...workspace,
+      snapshots: workspace.snapshots.map((snapshot) => this.summary(snapshot)),
+    };
+  }
+  private async streamSnapshot(
+    view: vscode.Webview,
+    snapshot: RepositorySnapshot,
+  ) {
+    const streams = this.streams.get(view);
+    if (!streams) return;
+    const token = Symbol();
+    streams.set(snapshot.repositoryId, token);
+    await view.postMessage({
+      type: "event",
+      event: "repositorySnapshot",
+      data: this.summary(snapshot),
+    });
+    for (let start = 0; start < snapshot.files.length; start += 5000) {
+      // 让摘要先绘制；每批只携带有界文件，关闭或新快照会取消旧批次。
+      await new Promise((resolve) => setTimeout(resolve, 16));
+      if (
+        this.streams.get(view) !== streams ||
+        streams.get(snapshot.repositoryId) !== token
+      )
+        return;
+      const { files, ...metadata } = snapshot;
+      await view.postMessage({
+        type: "event",
+        event: "repositorySnapshotDelta",
+        data: {
+          ...metadata,
+          changed: files.slice(start, start + 5000),
+          removed: [],
+          refreshing: start + 5000 < files.length || snapshot.refreshing,
+        },
+      });
+    }
+    if (streams.get(snapshot.repositoryId) === token)
+      streams.delete(snapshot.repositoryId);
   }
   private publishSnapshot(snapshot: RepositorySnapshot) {
     const previous = this.publishedSnapshots.get(snapshot.repositoryId);
     this.publishedSnapshots.set(snapshot.repositoryId, snapshot);
-    if (!previous) this.broadcast("repositorySnapshot", snapshot);
-    else {
-      const delta = snapshotDelta(previous, snapshot);
-      if (delta) this.broadcast("repositorySnapshotDelta", delta);
+    const delta = previous ? snapshotDelta(previous, snapshot) : undefined;
+    for (const view of this.views) {
+      if (
+        (this.streams.get(view)?.has(snapshot.repositoryId) && delta) ||
+        (snapshot.files.length > 5000 &&
+          (!previous ||
+            (delta?.changed.length ?? 0) > 5000 ||
+            (delta?.removed.length ?? 0) > 5000))
+      ) {
+        void this.streamSnapshot(view, snapshot);
+      } else if (!previous) {
+        void view.postMessage({
+          type: "event",
+          event: "repositorySnapshot",
+          data: snapshot,
+        });
+      } else if (delta) {
+        this.streams.get(view)?.delete(snapshot.repositoryId);
+        void view.postMessage({
+          type: "event",
+          event: "repositorySnapshotDelta",
+          data: delta,
+        });
+      }
     }
   }
   private selected(id?: unknown) {
@@ -253,7 +331,7 @@ export class RepositoryManager implements vscode.Disposable {
     const info = { id, kind, root, name: path.basename(root) };
     const entry: Entry = {
       info,
-      snapshot: { repositoryId: id, files: [] },
+      snapshot: { repositoryId: id, files: [], refreshing: kind === "git" },
       disposables: [],
     };
     this.entries.set(id, entry);
@@ -306,6 +384,7 @@ export class RepositoryManager implements vscode.Disposable {
     return id;
   }
   private remove(id: string) {
+    for (const streams of this.streams.values()) streams.delete(id);
     const entry = this.entries.get(id);
     if (!entry) return;
     entry.git?.dispose();
@@ -337,7 +416,38 @@ export class RepositoryManager implements vscode.Disposable {
     );
   }
   private async refresh(entry: Entry, network: boolean, paths?: string[]) {
-    if (entry.scanStopped || !this.listed(entry)) return;
+    // CVS 已有串行本地／网络队列，不能让网络等待占用 Git 本地槽位。
+    if (entry.cvs) return this.refreshNow(entry, network, paths);
+    if (entry.refreshTask && !network && !paths?.length)
+      return entry.refreshTask;
+    const run = async () => {
+      if (this.localActive >= 4)
+        await new Promise<void>((resolve) => this.localWaiters.push(resolve));
+      else this.localActive++;
+      try {
+        await this.refreshNow(entry, network, paths);
+      } finally {
+        const next = this.localWaiters.shift();
+        if (next) next();
+        else this.localActive--;
+      }
+    };
+    const task = run();
+    entry.refreshTask = task;
+    try {
+      await task;
+    } finally {
+      if (entry.refreshTask === task) entry.refreshTask = undefined;
+    }
+  }
+  private async refreshNow(entry: Entry, network: boolean, paths?: string[]) {
+    if (
+      this.disposed ||
+      this.entries.get(entry.info.id) !== entry ||
+      entry.scanStopped ||
+      !this.listed(entry)
+    )
+      return;
     try {
       await this.guard(entry);
       if (entry.cvs) {
@@ -366,12 +476,14 @@ export class RepositoryManager implements vscode.Disposable {
         entry.snapshot = {
           ...entry.snapshot,
           error: undefined,
+          refreshing: false,
           scanPaused: true,
         };
       } else
         entry.snapshot = {
           ...entry.snapshot,
           scanPaused: undefined,
+          refreshing: false,
           error: localizeError(
             error instanceof Error ? error : "Repository refresh failed.",
           ),
@@ -408,6 +520,11 @@ export class RepositoryManager implements vscode.Disposable {
   }
   private async saved(uri: vscode.Uri) {
     try {
+      await Promise.all(
+        [...this.entries.values()]
+          .filter((entry) => entry.git && within(entry.info.root, uri.fsPath))
+          .map((entry) => entry.git?.saved(uri)),
+      );
       const entry = await this.owner(uri);
       if (entry?.cvs) {
         const name = path
@@ -422,6 +539,7 @@ export class RepositoryManager implements vscode.Disposable {
   }
   connect(view: vscode.Webview): vscode.Disposable {
     this.views.add(view);
+    this.streams.set(view, new Map());
     const subscription = view.onDidReceiveMessage(async (raw: unknown) => {
       if (!raw || typeof raw !== "object") return;
       const msg = raw as {
@@ -454,13 +572,24 @@ export class RepositoryManager implements vscode.Disposable {
               throw new Error(vscode.l10n.t("Webview is no longer active."));
           },
         );
-        if (this.views.has(view))
-          void view.postMessage({
+        if (this.views.has(view)) {
+          const initial =
+            msg.command === "getRepositories" ||
+            msg.command === "getRepositoryChanges";
+          const workspace = data as ReturnType<RepositoryManager["state"]>;
+          await view.postMessage({
             type: "response",
             id: msg.id,
             success: true,
-            data,
+            data: initial ? this.summaryState(workspace) : data,
           });
+          if (initial)
+            for (const snapshot of workspace.snapshots) {
+              const entry = this.entries.get(snapshot.repositoryId);
+              if (entry && this.listed(entry))
+                void this.streamSnapshot(view, entry.snapshot);
+            }
+        }
       } catch (error) {
         if (this.views.has(view))
           void view.postMessage({
@@ -480,6 +609,7 @@ export class RepositoryManager implements vscode.Disposable {
       dispose: () => {
         subscription.dispose();
         this.views.delete(view);
+        this.streams.delete(view);
       },
     };
   }
@@ -898,6 +1028,8 @@ export class RepositoryManager implements vscode.Disposable {
   }
   dispose() {
     this.disposed = true;
+    if (this.publishTimer) clearTimeout(this.publishTimer);
+    this.streams.clear();
     this.scanController?.abort();
     for (const id of this.entries.keys()) this.remove(id);
     for (const item of this.disposables) item.dispose();

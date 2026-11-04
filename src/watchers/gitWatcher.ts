@@ -20,9 +20,10 @@ export class GitWatcher implements vscode.Disposable {
     private readonly cache: GitCache,
     private readonly ensureAvailable?: () => Promise<void>,
     watchFiles = true,
+    watchEditors = true,
   ) {
     if (watchFiles) this.setupFileWatchers();
-    this.setupEditorWatchers();
+    if (watchEditors) this.setupEditorWatchers();
   }
 
   private setupFileWatchers(): void {
@@ -120,7 +121,7 @@ export class GitWatcher implements vscode.Disposable {
     // Save → status refresh
     this.disposables.push(
       vscode.workspace.onDidSaveTextDocument((document) => {
-        void this.routeSavedDocument(document);
+        void this.saved(document.uri);
       }),
     );
   }
@@ -130,15 +131,14 @@ export class GitWatcher implements vscode.Disposable {
    * refreshes if its own native index contains that exact path, which handles
    * intentional overlap without turning every child save into a broadcast.
    */
-  private async routeSavedDocument(
-    document: vscode.TextDocument,
-  ): Promise<void> {
-    if (document.uri.scheme !== "file") return;
+  async saved(uri: vscode.Uri): Promise<void> {
+    if (uri.scheme !== "file" || !within(this.workspaceRoot, uri.fsPath))
+      return;
     try {
       await this.ensureAvailable?.();
       const [root, file] = await Promise.all([
         fs.realpath(this.workspaceRoot),
-        fs.realpath(document.uri.fsPath),
+        fs.realpath(uri.fsPath),
       ]);
       if (!within(root, file) || root === file) return;
 

@@ -1703,16 +1703,17 @@ export function createGitRepositorySession(
     return { success: true };
   });
 
-  context.subscriptions.push(
-    new GitWatcher(
-      workspaceRoot,
-      messageRouter,
-      gitService.cache,
-      ensureAvailable,
-      true,
-    ),
+  const watcher = new GitWatcher(
+    workspaceRoot,
+    messageRouter,
+    gitService.cache,
+    ensureAvailable,
+    true,
+    false,
   );
+  context.subscriptions.push(watcher);
   return {
+    saved: (uri: vscode.Uri) => watcher.saved(uri),
     mutate: runMutation,
     router: messageRouter,
     service: gitService,

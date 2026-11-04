@@ -15,6 +15,7 @@ async function gitRoot(root) {
 async function main() {
   const project = path.resolve(__dirname, "..");
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "jettortoise-catalog-"));
+  const originalExec = childProcess.execFile;
   try {
     const outer = await gitRoot(path.join(temp, "platform"));
     const nested = await gitRoot(path.join(outer, "ignored-looking", "node_modules", "child"));
@@ -61,8 +62,25 @@ async function main() {
     await fs.symlink(outer, alias);
 
     const bundle = path.join(temp, "discovery.cjs");
-    const source = await fs.readFile(path.join(project, "src/repositories/discovery.ts"), "utf8");
-    assert(!/child_process|execFile|git\s+-C/.test(source), "discovery shell process was introduced");
+    // 2c 允许用 Git 自己的只读目录忽略口径，仍禁止任意命令或联网。
+    const discoveryCalls = [];
+    let failIgnore = false;
+    const checkDiscoveryCommand = (command, args, options) => {
+      assert.equal(command, "git");
+      assert.deepEqual(args.slice(0, 1), ["-C"]);
+      assert.deepEqual(args.slice(2), ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"]);
+      assert.equal(options.env.GIT_OPTIONAL_LOCKS, "0");
+      discoveryCalls.push(args);
+      if (failIgnore) throw new Error("fixture ignore query failed");
+    };
+    childProcess.execFile = (command, args, options, callback) => {
+      checkDiscoveryCommand(command, args, options);
+      return originalExec(command, args, options, callback);
+    };
+    childProcess.execFile[require("node:util").promisify.custom] = (command, args, options) => {
+      checkDiscoveryCommand(command, args, options);
+      return require("node:util").promisify(originalExec)(command, args, options);
+    };
     await esbuild.build({ entryPoints: [path.join(project, "src/repositories/discovery.ts")], bundle: true, platform: "node", format: "cjs", outfile: bundle });
     const { discoverRepositoryRoots } = require(bundle);
     const result = await discoverRepositoryRoots(outer, { concurrency: 3 });
@@ -109,7 +127,13 @@ async function main() {
       assert.equal(denied.incomplete, true, "metadata permission failure was treated as an absent repository");
       assert(denied.errors.some((item) => item.includes(outer)), "permission failure did not identify its unreadable subtree");
     } finally { fsPromises.lstat = originalLstat; }
-    console.log(JSON.stringify({ checks: 20, sameProjectHidden: true, roots: result.roots.length, metadataOnly: true, cancellation: true, permissionIncomplete: true }));
-  } finally { await fs.rm(temp, { recursive: true, force: true }); }
+    assert(discoveryCalls.length > 0, "只读忽略目录查询未覆盖");
+    failIgnore = true;
+    const failedIgnore = await discoverRepositoryRoots(outer);
+    assert(failedIgnore.incomplete, "ignore query failure must be reported");
+    assert(failedIgnore.roots.some(item => item.kind === "cvs" && item.root === independent), "ignore query failure lost CVS roots");
+    assert(!failedIgnore.roots.some(item => item.root === nested), "unknown Git ignore scope was auto-registered");
+    console.log(JSON.stringify({ checks: 20, sameProjectHidden: true, roots: result.roots.length, localReadOnly: true, cancellation: true, permissionIncomplete: true }));
+  } finally { childProcess.execFile = originalExec; await fs.rm(temp, { recursive: true, force: true }); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

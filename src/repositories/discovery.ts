@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { isCvsContinuation, isCvsSameProject } from "./boundaries.cjs";
 import type { RepositoryKind } from "./types";
+
+const execFileAsync = promisify(execFile);
 
 export interface DiscoveredRoot {
   kind: RepositoryKind;
@@ -39,8 +43,7 @@ async function gitDirectory(directory: string): Promise<string | undefined> {
       return (await validGitDirectory(marker)) ? marker : undefined;
     }
     if (!stat.isFile() || stat.size > 64 * 1024) return;
-    // A worktree uses a gitdir pointer. Validate only its local shape: this is
-    // discovery, so do not invoke Git or cause any remote/config side effect.
+    // worktree 指针先按本地元数据验证；忽略规则查询在遍历阶段单独执行。
     const line = (await fs.readFile(marker, "utf8")).trim();
     if (!line.startsWith("gitdir:")) return;
     const target = line.slice("gitdir:".length).trim();
@@ -162,22 +165,16 @@ export async function discoverRepositoryRoots(
   const errors: string[] = [];
   let incomplete = false;
   let cancelled = false;
-  const queue = [root];
+  const queue = [
+    { directory: root, ignoredGit: false, ignoredPaths: [] as string[] },
+  ];
   const concurrency = Math.max(1, Math.min(16, options.concurrency ?? 8));
   let lastEmission = 0,
-    lastRootCount = -1,
-    lastErrors = -1;
+    lastRootCount = -1;
   const emit = (force = false) => {
-    if (
-      !force &&
-      roots.size === lastRootCount &&
-      errors.length === lastErrors &&
-      Date.now() - lastEmission < 250
-    )
-      return;
+    if (!force && lastRootCount >= 0 && Date.now() - lastEmission < 100) return;
     lastEmission = Date.now();
     lastRootCount = roots.size;
-    lastErrors = errors.length;
     options.onProgress?.({
       roots: [...roots.values()],
       incomplete,
@@ -185,7 +182,15 @@ export async function discoverRepositoryRoots(
       errors,
     });
   };
-  const visit = async (directory: string) => {
+  const visit = async ({
+    directory,
+    ignoredGit,
+    ignoredPaths,
+  }: {
+    directory: string;
+    ignoredGit: boolean;
+    ignoredPaths: string[];
+  }) => {
     if (options.signal?.aborted) {
       cancelled = true;
       incomplete = true;
@@ -199,7 +204,7 @@ export async function discoverRepositoryRoots(
       if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink())
         return;
       if ((await fs.realpath(directory)) !== directory) return;
-      const git = await gitDirectory(directory);
+      const git = ignoredGit ? undefined : await gitDirectory(directory);
       if (git)
         roots.set(`git\0${directory}`, {
           kind: "git",
@@ -218,6 +223,56 @@ export async function discoverRepositoryRoots(
           ref: cvs.tag,
         });
       const entries = await fs.readdir(directory, { withFileTypes: true });
+      let ignored = ignoredPaths;
+      if (
+        git &&
+        entries.some(
+          (entry) =>
+            entry.isDirectory() && ![".git", "CVS"].includes(entry.name),
+        )
+      ) {
+        // 只影响 Git 自动登记；仍遍历被忽略的目录，以独立发现 CVS。
+        try {
+          const { stdout } = await execFileAsync(
+            "git",
+            [
+              "-C",
+              directory,
+              "ls-files",
+              "--others",
+              "--ignored",
+              "--exclude-standard",
+              "--directory",
+              "-z",
+            ],
+            {
+              maxBuffer: 16 * 1024 * 1024,
+              timeout: 10000,
+              signal: options.signal,
+              env: {
+                ...process.env,
+                GIT_TERMINAL_PROMPT: "0",
+                GIT_OPTIONAL_LOCKS: "0",
+              },
+            },
+          );
+          ignored = [
+            ...ignored,
+            ...stdout
+              .split("\0")
+              .filter((name) => name.endsWith("/"))
+              .map((name) => path.resolve(directory, name)),
+          ];
+        } catch (error) {
+          // 忽略规则不明时暂不自动登记子 Git，CVS 仍按独立元数据继续发现。
+          ignoredGit = true;
+          incomplete = true;
+          if (errors.length < 50)
+            errors.push(
+              `${directory}: ${error instanceof Error ? error.message : "Git ignore query failed"}`,
+            );
+        }
+      }
       for (const entry of entries) {
         if (
           !entry.isDirectory() ||
@@ -226,7 +281,12 @@ export async function discoverRepositoryRoots(
           entry.name === "CVS"
         )
           continue;
-        queue.push(path.join(directory, entry.name));
+        queue.push({
+          directory: path.join(directory, entry.name),
+          ignoredPaths: ignored,
+          ignoredGit:
+            ignoredGit || ignored.includes(path.join(directory, entry.name)),
+        });
       }
     } catch (error) {
       incomplete = true;

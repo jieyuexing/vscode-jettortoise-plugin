@@ -223,6 +223,13 @@ async function main(){
       try{
         provider.resolveWebviewView(view);
         assert.match(view.webview.html,/data-mode="(?:commit|panel)"/);
+        if(view.webview.html.includes('data-mode="commit"')) {
+          const attribute=/data-workspace="([^"]*)"/.exec(view.webview.html)?.[1];
+          assert(attribute,'首屏缺少宿主内嵌仓库摘要');
+          const initial=JSON.parse(attribute.replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&'));
+          assert.deepEqual(initial.repositories,provider.manager.repositories);
+          assert(initial.snapshots.every(snapshot=>snapshot.files.length===0),'HTML 不得内嵌全量文件');
+        }
         const before=commands.length;
         for(const visible of [true,false,true,false]){view.visible=visible;visibility.fire();await Promise.resolve()}
         assert.deepEqual(commands.slice(before),[],'Webview 可见性变化不能聚焦日志或关闭底栏');

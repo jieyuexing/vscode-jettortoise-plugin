@@ -56,66 +56,14 @@ export function groupChanges(
   repositories: RepositoryInfo[],
   snapshots: RepositorySnapshot[],
 ) {
+  const byId = new Map(
+    snapshots.map((snapshot) => [snapshot.repositoryId, snapshot]),
+  );
   return [...repositories].sort(compareRepositories).map((repository) => {
-    const snapshot = snapshots.find(
-      (item) => item.repositoryId === repository.id,
-    );
-    const unique = new Map<string, ChangeFile>();
-    for (const file of snapshot?.files ?? []) {
-      const name = file.path.replace(/\/$/, "");
-      if (
-        snapshot?.nestedPaths?.some(
-          (root) => name === root || name.startsWith(`${root}/`),
-        )
-      )
-        continue;
-      const previous = unique.get(name);
-      unique.set(name, {
-        ...file,
-        oldPath: file.oldPath ?? previous?.oldPath,
-        repositoryId: repository.id,
-      });
-    }
-    const files = [...unique.values()].sort((a, b) =>
-      a.path.localeCompare(b.path),
-    );
-    const unknownDirectories = files
-      .filter((file) => file.status === "untracked" && file.directory)
-      .map((file) => file.path.replace(/\/$/, ""));
-    const unversioned = files.filter(
-      (file) =>
-        file.status === "untracked" &&
-        !unknownDirectories.some(
-          (dir) =>
-            file.path !== `${dir}/` &&
-            file.path !== dir &&
-            file.path.startsWith(`${dir}/`),
-        ),
-    );
-    const changes = files.filter(
-      (file) => !["untracked", "incoming"].includes(file.status),
-    );
-    const incoming = files.filter((file) => file.status === "incoming");
-    const rootFiles = changes.filter((file) => !file.path.includes("/"));
-    const directories = new Map<string, ChangeFile[]>();
-    for (const file of changes) {
-      const index = file.path.lastIndexOf("/");
-      if (index < 0) continue;
-      const directory = file.path.slice(0, index);
-      const children = directories.get(directory) ?? [];
-      children.push(file);
-      directories.set(directory, children);
-    }
+    const snapshot = byId.get(repository.id);
     return {
       ...repository,
-      changes,
-      unversioned,
-      incoming,
-      count: changes.length,
-      rootFiles,
-      directories: [...directories]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([path, files]) => ({ path, files })),
+      ...groupSnapshot(snapshot ?? { repositoryId: repository.id, files: [] }),
       error: snapshot?.error,
       refreshing: snapshot?.refreshing,
       scanPaused: snapshot?.scanPaused,
@@ -123,6 +71,79 @@ export function groupChanges(
       incomingExpanded: false,
     };
   });
+}
+
+// 快照不可变；其它仓库的通知复用既有文件分组，避免每条消息重排大仓。
+const groupedSnapshots = new WeakMap<
+  RepositorySnapshot,
+  ReturnType<typeof collectFiles>
+>();
+function groupSnapshot(snapshot: RepositorySnapshot) {
+  let grouped = groupedSnapshots.get(snapshot);
+  if (!grouped) {
+    grouped = collectFiles(snapshot);
+    groupedSnapshots.set(snapshot, grouped);
+  }
+  return grouped;
+}
+function collectFiles(snapshot: RepositorySnapshot) {
+  const unique = new Map<string, ChangeFile>();
+  for (const file of snapshot?.files ?? []) {
+    const name = file.path.replace(/\/$/, "");
+    if (
+      snapshot?.nestedPaths?.some(
+        (root) => name === root || name.startsWith(`${root}/`),
+      )
+    )
+      continue;
+    const previous = unique.get(name);
+    unique.set(name, {
+      ...file,
+      oldPath: file.oldPath ?? previous?.oldPath,
+      repositoryId: snapshot.repositoryId,
+    });
+  }
+  const files = [...unique.values()].sort((a, b) =>
+    a.path.localeCompare(b.path),
+  );
+  const unknownDirectories = files
+    .filter((file) => file.status === "untracked" && file.directory)
+    .map((file) => file.path.replace(/\/$/, ""));
+  const unversioned = files.filter(
+    (file) =>
+      file.status === "untracked" &&
+      !unknownDirectories.some(
+        (dir) =>
+          file.path !== `${dir}/` &&
+          file.path !== dir &&
+          file.path.startsWith(`${dir}/`),
+      ),
+  );
+  const changes = files.filter(
+    (file) => !["untracked", "incoming"].includes(file.status),
+  );
+  const incoming = files.filter((file) => file.status === "incoming");
+  const rootFiles = changes.filter((file) => !file.path.includes("/"));
+  const directories = new Map<string, ChangeFile[]>();
+  for (const file of changes) {
+    const index = file.path.lastIndexOf("/");
+    if (index < 0) continue;
+    const directory = file.path.slice(0, index);
+    const children = directories.get(directory) ?? [];
+    children.push(file);
+    directories.set(directory, children);
+  }
+  const grouped = {
+    changes,
+    unversioned,
+    incoming,
+    count: changes.length,
+    rootFiles,
+    directories: [...directories]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([path, files]) => ({ path, files })),
+  };
+  return grouped;
 }
 
 export interface SnapshotDelta extends Omit<RepositorySnapshot, "files"> {

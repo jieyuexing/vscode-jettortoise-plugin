@@ -17,6 +17,7 @@ export class CommitViewProvider implements vscode.WebviewViewProvider {
       view.webview,
       this.extensionUri,
       "commit",
+      { workspace: JSON.stringify(this.manager.summaryState()) },
     );
     const connection = this.manager.connect(view.webview);
     view.onDidDispose(() => connection.dispose());

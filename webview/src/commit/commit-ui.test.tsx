@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CvsHistory } from "../panel/components/CvsHistory";
+import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
@@ -27,7 +28,11 @@ vi.mock("../shared/bridge", () => ({
     },
   },
 }));
-vi.mock("../panel/utils/file-icons", () => ({ IconFolder: () => <svg /> }));
+vi.mock("../panel/utils/file-icons", () => ({
+  IconFolder: () => <svg />,
+  IconFolderOpen: () => <svg />,
+  getFileIcon: () => () => <svg />,
+}));
 vi.mock("./utils/file-icon", () => ({
   getCommitFileIcon: () => () => <svg />,
 }));
@@ -128,6 +133,18 @@ afterEach(() => {
 });
 
 describe("本地更改三态", () => {
+  it("首次摘要尚无文件时也显示仓库行与加载计数", () => {
+    initializeI18n("zh-cn");
+    useRepositoryStore.setState({
+      repositories: [repositories[0]],
+      snapshots: [{ repositoryId: "a", files: [], refreshing: true }],
+    });
+    const view = render(<ChangeTree onSelect={() => {}} />);
+    const row = view.container.querySelector(".changes-row.repository");
+    expect(row?.querySelector(".changes-row-label")?.textContent).toBe("git");
+    expect(row?.querySelector(".changes-count")?.textContent).toBe("正在加载…");
+    initializeI18n("en");
+  });
   it("干净暂停仓仍显示行内状态和扫描按钮，点击只发送登记仓的本地扫描请求", async () => {
     initializeI18n("zh-cn");
     useRepositoryStore.setState({
@@ -754,4 +771,78 @@ describe("CVS 按需同步", () => {
       ),
     );
   });
+});
+
+it("日志文件树只渲染视口，滚动可到末项且保留点击、折叠与平铺", async () => {
+  const files = Array.from({ length: 1000 }, (_, index) => ({
+    oldPath: `src/f-${String(index).padStart(4, "0")}.txt`,
+    newPath: `src/f-${String(index).padStart(4, "0")}.txt`,
+    status: "modified" as const,
+    additions: 0,
+    deletions: 0,
+  }));
+  const clicked = vi.fn(),
+    context = vi.fn(),
+    toggle = vi.fn();
+  const props = {
+    files,
+    viewMode: "tree" as const,
+    selectedFiles: [],
+    onFileClick: clicked,
+    onFileContextMenu: context,
+    onToggle: toggle,
+    virtualized: true,
+  };
+  const view = render(<FileTree {...props} />);
+  expect(
+    view.container.querySelectorAll(".selectable-row").length,
+  ).toBeLessThan(100);
+  const folder = view.getByText("src");
+  fireEvent.click(folder);
+  expect(toggle).toHaveBeenCalledWith("src");
+  const first = view.getByText("f-0000.txt");
+  fireEvent.click(first);
+  expect(clicked.mock.calls[0][1]).toEqual(files[0]);
+  fireEvent.contextMenu(first);
+  expect(context.mock.calls[0][1]).toEqual(files[0]);
+  const scroller =
+    view.container.querySelector<HTMLElement>(".virtual-file-tree");
+  if (!scroller) throw new Error("虚拟文件树未挂载");
+  fireEvent.scroll(scroller, { target: { scrollTop: 22000 } });
+  await waitFor(() => expect(view.getByText("f-0999.txt")).toBeTruthy());
+  expect(
+    view.container.querySelectorAll(".selectable-row").length,
+  ).toBeLessThan(100);
+  view.rerender(<FileTree {...props} collapsed={{ src: true }} />);
+  expect(view.queryByText("f-0000.txt")).toBeNull();
+  view.rerender(<FileTree {...props} viewMode="flat" />);
+  expect(
+    view.container.querySelectorAll(".selectable-row").length,
+  ).toBeLessThan(100);
+});
+
+it("宿主内嵌摘要在消息往返前已有仓库与加载状态", async () => {
+  const root = document.createElement("div");
+  root.id = "root";
+  root.dataset.mode = "commit";
+  root.dataset.workspace = JSON.stringify({
+    repositories: [repositories[0]],
+    snapshots: [{ repositoryId: "a", files: [], refreshing: true }],
+    logRepositoryId: "a",
+  });
+  document.body.append(root);
+  try {
+    vi.resetModules();
+    const { useRepositoryStore: initialStore } = await import(
+      "../shared/store/repository-store"
+    );
+    const state = initialStore.getState();
+    expect(state.repositories.map((repo) => repo.id)).toEqual(["a"]);
+    expect(state.snapshots[0].refreshing).toBe(true);
+    expect(state.snapshots[0].files).toEqual([]);
+    expect(state.ready).toBe(true);
+    expect(mocks.request).not.toHaveBeenCalled();
+  } finally {
+    root.remove();
+  }
 });

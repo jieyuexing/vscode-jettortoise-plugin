@@ -152,8 +152,9 @@ export function FileChangeTree() {
       </div>
 
       {/* Scrollable content area */}
-      <div style={{ flex: 1, overflow: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         <FileTree
+          virtualized
           files={displayFiles}
           viewMode={viewMode}
           selectedFiles={selectedFiles}

@@ -354,3 +354,81 @@ test('按需同步：同步排进共享网络队列，排队期间移除不启�
     assert.equal(fx.manager.state().repositories.length,0);
   } finally {release();await Promise.all(blockers);fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
 });
+
+test('多 Git 仓共用保存订阅，重复发现和焦点刷新不增加监听，关闭后释放', async () => {
+  const fx = await setup();
+  try {
+    const {execFileSync} = require('node:child_process');
+    for (let i=0;i<24;i++) execFileSync('git',['init','-q',path.join(fx.base,`git-${i}`)]);
+    await fx.manager.scan();
+    assert.equal(fx.events.save.listeners.size,1,'每仓不应注册全局保存监听');
+    for(let i=0;i<20;i++) {
+      await fx.manager.scan();fx.events.focus.fire({focused:true});
+      assert.equal(fx.events.save.listeners.size,1);
+    }
+  } finally {fx.manager.dispose();assert.equal(fx.events.save.listeners.size,0);await fs.rm(fx.base,{recursive:true,force:true});}
+});
+
+test('首屏先返回仓库摘要，大快照分批传输且连接关闭后停止', async () => {
+  const fx = await setup();
+  try {
+    const {execFileSync}=require('node:child_process');execFileSync('git',['init','-q',fx.base]);
+    await fx.manager.scan();await delay(300);
+    const entry=[...fx.manager.entries.values()].find(e=>e.info.kind==='git');
+    entry.snapshot={repositoryId:entry.info.id,files:Array.from({length:60000},(_,i)=>({repositoryId:entry.info.id,path:`file-${i}.txt`,status:'modified',staged:false}))};
+    let receive;const sent=[];
+    const connection=fx.manager.connect({postMessage:async message=>{sent.push(message);return true;},onDidReceiveMessage:fn=>{receive=fn;return disposable();}});
+    await receive({type:'request',id:'initial',command:'getRepositories',params:{}});
+    const initial=sent.find(m=>m.type==='response');
+    assert.equal(initial.data.snapshots[0].files.length,0,'首次响应不能携带六万文件');
+    assert.equal(initial.data.snapshots[0].refreshing,true);
+    await receive({type:'request',id:'overlap',command:'getRepositoryChanges',params:{}});
+    await delay(800);
+    const reset=sent.findLastIndex(m=>m.event==='repositorySnapshot');
+    const chunks=sent.slice(reset+1).filter(m=>m.event==='repositorySnapshotDelta');
+    assert.equal(chunks.reduce((n,m)=>n+m.data.changed.length,0),60000);
+    assert.ok(chunks.every(m=>m.data.changed.length<=5000),'单批文件必须有界');
+    assert.notEqual(chunks.at(-1).data.refreshing,true);
+    await receive({type:'request',id:'again',command:'getRepositories',params:{}});
+    await delay(40);
+    const fresh={repositoryId:entry.info.id,files:[{repositoryId:entry.info.id,path:'fresh.txt',status:'modified',staged:false}]};
+    entry.snapshot=fresh;fx.manager.publishSnapshot(fresh);
+    await delay(100);
+    const assembled=new Map();
+    for(const message of sent) {
+      if(message.event==='repositorySnapshot') { assembled.clear();for(const file of message.data.files)assembled.set(JSON.stringify([file.repositoryId,file.path]),file); }
+      if(message.event==='repositorySnapshotDelta') { for(const key of message.data.removed)assembled.delete(key);for(const file of message.data.changed)assembled.set(JSON.stringify([file.repositoryId,file.path]),file); }
+    }
+    assert.deepEqual([...assembled.values()].map(file=>file.path),['fresh.txt'],'新小快照必须取消旧分批并完整替换');
+    await receive({type:'request',id:'closing',command:'getRepositories',params:{}});connection.dispose();const before=sent.length;await delay(100);assert.equal(sent.length,before);
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
+});
+
+test('忽略目录不登记 Git，但其中独立 CVS 仍然发现，显式根仍可打开', async () => {
+  const fx=await setup();
+  try {
+    const {execFileSync}=require('node:child_process');execFileSync('git',['init','-q',fx.base]);
+    await fs.writeFile(path.join(fx.base,'.gitignore'),'.local/tmp/\n');
+    const ignored=path.join(fx.base,'.local','tmp','git');execFileSync('git',['init','-q',ignored]);
+    await fs.mkdir(path.join(ignored,'cvs','CVS'),{recursive:true});
+    for(const [name,value] of Object.entries({Root:':local:/nonexistent/cvsroot\n',Repository:'separate\n',Entries:''}))await fs.writeFile(path.join(ignored,'cvs','CVS',name),value);
+    await fx.manager.scan();
+    const roots=[...fx.manager.entries.values()].map(e=>e.info.root);
+    assert.ok(!roots.includes(ignored),'忽略目录中的 Git 不自动登记');
+    assert.ok(roots.includes(path.join(ignored,'cvs')),'CVS 不随 Git 忽略目录丢失');global.__performanceVscode.workspace.workspaceFolders=[{uri:Uri.file(ignored)}];await fx.manager.scan();assert.ok(fx.manager.repositories.some(repo=>repo.root===ignored),'显式工作区根仍可登记');
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
+});
+
+test('本地 Git 刷新最多并发 4 个，同仓重复刷新合并', async () => {
+  const fx=await setup();
+  try {
+    const {execFileSync}=require('node:child_process');
+    for(let i=0;i<8;i++)execFileSync('git',['init','-q',path.join(fx.base,`git-${i}`)]);
+    await fx.manager.scan();await Promise.all([...fx.manager.entries.values()].map(e=>e.refreshTask));
+    let active=0,peak=0,calls=0;
+    const entries=[...fx.manager.entries.values()].filter(e=>e.git);
+    for(const entry of entries)entry.git.service.getWorkingTreeChanges=async()=>{calls++;peak=Math.max(peak,++active);await delay(40);active--;return[];};
+    await Promise.all(Array.from({length:20},()=>entries.map(e=>fx.manager.refresh(e,false))).flat());
+    assert.equal(calls,8);assert.equal(peak,4);assert.equal(active,0);
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
+});

@@ -321,6 +321,30 @@ describe("本地更改三态", () => {
 });
 
 describe("D1 narrow local changes", () => {
+  it("170px 标题只保留更多与收起，三个主要动作仍可从更多执行", async () => {
+    const view = render(<CommitApp />);
+    act(() => mocks.resize(170));
+    const header = view.container.querySelector(".changes-narrow-header")!;
+    const toolbar = header.querySelector('[role="toolbar"]')!;
+    expect(
+      [...toolbar.querySelectorAll("button")].map((b) =>
+        b.getAttribute("aria-label"),
+      ),
+    ).toEqual(["More Actions", "Hide Panel"]);
+    fireEvent.click(view.getByRole("button", { name: "More Actions" }));
+    const more = header.querySelector(".changes-more-actions")!;
+    expect(more.querySelector('[aria-label="Refresh"]')).not.toBeNull();
+    expect(more.querySelector('[aria-label="Rollback"]')).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("refreshRepositories"),
+    );
+    fireEvent.click(view.getByRole("button", { name: "Commit..." }));
+    expect(view.container.querySelector(".changes-commit")).not.toBeNull();
+    act(() => mocks.resize(300));
+    expect(toolbar.querySelector('[aria-label="Refresh"]')).not.toBeNull();
+  });
+
   it("shows title, count, refresh, commit, rollback and more without preview", async () => {
     const view = render(<CommitApp />);
     act(() => mocks.resize(290));

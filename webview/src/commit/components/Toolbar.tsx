@@ -25,6 +25,7 @@ export function Icon({ path }: { path: string }) {
 }
 interface ToolbarProps {
   narrow: boolean;
+  compact: boolean;
   count: number;
   onSwitchTab: (tab: "commit" | "shelf" | "stash") => void;
   onRefresh: () => void;
@@ -178,7 +179,7 @@ export function Toolbar(props: ToolbarProps) {
         role="toolbar"
         aria-label={t("Local Changes")}
       >
-        {primary}
+        {!props.compact && primary}
         <button
           type="button"
           title={t("More Actions")}
@@ -207,6 +208,7 @@ export function Toolbar(props: ToolbarProps) {
             if (event.key === "Escape") setMore(false);
           }}
         >
+          {props.compact && primary}
           {secondary}
           {props.hasGit &&
             ["commit", "shelf", "stash"].map((tab, index) => (

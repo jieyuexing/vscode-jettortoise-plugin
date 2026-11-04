@@ -899,11 +899,16 @@ input:focus-visible {
 }
 .changes-narrow-header .panel-header-title {
   margin-right: 0;
+  flex: 1;
+  min-width: 24px;
 }
 .changes-narrow-header small {
   color: var(--dim);
   font: inherit;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .changes-header-actions {
   display: flex;

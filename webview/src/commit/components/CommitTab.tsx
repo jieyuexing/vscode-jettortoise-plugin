@@ -116,6 +116,7 @@ export function CommitTab() {
           <Toolbar
             onSwitchTab={(tab) => void changeAction(() => switchTab(tab))}
             narrow={!wide}
+            compact={width < 240}
             count={
               state.changes.filter(
                 (file) => !file.directory && file.status !== "incoming",

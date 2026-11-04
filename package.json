@@ -3,7 +3,7 @@
   "displayName": "%category.jettortoise%",
   "publisher": "jieyuexing",
   "description": "%description%",
-  "version": "0.6.9-desk.1",
+  "version": "0.6.9",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {

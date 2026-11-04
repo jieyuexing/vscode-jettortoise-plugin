@@ -559,12 +559,14 @@ input:focus-visible {
 }
 .changes-tag {
   flex: none;
+  box-sizing: border-box;
+  height: 14px;
   font-size: 10px;
   color: var(--dim);
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 0 3px;
-  line-height: 14px;
+  line-height: 12px;
 }
 .changes-file-row.selected {
   background: var(--selin);

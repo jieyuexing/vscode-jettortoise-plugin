@@ -546,15 +546,17 @@ input:focus-visible {
   color: var(--dim);
   margin-left: 6px;
 }
-.changes-branch {
+.changes-row
+  > :is(
+    .changes-row-label,
+    .changes-branch,
+    .changes-count,
+    .changes-synced-at
+  ) {
+  display: block;
+  flex: none;
   min-width: 0;
-  flex-shrink: 1000000000;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.changes-row.repository :is(.changes-count, .changes-synced-at) {
-  min-width: 0;
-  flex-shrink: 1000;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }

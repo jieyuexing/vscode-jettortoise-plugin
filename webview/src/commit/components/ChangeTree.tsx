@@ -35,6 +35,70 @@ export async function showWorkingDiff(file: ChangeFile) {
     },
   );
 }
+// 只调整可见树行；按文字的实际字宽逐段让位，避免 flex 把辅助文字压成残片。
+function fitRowText(tree: HTMLElement) {
+  if (!tree.clientWidth) return;
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return;
+  for (const row of tree.querySelectorAll<HTMLElement>(".changes-row")) {
+    const selectors = [
+      ".changes-branch",
+      ".changes-synced-at",
+      ".changes-count",
+      ".changes-row-label",
+    ];
+    const segments = selectors.flatMap((selector) => {
+      const element = row.querySelector<HTMLElement>(`:scope > ${selector}`);
+      return element ? [element] : [];
+    });
+    for (const element of segments) {
+      element.style.display = "";
+      element.style.width = "";
+    }
+    const style = getComputedStyle(row);
+    const gap = Number.parseFloat(style.columnGap) || 0;
+    const children = Array.from(row.children) as HTMLElement[];
+    const width = (element: HTMLElement) =>
+      element.getBoundingClientRect().width;
+    const margins = (element: HTMLElement) => {
+      const style = getComputedStyle(element);
+      return (
+        (Number.parseFloat(style.marginLeft) || 0) +
+        (Number.parseFloat(style.marginRight) || 0)
+      );
+    };
+    let excess =
+      children.reduce(
+        (sum, element) => sum + width(element) + margins(element),
+        0,
+      ) +
+      gap * (children.length - 1) +
+      Number.parseFloat(style.paddingLeft) +
+      Number.parseFloat(style.paddingRight) -
+      row.clientWidth;
+    for (const element of segments) {
+      if (excess <= 0.01) break;
+      const natural = width(element);
+      const style = getComputedStyle(element);
+      context.font = style.font;
+      const minimum = Math.ceil(
+        Math.max(
+          Number.parseFloat(style.fontSize),
+          context.measureText(Array.from(element.textContent || "")[0] || "同")
+            .width,
+        ) + context.measureText("…").width,
+      );
+      const remaining = Math.floor(natural - excess);
+      if (remaining >= minimum) {
+        element.style.width = `${remaining}px`;
+        break;
+      }
+      excess -= natural + margins(element) + gap;
+      element.style.display = "none";
+    }
+  }
+}
+
 export function ChangeTree({
   onSelect,
 }: {
@@ -57,7 +121,8 @@ export function ChangeTree({
   useEffect(() => {
     const tree = treeRef.current;
     if (!tree) return;
-    const resize = () =>
+    const resize = () => {
+      fitRowText(tree);
       setViewport((value) => ({
         ...value,
         height: tree.clientHeight || 400,
@@ -66,6 +131,7 @@ export function ChangeTree({
             getComputedStyle(tree).getPropertyValue("--etech-row-height"),
           ) || 20,
       }));
+    };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(tree);
@@ -422,6 +488,7 @@ export function ChangeTree({
       });
   }, [iconPathKey, icons]);
   useLayoutEffect(() => {
+    if (treeRef.current) fitRowText(treeRef.current);
     const index = pendingFocus.current;
     if (index === undefined) return;
     const element = treeRef.current?.querySelector<HTMLElement>(

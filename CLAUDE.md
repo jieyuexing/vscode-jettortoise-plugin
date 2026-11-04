@@ -43,7 +43,7 @@ Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-
 - `src/views/html.ts` 将 `vscode.env.language` 经 HTML 转义写入根元素的 `data-language` 和页面 `lang`。`webview/src/shared/i18n/index.ts` 负责选择语言、替换参数和文件计数，`locales.ts` 保存英文字典及 `zh-cn` 字典；中文缺键回落英文，其它语言显示英文。不生成 `zh`、`zh-tw` 副本，不引入第三方 i18n 库。
 - 译名参考 `main` 的清单、扩展 bundle、webview/CVS 和 `packages/vcs-ui` 字典；本轮明确要求优先于旧译名，统一 Commit→提交、Update Project→更新项目、Rollback→回滚、Changes→更改、Unversioned Files→未受版本控制的文件、Incoming→传入、Shelf→搁置、Commit and Push→提交并推送、Amend→修改提交。没有旧译名时沿用 IntelliJ IDEA 简体中文的操作叫法。Git/CVS 标识、分支名、修订号、文件路径和原始提交说明保持原值。
 - 纯 Node 的 CVS 内核、路径和请求验证不导入 `vscode`。`src/cvs/session.ts` 在会话层将内核错误码转为译文；`src/messages/errors.ts` 在显示边界翻译固定错误与相对子仓提示，CLI 原始输出和开发者调试日志保持原值。
-- `webview/src/commit/commit.css` 的仓库、分组、目录、文件行统一 20px／12px，每级缩进 16px。当前变更树的行内起点为 `8px + 层级 × 16px`，箭头槽 12px、图标 16px、控件间距 4px；浏览态无复选框，提交态按原交互加入复选框，所以文件名起点随层级与模式变化，不再用固定横坐标描述。仓库和目录计数紧随名称并使用次要色。真实窗口尺寸与截断由隔离开发构建另验。
+- `webview/src/commit/commit.css` 的仓库、分组、目录、文件行统一 20px／12px，每级缩进 16px。当前变更树的行内起点为 `8px + 层级 × 16px`，箭头槽 12px、图标 16px、控件间距 4px；浏览态无复选框，提交态按原交互加入复选框，所以文件名起点随层级与模式变化，不再用固定横坐标描述。仓库和目录计数紧随名称并使用次要色。2026-11-04 窄栏文字按分支→同步时间→文件数→名称依次让位，分类名称优先于计数。截断文字至少保留一个字与省略号，不足则整段隐藏；树行在已有 ResizeObserver 及可见行渲染后按实际字宽重新分配，宽度恢复时还原完整内容。真实窗口尺寸与截断由隔离开发构建另验。
 
 `scripts/check-l10n.cjs` 已并入 headless：检查清单占位键、扩展端字面量翻译键、webview 全键及参数占位符，拒绝未翻译的 JSX/显示属性；用实际函数检查语言回落、中文计数、固定错误与 CLI 原文保留。
 

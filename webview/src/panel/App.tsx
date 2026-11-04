@@ -1,6 +1,8 @@
 import { Allotment } from "allotment";
 import { useCallback, useEffect, useState } from "react";
+import CodiconRefresh from "~icons/codicon/refresh";
 import { PanelHeader } from "../shared/components/PanelHeader";
+import { ToolbarButton } from "../shared/components/ToolbarButton";
 import { t } from "../shared/i18n";
 import "allotment/dist/style.css";
 import { Tooltip } from "../shared/components/Tooltip";
@@ -377,12 +379,18 @@ export function PanelApp() {
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => void bridge.request("refreshRepositories")}
-        >
-          {t("Refresh")}
-        </button>
+        <ToolbarButton
+          label={t("Refresh")}
+          icon={
+            <CodiconRefresh
+              className="codicon codicon-refresh"
+              width={16}
+              height={16}
+              aria-hidden="true"
+            />
+          }
+          action={() => void bridge.request("refreshRepositories")}
+        />
       </PanelHeader>
       <div style={{ flex: 1, minHeight: 0 }}>
         {!ready ? (

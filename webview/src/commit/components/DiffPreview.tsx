@@ -3,11 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { MaterializedComparison } from "../../../../src/comparison/types";
 import { calculateInlineDiffs } from "../../conflicts/utils/inline-diff";
 import { bridge } from "../../shared/bridge";
+import { Icon } from "../../shared/components/ToolbarButton";
 import { t } from "../../shared/i18n";
 import { type ChangeFile, fileKey } from "../../shared/models/changes";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 import { changeAction, showWorkingDiff } from "./ChangeTree";
-import { Icon } from "./Toolbar";
 
 interface DiffRow {
   left?: string;

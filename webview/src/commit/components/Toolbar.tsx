@@ -1,28 +1,12 @@
 import { useState } from "react";
 import { bridge } from "../../shared/bridge";
 import { PanelHeader } from "../../shared/components/PanelHeader";
+import { Icon, ToolbarButton } from "../../shared/components/ToolbarButton";
 import { VerticalToolbar } from "../../shared/components/VerticalToolbar";
 import { fileCount, t } from "../../shared/i18n";
 import { useCommitStore } from "../../shared/store/commit-store";
 import { changeAction } from "./ChangeTree";
 
-export function Icon({ path }: { path: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={path} />
-    </svg>
-  );
-}
 interface ToolbarProps {
   narrow: boolean;
   compact: boolean;
@@ -37,37 +21,6 @@ interface ToolbarProps {
   onTogglePreview: () => void;
   previewVisible: boolean;
 }
-/** 树行和工具栏共用图标按钮，显隐与尺寸由所在容器控制。 */
-export function ToolbarButton({
-  label,
-  path,
-  action,
-  disabled = false,
-  active,
-  className = "",
-}: {
-  label: string;
-  path: string;
-  action: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      className={`${className} ${active ? "active" : ""}`}
-      aria-pressed={active}
-      onClick={action}
-    >
-      <Icon path={path} />
-    </button>
-  );
-}
-
 export function Toolbar(props: ToolbarProps) {
   const state = useCommitStore();
   const [more, setMore] = useState(false);

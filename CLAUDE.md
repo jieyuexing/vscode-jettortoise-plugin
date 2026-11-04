@@ -144,3 +144,5 @@ E1 追加视觉决定（2026-11-03）：用户否定 6 万列表观感，以 `lo
 同步状态仅在内存；仓库行保留 20px／12px／16px 层级，在分支后显示本窗口最近同步时间。复用工具栏按钮，行尾 16×16 移除按钮悬停或键盘聚焦才显示。移除处置旧会话、取消排队工作并清除快照，重新扫描不会自动恢复。已同步仓文件事件继续仅刷新本地。底部提示高 24px、左距 10px、字号 12px、--dim 颜色、上边 1px --line，未同步计数归零隐藏；纯 CVS 未同步工作区同样显示提示。项目树装饰保持现状。
 
 回归沿用 scripts/repository-performance-check.cjs、scripts/restart-host-check.cjs 与 commit-ui.test.tsx，并入现有 headless；合成夹具、红绿结果与真实窗口验收边界见本轮 RECORD，不将 headless 成功等同 GUI 验收。
+
+2026-11-04 日志仓库及CVS文件历史刷新均复用shared/components/ToolbarButton与PanelHeader，按钮22×22、codicon refresh图标16px，中文tooltip/aria-label为“刷新”与“刷新文件历史”；同行下拉框垂直居中、按钮右距8px，回调与显式查询合同不变。既有Commit工具栏和树行入口改为从shared导入同一组件，不另建按钮样式体系。

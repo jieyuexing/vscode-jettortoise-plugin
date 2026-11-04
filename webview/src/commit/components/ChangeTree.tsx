@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { IconFolder } from "../../panel/utils/file-icons";
 import { bridge } from "../../shared/bridge";
+import { ToolbarButton } from "../../shared/components/ToolbarButton";
 import { fileCount, t } from "../../shared/i18n";
 import {
   type ChangeFile,
@@ -12,7 +13,6 @@ import { useCommitStore } from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 import { CommitFileContextMenu } from "./CommitFileContextMenu";
 import { FileItem } from "./FileItem";
-import { ToolbarButton } from "./Toolbar";
 
 export async function changeAction(fn: () => Promise<unknown>) {
   try {

@@ -114,9 +114,12 @@ async function main(){
   // 挂载 CVS 历史的真实 effect/bridge 合同；Hook fixture 不代表真实窗口渲染。
   const historyEffects=[],historyRequests=[];let stateIndex=0,latestHistory=[];
   const historyBridge={request:(command,params)=>{const request=manager.request(command,params).then(result=>{if(command==='getCvsHistory')latestHistory=result;return result});historyRequests.push({command,request});return request},onEvent:handler=>{const listener=msg=>{if(msg.type==='event')handler(msg.event,msg.data)};subscribers.add(listener);return()=>subscribers.delete(listener)}};
-  global.__restartHistory={bridge:historyBridge,react:{useState:initial=>[stateIndex++===1?'same.txt':initial,()=>{}],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>historyEffects.push(fn)}};
+  // 保留原有模拟 hooks，其余 React API 使用真实实现，供图标组件的 forwardRef 初始化。
+  global.__restartHistory={bridge:historyBridge,react:{...require(require.resolve('react',{paths:[path.resolve('webview')]})),useState:initial=>[stateIndex++===1?'same.txt':initial,()=>{}],useRef:value=>({current:value}),useCallback:fn=>fn,useEffect:fn=>historyEffects.push(fn)}};
   const historyBundle=path.join(base,'history.cjs');
-  await build({entryPoints:['webview/src/panel/components/CvsHistory.tsx'],bundle:true,platform:'node',format:'cjs',jsx:'automatic',outfile:historyBundle,plugins:[{name:'history-fixture',setup(build){build.onResolve({filter:/^(react(?:\/jsx-runtime)?|.*shared\/bridge)$/},args=>({path:args.path,namespace:'fixture'}));build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='react'?'module.exports=global.__restartHistory.react;':args.path==='react/jsx-runtime'?'exports.jsx=exports.jsxs=()=>null;':'exports.bridge=global.__restartHistory.bridge;'}))}}]});
+  // 与生产图标编译一致；此检查从仓库根运行，图标库实际位于 webview。
+  const {default:Icons}=await import(pathToFileURL(require.resolve('unplugin-icons/esbuild',{paths:[path.resolve('webview')]})).href);
+  await build({entryPoints:['webview/src/panel/components/CvsHistory.tsx'],bundle:true,platform:'node',format:'cjs',jsx:'automatic',outfile:historyBundle,plugins:[Icons({compiler:'jsx',jsx:'react',collectionsNodeResolvePath:path.resolve('webview')}),{name:'history-fixture',setup(build){build.onResolve({filter:/^(react(?:\/jsx-runtime)?|.*shared\/bridge)$/},args=>({path:args.path,namespace:'fixture'}));build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='react'?'module.exports=global.__restartHistory.react;':args.path==='react/jsx-runtime'?'exports.jsx=exports.jsxs=()=>null;':'exports.bridge=global.__restartHistory.bridge;'}))}}]});
   require(historyBundle).CvsHistory({repositoryId:c.id,activeFile:'same.txt'});
   historyCleanups=historyEffects.map(effect=>effect()).filter(fn=>typeof fn==='function');
   const drainHistory=async()=>{for(let index=0;index<historyRequests.length;index++)await historyRequests[index].request};

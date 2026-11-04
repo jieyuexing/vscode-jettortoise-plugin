@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import CodiconRefresh from "~icons/codicon/refresh";
 import { bridge } from "../../shared/bridge";
+import { PanelHeader } from "../../shared/components/PanelHeader";
+import { ToolbarButton } from "../../shared/components/ToolbarButton";
 import { t } from "../../shared/i18n";
 
 interface Revision {
@@ -107,7 +110,7 @@ export function CvsHistory({
   );
   return (
     <div className="cvs-file-history">
-      <div className="repository-log-toolbar">
+      <PanelHeader className="repository-log-toolbar">
         <label htmlFor="cvs-history-file">{t("CVS file")}</label>
         <select
           id="cvs-history-file"
@@ -124,16 +127,22 @@ export function CvsHistory({
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => {
+        <ToolbarButton
+          label={t("Refresh File History")}
+          icon={
+            <CodiconRefresh
+              className="codicon codicon-refresh"
+              width={16}
+              height={16}
+              aria-hidden="true"
+            />
+          }
+          action={() => {
             void loadFiles();
             void loadHistory();
           }}
-        >
-          {t("Refresh File History")}
-        </button>
-      </div>
+        />
+      </PanelHeader>
       {loading && (
         <div role="status" className="repository-empty">
           {t("Loading file revisions…")}

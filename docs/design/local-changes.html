@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>本地更改底稿</title>
+<style>
+  .vc { --bg:#fff; --panel:#f7f8fa; --line:#ebecf0; --text:#1e1f22; --dim:#818594; --accent:#3574f0; --sel:#d5e1ff; --hover:#eef1f6;
+        --mod:#2f65ca; --add:#3b8e3b; --unv:#b5541c;
+        --dmod:#e8f0fd; --dmodin:#c4d7fb; --dadd:#e6f4e6; --daddin:#c2e5c2; --ddel:#f2f2f2;
+        font:12px/1.4 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--text);
+        background:var(--bg); border:1px solid var(--line); border-radius:var(--radius,8px); overflow:hidden; margin-bottom:16px; }
+  .cap { font:600 13px/1.4 var(--font-sans,sans-serif); margin:4px 0 8px; }
+  .note { color:var(--muted-foreground,#888); font:12px/1.5 var(--font-sans,sans-serif); margin:0 0 16px; }
+  svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+  /* 底栏页签行：IDEA 的「版本控制：本地更改 日志 控制台」 */
+  .tabs { display:flex; align-items:center; gap:2px; height:30px; padding:0 8px; border-bottom:1px solid var(--line); }
+  .tabs b { font-weight:600; margin-right:10px; }
+  .tab { padding:3px 8px; border-radius:4px; color:var(--text); }
+  .tab.on { background:var(--sel); }
+  .tabs .sp { flex:1; }
+  .tabs .ic { color:var(--dim); padding:3px; }
+
+  .body { display:grid; grid-template-columns:30px minmax(0,42fr) 1px minmax(0,58fr); height:300px; }
+  .tool { display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 0; border-right:1px solid var(--line); color:#6c707e; }
+  .tool span { display:flex; padding:4px; border-radius:4px; }
+  .tool span.on { background:var(--sel); color:var(--accent); }
+  .tool hr { width:16px; border:0; border-top:1px solid var(--line); margin:3px 0; }
+  .split { background:var(--line); }
+
+  .tree { overflow:hidden; display:flex; flex-direction:column; }
+  .rows { flex:1; padding:4px 0; }
+  .row { display:flex; align-items:center; gap:4px; height:22px; white-space:nowrap; }
+  .row.sel { background:var(--sel); }
+  .row .tw { width:12px; color:var(--dim); text-align:center; font-size:10px; }
+  .row .n { color:var(--dim); margin-left:6px; }
+  .row .p { color:var(--dim); margin-left:6px; overflow:hidden; text-overflow:ellipsis; }
+  .row .tag { font-size:10px; color:var(--dim); border:1px solid var(--line); border-radius:3px; padding:0 3px; line-height:14px; }
+  .mod { color:var(--mod); } .add { color:var(--add); } .unv { color:var(--unv); }
+  .cb { width:12px; height:12px; border:1px solid #a8adbd; border-radius:3px; flex:none; }
+  .cb.on { background:var(--accent); border-color:var(--accent); position:relative; }
+  .cb.on::after { content:""; position:absolute; left:3.5px; top:1px; width:3px; height:6px; border:solid #fff; border-width:0 1.5px 1.5px 0; transform:rotate(45deg); }
+
+  /* 提交态：说明框贴在树下方，不常驻 */
+  .commit { border-top:1px solid var(--line); padding:6px 8px 8px; display:flex; flex-direction:column; gap:6px; }
+  .msg { height:46px; border:1px solid var(--line); border-radius:4px; padding:4px 6px; color:var(--dim); }
+  .msg.focus { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; color:var(--text); }
+  .acts { display:flex; align-items:center; gap:6px; }
+  .btn { padding:2px 10px; border:1px solid #c9ccd6; border-radius:4px; background:#fff; }
+  .btn.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .acts .sp { flex:1; }
+  .acts label { display:flex; align-items:center; gap:4px; color:var(--text); }
+
+  /* 右侧差异预览 */
+  .diff { display:flex; flex-direction:column; overflow:hidden; }
+  .dbar { display:flex; align-items:center; gap:2px; height:28px; padding:0 8px; border-bottom:1px solid var(--line); color:#6c707e; }
+  .dbar span { display:flex; padding:3px; border-radius:4px; }
+  .dbar .t { color:var(--accent); padding:0 4px; }
+  .dbar .sp { flex:1; }
+  .seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .seg i { font-style:normal; padding:1px 8px; color:var(--text); }
+  .seg i.on { background:var(--sel); }
+  .dpath { padding:4px 10px; color:var(--dim); border-bottom:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dpath b { color:var(--text); font-weight:400; }
+  .cols { flex:1; display:grid; grid-template-columns:1fr 18px 1fr; font:12px/20px "JetBrains Mono",Menlo,monospace; overflow:hidden; }
+  .side div { display:flex; white-space:pre; }
+  .side em { width:30px; text-align:right; padding-right:8px; color:#a8adbd; font-style:normal; flex:none; }
+  .side .m { background:var(--dmod); } .side .m s { background:var(--dmodin); text-decoration:none; }
+  .side .a { background:var(--dadd); } .side .g { background:var(--ddel); }
+  .side .h { color:var(--dim); font-family:-apple-system,"PingFang SC",sans-serif; background:var(--panel); border-bottom:1px solid var(--line); padding-left:38px; }
+  .gut { background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); }
+  .gut div { height:20px; display:flex; align-items:center; justify-content:center; color:var(--mod); font-size:11px; }
+  .gut .h { border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<p class="cap">状态 A：浏览（默认）</p>
+<p class="note">打开「本地更改」默认就是这个状态，没有提交说明框。左边一列竖排工具栏；中间是变更树，先按更改列表分组，再按仓库、目录分组，浅色写文件数和路径；右边是所选文件的差异。双击文件在编辑器区打开完整差异。</p>
+
+<div class="vc">
+  <div class="tabs">
+    <b>版本控制</b><span class="tab on">本地更改</span><span class="tab">日志</span><span class="tab">搁置</span><span class="tab">储藏</span>
+    <span class="sp"></span>
+    <span class="ic"><svg viewBox="0 0 16 16"><circle cx="3" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="13" cy="8" r=".6"/></svg></span>
+    <span class="ic"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></span>
+  </div>
+  <div class="body">
+    <div class="tool">
+      <span title="刷新"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5"/></svg></span>
+      <span title="提交…"><svg viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg></span>
+      <span title="回滚"><svg viewBox="0 0 16 16"><path d="M5 4L2 7l3 3M2 7h7a4 4 0 0 1 0 8H7"/></svg></span>
+      <span title="更新项目"><svg viewBox="0 0 16 16"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 14h10"/></svg></span>
+      <span title="搁置"><svg viewBox="0 0 16 16"><path d="M2.5 6h11v7.5h-11zM4 3h8l1.5 3M6 9h4"/></svg></span>
+      <hr>
+      <span class="on" title="显示差异预览"><svg viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg></span>
+      <span title="分组方式"><svg viewBox="0 0 16 16"><path d="M2.5 3.5h4M4.5 7.5h4M4.5 11.5h4M2.5 3.5v8h2"/></svg></span>
+      <span title="全部展开"><svg viewBox="0 0 16 16"><path d="M5 6l3-3 3 3M5 10l3 3 3-3"/></svg></span>
+      <span title="全部折叠"><svg viewBox="0 0 16 16"><path d="M5 3l3 3 3-3M5 13l3-3 3 3"/></svg></span>
+    </div>
+    <div class="tree">
+      <div class="rows">
+        <div class="row" style="padding-left:6px"><span class="tw">▾</span><b>更改</b><span class="n">3 个文件</span></div>
+        <div class="row" style="padding-left:20px"><span class="tw">▾</span><span>DemoWeb</span><span class="tag">CVS</span><span class="n">1 个文件</span></div>
+        <div class="row" style="padding-left:34px"><span class="tw">▾</span><span>src/main/webapp</span><span class="n">1 个文件</span></div>
+        <div class="row" style="padding-left:48px"><span class="tw"></span><span class="mod">index.jsp</span></div>
+        <div class="row" style="padding-left:20px"><span class="tw">▾</span><span>demo-git</span><span class="tag">Git</span><span class="n">2 个文件</span><span class="p">main</span></div>
+        <div class="row sel" style="padding-left:34px"><span class="tw"></span><span class="mod">app.txt</span></div>
+        <div class="row" style="padding-left:34px"><span class="tw"></span><span class="add">g6-upstream.txt</span></div>
+        <div class="row" style="padding-left:6px"><span class="tw">›</span><span>未进行版本管理的文件</span><span class="n">2 个文件</span></div>
+        <div class="row" style="padding-left:6px"><span class="tw">›</span><span class="unv" style="color:var(--dim)">忽略</span><span class="n">12 个文件</span></div>
+      </div>
+    </div>
+    <div class="split"></div>
+    <div class="diff">
+      <div class="dbar">
+        <span><svg viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"/></svg></span>
+        <span><svg viewBox="0 0 16 16"><path d="M8 3v10M4 9l4 4 4-4"/></svg></span>
+        <span class="t">‹ 2/3 个文件 ›</span>
+        <span class="sp"></span>
+        <span style="color:var(--dim)">1 处差异</span>
+        <div class="seg"><i class="on">并排</i><i>统一</i></div>
+      </div>
+      <div class="dpath"><b>app.txt</b>　demo-git · HEAD ↔ 工作区</div>
+      <div class="cols">
+        <div class="side">
+          <div class="h">HEAD</div>
+          <div><em>1</em>line 1</div><div><em>2</em>line 2</div><div><em>3</em>line 3</div>
+          <div class="m"><em>4</em>line 4</div><div class="g"><em></em> </div>
+        </div>
+        <div class="gut"><div class="h"></div><div></div><div></div><div></div><div title="回滚这一处">↶</div><div></div></div>
+        <div class="side">
+          <div class="h">工作区</div>
+          <div><em>1</em>line 1</div><div><em>2</em>line 2</div><div><em>3</em>line 3</div>
+          <div class="m"><em>4</em>line 4<s> local</s></div><div class="a"><em>5</em>g6 local change</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="cap">状态 B：提交（点工具栏 ✓ 或 Ctrl+K）</p>
+<p class="note">树前出现勾选框，默认勾上「更改」里的全部文件；树下方出现提交说明和按钮，差异预览照常显示。提交或按 Esc 回到状态 A。没有 Git 仓库时不显示「搁置」「储藏」和「提交并推送」。</p>
+
+<div class="vc">
+  <div class="tabs">
+    <b>版本控制</b><span class="tab on">本地更改</span><span class="tab">日志</span><span class="tab">搁置</span><span class="tab">储藏</span>
+    <span class="sp"></span>
+  </div>
+  <div class="body">
+    <div class="tool">
+      <span title="刷新"><svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5"/></svg></span>
+      <span class="on" title="提交…"><svg viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg></span>
+      <span title="回滚"><svg viewBox="0 0 16 16"><path d="M5 4L2 7l3 3M2 7h7a4 4 0 0 1 0 8H7"/></svg></span>
+      <span title="更新项目"><svg viewBox="0 0 16 16"><path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M3 14h10"/></svg></span>
+      <span title="搁置"><svg viewBox="0 0 16 16"><path d="M2.5 6h11v7.5h-11zM4 3h8l1.5 3M6 9h4"/></svg></span>
+      <hr>
+      <span class="on" title="显示差异预览"><svg viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg></span>
+      <span title="分组方式"><svg viewBox="0 0 16 16"><path d="M2.5 3.5h4M4.5 7.5h4M4.5 11.5h4M2.5 3.5v8h2"/></svg></span>
+      <span title="全部展开"><svg viewBox="0 0 16 16"><path d="M5 6l3-3 3 3M5 10l3 3 3-3"/></svg></span>
+      <span title="全部折叠"><svg viewBox="0 0 16 16"><path d="M5 3l3 3 3-3M5 13l3-3 3 3"/></svg></span>
+    </div>
+    <div class="tree">
+      <div class="rows">
+        <div class="row" style="padding-left:6px"><span class="tw">▾</span><i class="cb on"></i><b>更改</b><span class="n">3 个文件</span></div>
+        <div class="row" style="padding-left:20px"><span class="tw">▾</span><i class="cb on"></i><span>DemoWeb</span><span class="tag">CVS</span><span class="n">1 个文件</span></div>
+        <div class="row" style="padding-left:48px"><span class="tw"></span><i class="cb on"></i><span class="mod">src/main/webapp/index.jsp</span></div>
+        <div class="row" style="padding-left:20px"><span class="tw">▾</span><i class="cb on"></i><span>demo-git</span><span class="tag">Git</span><span class="n">2 个文件</span><span class="p">main</span></div>
+        <div class="row sel" style="padding-left:34px"><span class="tw"></span><i class="cb on"></i><span class="mod">app.txt</span></div>
+        <div class="row" style="padding-left:34px"><span class="tw"></span><i class="cb on"></i><span class="add">g6-upstream.txt</span></div>
+        <div class="row" style="padding-left:6px"><span class="tw">›</span><i class="cb"></i><span>未进行版本管理的文件</span><span class="n">2 个文件</span></div>
+      </div>
+      <div class="commit">
+        <div class="msg focus">修正 app.txt 第 4 行说明▏</div>
+        <div class="acts">
+          <span class="btn pri">提交</span><span class="btn">提交并推送…</span>
+          <label><i class="cb"></i>修改上次提交</label>
+          <span class="sp"></span><span style="color:var(--dim)">已选 3 个文件 · 2 个仓库</span>
+        </div>
+      </div>
+    </div>
+    <div class="split"></div>
+    <div class="diff">
+      <div class="dbar">
+        <span><svg viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"/></svg></span>
+        <span><svg viewBox="0 0 16 16"><path d="M8 3v10M4 9l4 4 4-4"/></svg></span>
+        <span class="t">‹ 2/3 个文件 ›</span>
+        <span class="sp"></span>
+        <span style="color:var(--dim)">1 处差异</span>
+        <div class="seg"><i>并排</i><i class="on">统一</i></div>
+      </div>
+      <div class="dpath"><b>app.txt</b>　demo-git · HEAD ↔ 工作区</div>
+      <div class="cols" style="grid-template-columns:1fr">
+        <div class="side">
+          <div><em>1</em>line 1</div><div><em>2</em>line 2</div><div><em>3</em>line 3</div>
+          <div class="g" style="text-decoration:line-through;color:var(--dim)"><em>4</em>line 4</div>
+          <div class="m"><em>4</em>line 4<s> local</s></div>
+          <div class="a"><em>5</em>g6 local change</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="cap">状态 C：没有版本控制</p>
+<div class="vc">
+  <div class="tabs"><b>版本控制</b><span class="tab on">本地更改</span><span class="tab">日志</span></div>
+  <div style="height:90px;display:flex;align-items:center;justify-content:center;color:var(--dim)">此工作区没有 Git 或 CVS 仓库</div>
+</div>
+
+</body>
+</html>

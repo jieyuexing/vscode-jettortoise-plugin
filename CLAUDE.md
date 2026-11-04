@@ -91,7 +91,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 ## 本地更改三态（2026-10-31，0.6.4）
 
-用户已确认 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/local-changes.html`（“对 就应该是这样”），它是本节唯一视觉基准，覆盖旧版常驻提交表单与尺寸说明。删除上一轮未采用的弹窗提交方案，不合并 `b5-codex-wip` 界面。任务书允许本机产品开发构建试装，覆盖旧实验“不启动 GUI”的限制；不推送、不改安装版。
+用户已确认 [`docs/design/local-changes.html`](docs/design/local-changes.html)（“对 就应该是这样”），它是本节唯一视觉基准，覆盖旧版常驻提交表单与尺寸说明。删除上一轮未采用的弹窗提交方案，不合并 `b5-codex-wip` 界面。任务书允许本机产品开发构建试装，覆盖旧实验“不启动 GUI”的限制；不推送、不改安装版。
 
 - 浏览默认没有复选框与提交说明。30px 竖排工具栏、22px 行、14px 层级增量；按更改列表→仓库→目录分组，浅色逐项采用底稿变量，深色映射宿主主题。Git 的更改／搁置／储藏小页签仅在树列存在 Git 仓库时出现；窄于 760px 改为横排工具栏与树。
 - 单击文件请求 `getWorkingFilePreview`；双击沿用 `showDiffForWorkingFile`。预览 Git 比较 HEAD 与磁盘，CVS 比较当前 Entries 的 BASE 与磁盘；只读并排／统一视图共用滚动、行号与行内着色。中缝回滚入口打开已有完整差异，不新增文件写入通道。
@@ -102,7 +102,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 ## 方案 C 组件化（2026-10-31，0.6.6）
 
-当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/components.html` 为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 8px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
+当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.state/records/vscode-jettortoise-plugin/design/components.html`（含公司内容，不入本仓，仅 M3）为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 8px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
 
 - 十个尺寸变量只在 `webview/src/shared/theme/variables.css` 镜像，名称和值与产品 `/Users/jieyuexing/jieyuexing-universe/projects/etech/etech-theia-ide/theia-extensions/etech-eclipse-layout/src/browser/style/tokens.css` 一致，改值两处同步。颜色只读 Theia 导出的 `--vscode-*`，本地更改浅色固定调色板已删除；编辑器／差异正文的代码字号仍沿宿主。
 - `webview/src/shared/components/VerticalToolbar.tsx` 与 `PanelHeader.tsx`、`panel-chrome.css` 供本地更改和日志共用。竖列 30px、按钮 22px、图标 16px、间距 1px、上下 4px，短面板滚动且隐藏工具列滚动条，禁用 40%。日志沿用分支工具列原动作；标题行 28px、12px，PanelHeader 的可选标题能力保留，本地更改与日志都不传标题，避免重复宿主页签名称；保留更改／搁置／储藏小页签与仓库选择行为。变更树容器不画焦点外框，选中行只在树内焦点时使用活动选中色，离焦消费 inactiveSelectionBackground／Foreground；按钮、输入、文本框自己的键盘焦点保留。日志列表沿用主题变量的活动／非活动选中，不新增列表级焦点框。
@@ -111,7 +111,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 ## D1 左侧本地更改（2026-11-02，0.6.7）
 
-用户确认的窄栏底稿为 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/workbench-c.html`，三态仍沿用同目录 `local-changes.html`；本轮开发构建可临时加载候选，交回前恢复原插件，不推送、不发布、不改安装版。
+用户确认的窄栏底稿为 `/Users/jieyuexing/jieyuexing-universe/.state/records/vscode-jettortoise-plugin/design/workbench-c.html`（含公司内容，不入本仓，仅 M3），三态仍沿用 [`docs/design/local-changes.html`](docs/design/local-changes.html)；本轮开发构建可临时加载候选，交回前恢复原插件，不推送、不发布、不改安装版。
 
 - 现有 ResizeObserver 的小于 760px 布局改为单行「本地更改」、浅色文件数，以及刷新／提交／回滚／更多四个动作；删除旧窄栏整排工具按钮及常驻的更改／搁置／储藏页签，相关动作移入更多。宽布局保持原样。
 - 窄栏只有变更树，双击文件继续在编辑器打开差异。浏览态不显示复选框和说明；提交态在同一棵树显示勾选，说明框在树下。无仓库保持灰字空态。动作仍走现有 bridge、选仓、确认和写入队列，没有新增 VCS 写通道。

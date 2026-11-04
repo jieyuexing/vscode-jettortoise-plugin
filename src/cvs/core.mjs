@@ -54,7 +54,8 @@ export function cvsRoot(value) {
   if (
     /^:local:\//.test(value) ||
     /^\//.test(value) ||
-    /^:pserver:(?:[\w.-]+@)?[\w.-]+(?::\d{1,5})?:\/[^\s]+$/.test(value)
+    // 端口后可直接接路径（CVS 1.12：host:2401/path），也可再带冒号（CVSNT：host:2401:/path）。
+    /^:pserver:(?:[\w.-]+@)?[\w.-]+(?::\d{1,5}:?|:)\/[^\s]+$/.test(value)
   )
     return value;
   fail("root");
@@ -510,8 +511,15 @@ export class CvsAdapter {
     if (file.entryRevision === "0") state = "Locally Added";
     else if (file.entryRevision.startsWith("-")) state = "Locally Removed";
     else if (!stat) state = "Missing";
-    else if (timestamp?.includes("+")) state = "File had conflicts on merge";
-    else {
+    else if (timestamp?.includes("+")) {
+      // 与 CVS 相同：合并后文件未再改动才算冲突；编辑解决后为本地修改，残留冲突标记由 cvs commit 拒绝。
+      const merged = Date.parse(`${timestamp.split("+")[1]} GMT`);
+      state =
+        !Number.isFinite(merged) ||
+        Math.floor(stat.mtimeMs / 1000) === Math.floor(merged / 1000)
+          ? "File had conflicts on merge"
+          : "Locally Modified";
+    } else {
       // CVS Entries 使用 UTC asctime，时间精度为秒；无可证明基线时保守列为修改。
       const recorded = Date.parse(`${timestamp} GMT`);
       const key = `${file.newPath}\0${file.entryRevision}\0${timestamp}`;
@@ -564,13 +572,20 @@ export class CvsAdapter {
     const states = parseUpdateStatus(output.stdout.toString("utf8"));
     const result = files
       .filter((file) => file.state !== "Unknown")
-      .map((file) => ({
-        ...file,
-        ...(states.get(file.newPath)?.state === "Needs Merge" &&
-        file.state === "File had conflicts on merge"
-          ? parseStatus("Status: File had conflicts on merge")
-          : (states.get(file.newPath) ?? parseStatus("Status: Up-to-date"))),
-      }));
+      // 本地删掉的已登记文件，update 报 U／was lost；保持本地删除，提交时再 cvs remove。
+      .map((file) =>
+        file.state === "Missing" &&
+        states.get(file.newPath)?.state === "Needs Checkout"
+          ? file
+          : {
+              ...file,
+              ...(states.get(file.newPath)?.state === "Needs Merge" &&
+              file.state === "File had conflicts on merge"
+                ? parseStatus("Status: File had conflicts on merge")
+                : (states.get(file.newPath) ??
+                  parseStatus("Status: Up-to-date"))),
+            },
+      );
     const known = new Set(result.map((file) => file.newPath));
     for (const [name, state] of states) {
       if (known.has(name) || state.state !== "Unknown") continue;
@@ -701,11 +716,25 @@ export class CvsAdapter {
       await assertOwnedPath(this.root, "cvs", name);
       const file = files.find((file) => file.newPath === name);
       if (!file) fail("commitState");
-      const { state } = parseStatus(
-        (await this.run(["status", "./" + name], signal)).stdout.toString(
-          "utf8",
-        ),
+      const status = async () =>
+        parseStatus(
+          (await this.run(["status", "./" + name], signal)).stdout.toString(
+            "utf8",
+          ),
+        ).state;
+      let state = await status();
+      // 已登记文件在本地被删除：先 cvs remove 登记删除，再按删除提交。
+      const missing = await fs.lstat(path.join(this.root, name)).then(
+        () => false,
+        (error) => {
+          if (error.code !== "ENOENT") throw error;
+          return true;
+        },
       );
+      if (missing && state === "Needs Checkout") {
+        await this.run(["remove", "./" + name], signal);
+        state = await status();
+      }
       if (
         !["Locally Modified", "Locally Added", "Locally Removed"].includes(
           state,

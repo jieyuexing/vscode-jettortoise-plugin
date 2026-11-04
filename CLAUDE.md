@@ -173,3 +173,15 @@ CVS 仓库按需同步，未同步不加载。工作区发现仅保留本地元�
 - Git 忽略只影响 Git 登记，不剪掉目录遍历：被忽略树中独立 CVS 仍读取管理元数据、提供按需同步入口，不启动 CVS 清单或命令。忽略查询失败标记发现不完整、暂不登记该范围的新子 Git，继续寻找 CVS。发现排除不改变物理写边界或任何原扫描上限。
 
 回归并入既有 grouping、catalog-discovery、repository-performance 与 commit UI 检查，由 `pnpm run test:headless` 执行。真实 Electron 的首屏采样、二十轮焦点／本地刷新、首次 Markdown 与浅深截图写在本轮 RECORD；均为合成夹具，不构成 M3 安装版、Windows 或公司仓验收。版本 0.6.11 只在授权本地分支提交，不改产品固定 URL、不推送或发布。
+
+## 本地模拟远端写入走通（2026-11-05，0.6.12）
+
+ETECH 环节 7 写入部分用产品仓 `fixtures/vcs-sim/vcs-sim.py` 搭本机 CVS（`:local:` 与 127.0.0.1:2401 pserver）和 Git 裸仓库，在隔离开发构建里走通签出、本地更改与差异、更新、增删改提交、历史、冲突解决与 MS932 原字节往返。走不通的四处按最小改动修正，回归并入既有 `scripts/cvs-real-test.mjs` 与 `scripts/git-update-check.cjs`：
+
+- `cvsRoot` 接受端口后直接接路径（CVS 1.12）与再带冒号（CVSNT）两种 pserver 写法；带口令的根仍拒绝。
+- 已登记文件本地被删：本地状态 Missing 列为删除；网络 `update` 报 U／was lost 时保持本地删除。提交校验遇到磁盘缺失且 `cvs status` 为 Needs Checkout 的文件，先 `cvs remove` 再按 Locally Removed 提交。
+- Entries 时间戳带 `+`（合并结果）时，文件 mtime 与 `+` 后时间相同才是冲突，否则为本地修改，与 CVS 自身判定一致；时间无法解析时保守视为冲突。残留冲突标记由 `cvs commit` 拒绝。
+- Git 快进更新的本地更改检查排除 `.idea/shelf`（本插件搁置区），其余已跟踪改动与未跟踪文件仍按原合同拒绝更新。
+
+未改：Git 更新仍不自动 stash；Git 冲突经冲突面板的合并编辑器“应用”后才算已解决（本地更改右键没有“暂存”）；CVS 新增的服务器文件不在传入中预先列出，更新时仍会取得；CVS 差异左侧修订内容按 UTF-8 解码，MS932 文件比较时左侧乱码。
+

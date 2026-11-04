@@ -90,6 +90,15 @@ async function main() {
     }
 
     await withFixture(temporary, async (f) => {
+      await addRemoteCommit(f);
+      await fs.mkdir(path.join(f.target, ".idea/shelf"), { recursive: true });
+      await fs.writeFile(path.join(f.target, ".idea/shelf/local.patch"), "shelved\n");
+      await new GitService(f.target).updateFastForward();
+      assert.equal(await fs.readFile(path.join(f.target, "tracked.txt"), "utf8"), "remote\n");
+      assert.equal(await fs.readFile(path.join(f.target, ".idea/shelf/local.patch"), "utf8"), "shelved\n");
+      checks += 2;
+    });
+    await withFixture(temporary, async (f) => {
       git(f.target, ["checkout", "--detach", "HEAD"]);
       await assert.rejects(() => new GitService(f.target).updateFastForward()); checks += 1;
     });

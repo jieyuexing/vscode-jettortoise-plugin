@@ -38,10 +38,41 @@ test("temporary local CVS: checkout, discovery, history, content, diff, commit, 
     await assert.rejects(f.cvs.content("中文 file.txt", "99.99"), { code: "revision" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
+test("temporary local CVS: a locally deleted registered file stays a local deletion and commits as cvs remove", async () => {
+  const f = await fixture();
+  try {
+    await fs.rm(path.join(f.wc, "other.txt"));
+    const deleted = (await f.cvs.status()).find(item => item.newPath === "other.txt");
+    assert.equal(deleted.state, "Missing"); assert.equal(deleted.status, "deleted");
+    await f.cvs.commit(["other.txt"], "delete other");
+    assert.equal((await f.cvs.inventory()).some(item => item.newPath === "other.txt"), false);
+    const second = await checkout(f.process, f.root, "demo", path.join(f.base, "second"));
+    await assert.rejects(fs.access(path.join(second, "other.txt")));
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+test("temporary local CVS: an edited merge conflict becomes a local modification and commits", async () => {
+  const f = await fixture();
+  try {
+    const second = await checkout(f.process, f.root, "demo", path.join(f.base, "second"));
+    await fs.writeFile(path.join(second, "other.txt"), "colleague\n"); await new CvsAdapter(second, f.process).commit(["other.txt"], "colleague");
+    await fs.writeFile(path.join(f.wc, "other.txt"), "mine\n"); await f.cvs.update();
+    const conflicted = async () => (await f.cvs.localStatus()).find(item => item.newPath === "other.txt").state;
+    assert.equal(await conflicted(), "File had conflicts on merge");
+    await new Promise(done => setTimeout(done, 1100));
+    await fs.appendFile(path.join(f.wc, "other.txt"), "\n");
+    assert.equal(await conflicted(), "Locally Modified");
+    await assert.rejects(f.cvs.commit(["other.txt"], "markers left"));
+    await fs.writeFile(path.join(f.wc, "other.txt"), "mine and colleague\n");
+    await f.cvs.commit(["other.txt"], "resolved");
+    assert.ok((await f.cvs.log("other.txt")).some(item => item.subject === "resolved"));
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));
   for (const value of ["-r1.1", "1.1;touch x", "HEAD", ""]) assert.throws(() => revision(value));
   for (const value of [":ext:host:/repo", ":pserver:user:secret@host:/repo", "-d /tmp"]) assert.throws(() => cvsRoot(value));
+  for (const value of [":pserver:dev@host:/repo", ":pserver:dev@127.0.0.1:2401/repo", ":pserver:dev@host:2401:/repo"]) assert.equal(cvsRoot(value), value);
+  for (const value of [":pserver:dev@host/repo", ":pserver:dev@host:240100/repo"]) assert.throws(() => cvsRoot(value));
   for (const value of [{ type: "push" }, { type: "history", path: "a", options: "-x" }, { type: "compare", path: "a", revision: "--help" }]) assert.throws(() => validateMessage(value, "workspace"));
   const f = await fixture();
   try {

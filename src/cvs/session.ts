@@ -104,9 +104,7 @@ export class CvsSession {
         directory: file.newPath.endsWith("/"),
         status: ["Needs Checkout", "Needs Patch"].includes(file.state)
           ? "incoming"
-          : ["Needs Merge", "File had conflicts on merge", "Missing"].includes(
-                file.state,
-              )
+          : ["Needs Merge", "File had conflicts on merge"].includes(file.state)
             ? "conflicted"
             : file.state === "Unknown"
               ? "untracked"

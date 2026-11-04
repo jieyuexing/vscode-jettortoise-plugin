@@ -964,11 +964,15 @@ export class GitService {
           "This branch has no upstream. Configure an upstream before updating.",
         ),
       );
+    // 搁置区 .idea/shelf 是本插件自己的存放处；不排除它，“搁置 → 更新 → 取消搁置”走不通。
     const dirty = await this.execGit([
       "status",
       "--porcelain=v1",
       "-z",
       "--untracked-files=all",
+      "--",
+      ".",
+      ":(exclude).idea/shelf",
     ]);
     if (dirty)
       throw new Error(

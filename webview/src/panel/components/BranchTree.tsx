@@ -1249,13 +1249,9 @@ function BranchContextMenu({
     }
   };
 
+  // 宿主在执行合并前统一确认一次，这里不再重复询问。
   const handleMerge = async () => {
     onClose();
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t("Merge '{0}' into '{1}'?", branch.name, currentBranch),
-      confirmLabel: t("Merge"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("mergeBranch", { branchName: branch.name });
     } catch (err) {

@@ -49,6 +49,27 @@ const FMT_RECORD_SEP = "%x00%x00%x01";
 // For git branch/tag --format (ref-format / for-each-ref): %00 produces null byte
 const REF_FMT_FIELD_SEP = "%00";
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
+/** 这些状态下 git 拒绝按路径部分提交，提交区改为提交整个索引来完成该操作。 */
+const COMMIT_OPERATION_MARKERS = [
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+] as const;
+
+export interface DivergedUpstream {
+  upstream: string;
+  ahead: number;
+  behind: number;
+}
+
+export function divergedMessage({ upstream, ahead, behind }: DivergedUpstream) {
+  return vscode.l10n.t(
+    "Cannot fast-forward: the current branch has {0} local commit(s) and {1} has {2} new commit(s). Merge or rebase to update.",
+    ahead,
+    upstream,
+    behind,
+  );
+}
 
 /** A bounded object read used by the read-only comparison workbench. */
 export class GitContentTooLargeError extends Error {
@@ -932,14 +953,18 @@ export class GitService {
           "Update Project updates the current branch upstream only.",
         ),
       );
-    await this.updateFastForward(this.ensureAvailable);
+    const diverged = await this.updateFastForward(this.ensureAvailable);
+    if (diverged) throw new Error(divergedMessage(diverged));
   }
 
-  /** Catalog update never merges, rebases, stashes, or recurses into submodules. */
+  /**
+   * Catalog update never merges, rebases, stashes, or recurses into submodules.
+   * 分叉时不改工作区，返回上游名与两侧提交数，由调用方让用户选择合并或变基。
+   */
   async updateFastForward(
     revalidate: () => Promise<void> = async () => {},
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<DivergedUpstream | undefined> {
     await revalidate();
     await this.assertWholeWorktreeOwned();
     const branch = (
@@ -982,26 +1007,13 @@ export class GitService {
         ),
       );
     for (const marker of [
-      "MERGE_HEAD",
-      "CHERRY_PICK_HEAD",
-      "REVERT_HEAD",
+      ...COMMIT_OPERATION_MARKERS,
       "rebase-merge",
       "rebase-apply",
       "sequencer",
       "BISECT_LOG",
     ]) {
-      const location = (
-        await this.execGit(["rev-parse", "--git-path", marker])
-      ).trim();
-      if (
-        await fs.stat(path.resolve(this.cwd, location)).then(
-          () => true,
-          (error: NodeJS.ErrnoException) => {
-            if (error.code === "ENOENT") return false;
-            throw error;
-          },
-        )
-      ) {
+      if (await this.gitPathExists(marker)) {
         throw new Error(
           vscode.l10n.t(
             "Finish the current Git operation before updating this repository.",
@@ -1012,28 +1024,97 @@ export class GitService {
     // Repeat the Host identity/editor guard after all asynchronous preflight reads.
     await revalidate();
     await this.assertWholeWorktreeOwned();
-    await runNetwork(async () => {
-      await revalidate();
-      await this.assertWholeWorktreeOwned();
-      await execFileAsync(
-        "git",
-        [
-          "pull",
-          "--ff-only",
-          "--no-rebase",
-          "--no-autostash",
-          "--no-recurse-submodules",
-        ],
-        {
-          cwd: this.cwd,
-          maxBuffer: MAX_BUFFER,
-          timeout: 60_000,
-          signal,
-          env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
-        },
+    try {
+      await runNetwork(async () => {
+        await revalidate();
+        await this.assertWholeWorktreeOwned();
+        await execFileAsync(
+          "git",
+          [
+            "pull",
+            "--ff-only",
+            "--no-rebase",
+            "--no-autostash",
+            "--no-recurse-submodules",
+          ],
+          {
+            cwd: this.cwd,
+            maxBuffer: MAX_BUFFER,
+            timeout: 60_000,
+            signal,
+            env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
+          },
+        );
+      }, signal);
+    } catch (error) {
+      // pull 已取回上游；只有两侧都有独有提交时才改报分叉，其余失败保留原文。
+      if (signal?.aborted) throw error;
+      const [ahead, behind] = (
+        await this.execGit([
+          "rev-list",
+          "--left-right",
+          "--count",
+          "HEAD...@{upstream}",
+        ]).catch(() => "0 0")
+      )
+        .trim()
+        .split(/\s+/)
+        .map(Number);
+      if (!(ahead > 0 && behind > 0)) throw error;
+      return { upstream, ahead, behind };
+    } finally {
+      this.invalidateCache();
+    }
+  }
+
+  /** 分叉后按用户选择合并或变基到上游；冲突时保留进行中状态并返回冲突文件数。 */
+  async integrateUpstream(mode: "merge" | "rebase"): Promise<number> {
+    await this.assertWholeWorktreeOwned();
+    // 用解析后的上游名（如 origin/main），冲突标记与说明里显示真实分支而不是 @{upstream}。
+    const upstream = safeGitRef(
+      (
+        await this.execGit([
+          "rev-parse",
+          "--abbrev-ref",
+          "--symbolic-full-name",
+          "@{upstream}",
+        ])
+      ).trim(),
+      "Branch",
+    );
+    try {
+      await this.execGit(
+        mode === "merge"
+          ? ["merge", "--no-edit", upstream]
+          : ["rebase", upstream],
       );
-    }, signal);
-    this.invalidateCache();
+      return 0;
+    } catch (error) {
+      const conflicts = await this.getConflictFiles();
+      if (!conflicts.length) throw error;
+      return conflicts.length;
+    } finally {
+      this.invalidateCache();
+    }
+  }
+
+  async commitOperationInProgress(): Promise<boolean> {
+    for (const marker of COMMIT_OPERATION_MARKERS)
+      if (await this.gitPathExists(marker)) return true;
+    return false;
+  }
+
+  private async gitPathExists(name: string): Promise<boolean> {
+    const location = (
+      await this.execGit(["rev-parse", "--git-path", name])
+    ).trim();
+    return fs.stat(path.resolve(this.cwd, location)).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      },
+    );
   }
 
   async pullRebase(branchName?: string): Promise<void> {
@@ -1368,12 +1449,30 @@ export class GitService {
     paths: string[],
     amend = false,
   ): Promise<void> {
-    if (!message.trim() || message.includes("\0") || !paths.length)
+    const operation = await this.commitOperationInProgress();
+    if (
+      (!message.trim() && !operation) ||
+      message.includes("\0") ||
+      !paths.length
+    )
       throw new Error(
         vscode.l10n.t("Enter a commit message and select changed files."),
       );
     await this.assertCanCommit();
     const checked = await this.checkedPaths([...new Set(paths)]);
+    if (operation) {
+      // 合并类操作只能整体提交：先暂存所选文件，再提交整个索引；说明留空时用 git 生成的说明。
+      await this.execGit(["add", "--", ...checked]);
+      await this.execGit([
+        "commit",
+        ...(message.trim()
+          ? ["-m", message]
+          : ["--no-edit", "--cleanup=strip"]),
+        ...(amend ? ["--amend"] : []),
+      ]);
+      this.invalidateCache();
+      return;
+    }
     await this.execGit([
       "commit",
       "-m",

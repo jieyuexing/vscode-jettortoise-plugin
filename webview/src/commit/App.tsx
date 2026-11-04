@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { bridge } from "../shared/bridge";
-import { Tooltip } from "../shared/components/Tooltip";
 import { t } from "../shared/i18n";
-import "../shared/components/Tooltip.css";
 import { useCommitStore } from "../shared/store/commit-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitTab } from "./components/CommitTab";
@@ -92,77 +90,77 @@ function RebaseBanner() {
         {label}
         {progress}
       </span>
-      <Tooltip text={t("Continue Rebase (git rebase --continue)")}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAction("continue")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAction("continue");
-            }
-          }}
-          className="rebase-action-btn rebase-continue"
+      <div
+        role="button"
+        title={t("Continue Rebase (git rebase --continue)")}
+        aria-label={t("Continue Rebase (git rebase --continue)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAction("continue")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAction("continue");
+          }
+        }}
+        className="rebase-action-btn rebase-continue"
+      >
+        {/* JetBrains official expui double chevron >> icon */}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          {/* JetBrains official expui double chevron >> icon */}
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
-      <Tooltip text={t("Abort Rebase (git rebase --abort)")}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAction("abort")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAction("abort");
-            }
-          }}
-          className="rebase-action-btn rebase-abort"
+          <path
+            d="M2.5 11.5L6 8L2.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M8.5 11.5L12 8L8.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div
+        role="button"
+        title={t("Abort Rebase (git rebase --abort)")}
+        aria-label={t("Abort Rebase (git rebase --abort)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAction("abort")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAction("abort");
+          }
+        }}
+        className="rebase-action-btn rebase-abort"
+      >
+        {/* JetBrains official expui/vcs/abort × icon */}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          {/* JetBrains official expui/vcs/abort × icon */}
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M4 12L12 4M12 12L4 4"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
+          <path
+            d="M4 12L12 4M12 12L4 4"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -249,107 +247,107 @@ function CherryPickBanner() {
       <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg)" }}>
         {label}
       </span>
-      <Tooltip text={t("Continue Cherry-pick (git cherry-pick --continue)")}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAction("continue")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAction("continue");
-            }
-          }}
-          className="rebase-action-btn rebase-continue"
+      <div
+        role="button"
+        title={t("Continue Cherry-pick (git cherry-pick --continue)")}
+        aria-label={t("Continue Cherry-pick (git cherry-pick --continue)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAction("continue")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAction("continue");
+          }
+        }}
+        className="rebase-action-btn rebase-continue"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
-      <Tooltip text={t("Skip Cherry-pick (git cherry-pick --skip)")}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAction("skip")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAction("skip");
-            }
-          }}
-          className="rebase-action-btn rebase-continue"
-          style={{ background: "var(--vscode-charts-orange)" }}
+          <path
+            d="M2.5 11.5L6 8L2.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M8.5 11.5L12 8L8.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div
+        role="button"
+        title={t("Skip Cherry-pick (git cherry-pick --skip)")}
+        aria-label={t("Skip Cherry-pick (git cherry-pick --skip)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAction("skip")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAction("skip");
+          }
+        }}
+        className="rebase-action-btn rebase-continue"
+        style={{ background: "var(--vscode-charts-orange)" }}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M5 4L11 8L5 12"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
-      <Tooltip text={t("Abort Cherry-pick (git cherry-pick --abort)")}>
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAction("abort")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAction("abort");
-            }
-          }}
-          className="rebase-action-btn rebase-abort"
+          <path
+            d="M5 4L11 8L5 12"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div
+        role="button"
+        title={t("Abort Cherry-pick (git cherry-pick --abort)")}
+        aria-label={t("Abort Cherry-pick (git cherry-pick --abort)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAction("abort")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAction("abort");
+          }
+        }}
+        className="rebase-action-btn rebase-abort"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M4 12L12 4M12 12L4 4"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
+          <path
+            d="M4 12L12 4M12 12L4 4"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -357,6 +355,9 @@ function CherryPickBanner() {
 function MergeBanner() {
   const [state, setState] = useState<MergeStateInfo>({ isMerging: false });
   const [loading, setLoading] = useState(false);
+  const setMerging = useCommitStore((store) => store.setMerging);
+
+  useEffect(() => setMerging(state.isMerging), [setMerging, state.isMerging]);
 
   const fetchState = useCallback(async () => {
     try {
@@ -441,75 +442,75 @@ function MergeBanner() {
       <span style={{ fontWeight: 600, flex: 1, color: "var(--app-fg)" }}>
         {label}
       </span>
-      <Tooltip text={t("Resolve Conflicts")} position="top">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleContinue()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleContinue();
-            }
-          }}
-          className="rebase-action-btn rebase-continue"
+      <div
+        role="button"
+        title={t("Continue Merge (open conflicts if any remain)")}
+        aria-label={t("Continue Merge (open conflicts if any remain)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleContinue()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleContinue();
+          }
+        }}
+        className="rebase-action-btn rebase-continue"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2.5 11.5L6 8L2.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M8.5 11.5L12 8L8.5 4.5"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
-      <Tooltip text={t("Abort Merge (git merge --abort)")} position="top">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-disabled={loading}
-          onClick={() => !loading && handleAbort()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              if (!loading) handleAbort();
-            }
-          }}
-          className="rebase-action-btn rebase-abort"
+          <path
+            d="M2.5 11.5L6 8L2.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M8.5 11.5L12 8L8.5 4.5"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div
+        role="button"
+        title={t("Abort Merge (git merge --abort)")}
+        aria-label={t("Abort Merge (git merge --abort)")}
+        tabIndex={0}
+        aria-disabled={loading}
+        onClick={() => !loading && handleAbort()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (!loading) handleAbort();
+          }
+        }}
+        className="rebase-action-btn rebase-abort"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M4 12L12 4M12 12L4 4"
-              stroke="var(--vscode-button-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </Tooltip>
+          <path
+            d="M4 12L12 4M12 12L4 4"
+            stroke="var(--vscode-button-foreground)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
     </div>
   );
 }

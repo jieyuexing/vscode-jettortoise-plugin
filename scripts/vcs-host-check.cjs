@@ -61,6 +61,22 @@ async function main() {
     git(bigRepo, ["add", "."]);
     git(bigRepo, ["commit", "-q", "-m", "big"]);
 
+    // 与上游分叉的 Git 仓：远端是工作区外的本地裸仓库，writer 代表同事推送。
+    const divRemote = path.join(base, "div-remote.git"), divWriter = path.join(base, "div-writer"), divRepo = path.join(root, "git-div");
+    git(base, ["init", "--bare", "-b", "main", divRemote]);
+    git(base, ["clone", "-q", divRemote, divWriter]);
+    for (const clone of [divWriter]) { git(clone, ["config", "user.name", "Host Fixture"]); git(clone, ["config", "user.email", "host@example.invalid"]); }
+    await fs.writeFile(path.join(divWriter, "tracked.txt"), "base\n");
+    git(divWriter, ["add", "."]); git(divWriter, ["commit", "-q", "-m", "base"]); git(divWriter, ["push", "-q", "-u", "origin", "main"]);
+    git(base, ["clone", "-q", divRemote, divRepo]);
+    git(divRepo, ["config", "user.name", "Host Fixture"]); git(divRepo, ["config", "user.email", "host@example.invalid"]);
+    const diverge = async (file) => {
+      await fs.writeFile(path.join(divWriter, "tracked.txt"), `remote ${Date.now()}\n`);
+      git(divWriter, ["commit", "-q", "-am", "remote"]); git(divWriter, ["push", "-q"]);
+      await fs.writeFile(path.join(divRepo, file), `local ${Date.now()}\n`);
+      git(divRepo, ["add", file]); git(divRepo, ["commit", "-q", "-m", "local"]);
+    };
+
     const watchers = [], warnings = [], commands = [], sent = [];
     const decodes = [];
     const vscode = {
@@ -166,7 +182,30 @@ async function main() {
     assert.equal(historyDiff()[1].toString(), `jettortoise://${big.id}/${bigFile(5)}?ref=empty`);
     await manager.execute("jettortoise.nextDiff");
     assert.equal(historyDiff()[2].path, `/${bigFile(6)}`, "next diff did not follow the commit file list");
-    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true }));
+    // 7. 分叉时更新项目：通知写明两侧提交数并给出合并／变基，选合并（模拟返回第一个动作）即合并上游。
+    const div = manager.repositories.find((item) => item.root === divRepo);
+    await diverge("local.txt");
+    await manager.request("updateProject", { repositoryId: div.id });
+    assert.ok(warnings.includes("Cannot fast-forward: the current branch has 1 local commit(s) and origin/main has 1 new commit(s). Merge or rebase to update."));
+    const parents = () => git(divRepo, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length;
+    await until(() => parents() === 3, "diverged update did not merge after choosing Merge");
+    // 8. 合并有冲突：沿用冲突通知；标记已解决后，提交区说明留空按所选文件提交，生成 Git 默认合并说明。
+    warnings.length = 0;
+    await diverge("tracked.txt");
+    await manager.request("updateProject", { repositoryId: div.id });
+    await until(() => warnings.includes("Update Project: 1 file(s) have merge conflicts."), "merge conflict was not reported");
+    await fs.writeFile(path.join(divRepo, "tracked.txt"), "resolved\n");
+    git(divRepo, ["add", "tracked.txt"]);
+    await manager.request("refreshRepositories");
+    await manager.request("commitRepositories", { message: "", files: [{ repositoryId: div.id, path: "tracked.txt" }] });
+    assert.match(git(divRepo, ["log", "-1", "--format=%B"]), /^Merge remote-tracking branch 'origin\/main'/);
+    assert.equal(parents(), 3);
+    // 不在合并中时空说明仍被拒绝。
+    await fs.writeFile(path.join(repo, "plain.txt"), "edited\n");
+    await manager.request("refreshRepositories");
+    await assert.rejects(() => manager.request("commitRepositories", { message: "", files: [{ repositoryId: a.id, path: "plain.txt" }] }), /commit message/);
+    await fs.writeFile(path.join(repo, "plain.txt"), "plain\n");
+    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true, divergedUpdate: true, mergeCommitDefaultMessage: true }));
   } finally {
     manager?.dispose();
     delete global.__vcsHostVscode;

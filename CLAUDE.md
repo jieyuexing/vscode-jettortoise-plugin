@@ -17,7 +17,7 @@
 
 更改（Changes）的计数只含已管理的本地变更。未受版本控制的文件（Unversioned Files）和传入（Incoming）默认折叠、不计数、不预选。未管理目录只展示节点，展开才读取其下一层；先通过“添加到版本控制”纳管，随后在更改中勾选提交。传入只读，不能提交，不显示复选框，以向下箭头标记远端新版本。更改的根文件直接列出，只有子目录创建目录组；分组内只显示文件名，关闭目录分组才显示路径。只有英文分组标题转大写，中文标题及目录保留原样；英文计数使用单复数 file/files，中文使用“N 个文件”，展开箭头复用上游 chevron。Git 的分阶段行合并为一个路径选择，提交取所选文件的磁盘内容；重命名带旧、新两条路径。
 
-Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一个原子事务。开始前验证全部所选根；逐仓失败会报告已经成功的仓库并保留说明。Git 先检查完整索引，再 `git commit -m <message> -- <paths>`，未选择的暂存内容保留。Amend 和 Commit and Push 只在单个 Git 仓选择中可用；Shelf/Stash 明示仅 Git。
+Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一个原子事务。开始前验证全部所选根；逐仓失败会报告已经成功的仓库并保留说明。Git 先检查完整索引，再 `git commit -m <message> -- <paths>`，未选择的暂存内容保留；合并类操作进行中例外，见「合并中提交与分叉更新」。Amend 和 Commit and Push 只在单个 Git 仓选择中可用；Shelf/Stash 明示仅 Git。
 
 一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
 
@@ -29,7 +29,7 @@ CVS 登记、监听文件和焦点等自动路径只读 Entries/Entries.Log 本�
 
 文件修改重新检查归属和符号链接；Git 提交验证完整索引，包括已被父仓跟踪的子仓重叠。checkout/reset、merge/rebase、全量 stash、patch 沿用完整树预检，无法证明安全就拒绝。清单读取可在未管理目录停止，整树写预检不能使用这一优化。写操作在队列执行与确认后重新验证工作区可用性和信任；未保存编辑器阻止覆盖或提交。
 
-Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`，分叉不自动合并、变基或 stash。CVS 从根开始合并各层 Entries 与 Entries.Log 的 A/R 记录，仅收集本地存在且带 CVS 的已登记目录；只对该集合预检异 Root/Repository checkout 与 Git 边界。用 `cvs -q update -l -P . <相对目录…>` 逐层更新，不带 `-d`，服务器新目录不会创建；每批按包含可执行路径、`-f`、引号、空格及终止符的 Windows 转义上界计长，不超过 8000 字符，所有批次共用一次写队列与取消信号。通知区进度可取消。取消不承诺已经应用的文件写入自动回滚。
+Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`，分叉不自动合并、变基或 stash；0.6.15 起分叉时由用户在通知里选择合并或变基，见「合并中提交与分叉更新」。CVS 从根开始合并各层 Entries 与 Entries.Log 的 A/R 记录，仅收集本地存在且带 CVS 的已登记目录；只对该集合预检异 Root/Repository checkout 与 Git 边界。用 `cvs -q update -l -P . <相对目录…>` 逐层更新，不带 `-d`，服务器新目录不会创建；每批按包含可执行路径、`-f`、引号、空格及终止符的 Windows 转义上界计长，不超过 8000 字符，所有批次共用一次写队列与取消信号。通知区进度可取消。取消不承诺已经应用的文件写入自动回滚。
 
 2026-10-30 用户确定用 `-l` 加显式已登记目录替代递归 update。依据两条本机 CVS 1.12.13 真实 `:local:` 实测：父 Entries 含 `D/src////`、无 Entries.Log 时，递归 `cvs -f -n update -P` 仍进入未登记的同项目 build，并输出 `M build/sentinel.txt`；`cvs -q update -l -P . ./src ./src/deep ./side` 不进入该 build，同时能取得已登记多层目录的服务器修改和新文件。真实回归也验证 Entries.Log 的 A 纳入、R 排除、服务器新目录不创建、已登记的异 Root/Git 边界拒绝，以及 8000 字符分批和批间取消。用户此前在 NsnWeb 实测 `update -d` 会拉下 WebContent、build、doc 并冲突，因此不能恢复 `-d`。更新后不另跑 `cvs -n -q update -d` 统计新目录：它需要额外遍历服务器目录，可能进入本轮明确跳过的 build 等大树，当前没有便宜且有界的计数入口。
 
@@ -204,3 +204,14 @@ GWH 只读副本（`--depth 1` 浅克隆，根提交 52692 个文件）在 0.6.1
 - CVS 历史差异只传文件与修订号，没有列表上限问题；本地模拟 CVS 的 1.1↔1.2（MS932）、1.1↔1.1.1.1、空↔1.1 均已在开发构建打开。
 
 回归：`scripts/vcs-host-check.cjs` 用 10001 个文件的提交，断言不带列表也能打开差异、下一个跟随提交文件顺序；`commit-ui.test.tsx`「日志历史差异」断言请求不含 `fileList`、失败写日志原文并通知。
+
+## 合并中提交与分叉更新（2026-11-05，0.6.15）
+
+M3 安装版 0.6.13 在本地模拟 Git 远端上走查（ETECH 环节 7 串联）发现四处：合并解决冲突后在提交区点「提交」报 `fatal: cannot do a partial commit during a merge.`，只能点横幅无文字的继续按钮且说明不被采用；分叉时更新项目抛 git 英文原文；日志分支右键合并连弹两次确认；横幅按钮悬停无提示。
+
+- 提交：`commitPaths` 发现 `MERGE_HEAD`、`CHERRY_PICK_HEAD` 或 `REVERT_HEAD`（`rev-parse --git-path`，worktree 也适用）时，完整索引检查不变，先 `git add -- <所选路径>`，再不带 pathspec 提交整个索引；有说明用 `-m`，说明为空用 `--no-edit --cleanup=strip`（Git 生成的说明，去掉 `# Conflicts:` 注释）。未选文件里已暂存的合并结果同样进入合并提交，这是 Git 对合并提交的要求。空说明只在这三种状态下被 Git 会话接受；请求合同与 manager 只校验形状，选中含 CVS 仓时仍要求说明。提交区由合并横幅取得的合并状态放开空说明，占位文字提示留空用默认说明；cherry-pick、revert 的空说明宿主可接受，但提交区按钮只在合并时放开。
+- 分叉：`updateFastForward` 的 pull 失败且 `HEAD...@{upstream}` 两侧都有独有提交时，不再抛原文，返回上游名与两侧提交数（工作区不变）；其他失败与取消保留原文。manager 像 CVS 冲突通知一样不等待地弹警告，写明数量并提供「合并」「变基」；选择后在同一写队列里检查未保存编辑器，先把 `@{upstream}` 解析成上游名（如 `origin/main`，冲突标记与说明显示真实分支），再执行 `git merge --no-edit <上游>` 或 `git rebase <上游>`。有冲突时保留进行中状态并沿用「更新项目：N 个文件有合并冲突」通知与合并冲突分组；无冲突的其他失败弹错误原文。分支右键「更新」（`pullBranch`）分叉时报同一中文说明，不给动作。
+- 合并确认：分支右键合并不再在 webview 先问一次，只保留宿主 `mergeBranch` 的模态确认，文字写明合并到当前分支。变基、删除分支等其他入口的 webview 与宿主双重确认未改。
+- 横幅：变基、拣选、合并横幅的图标按钮改用原生 `title` 与 `aria-label`（与 `ToolbarButton` 一致），不再包自绘 Tooltip（M3 走查中自绘 Tooltip 悬停无提示，原因未单独排查）。
+
+回归：`scripts/git-update-check.cjs`（合并与 cherry-pick 中按路径提交、空说明默认合并说明、非合并空说明拒绝、分叉返回、合并／变基、合并冲突），`scripts/vcs-host-check.cjs` 第 7、8 节（分叉通知选合并、冲突通知后空说明提交），`commit-ui.test.tsx`「合并进行中」（横幅提示、空说明提交、非合并禁用、合并只确认一次）。

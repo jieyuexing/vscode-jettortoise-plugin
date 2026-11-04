@@ -23,13 +23,19 @@ export function CommitMessageArea() {
     if (!singleGit && state.amend) state.setAmend(false);
   }, [singleGit, state.amend, state.setAmend]);
   const disabled =
-    !selected.length || !state.commitMessage.trim() || state.loading;
+    !selected.length ||
+    (!state.commitMessage.trim() && !state.merging) ||
+    state.loading;
   return (
     <div className="changes-commit">
       <textarea
         ref={input}
         aria-label={t("Commit Message")}
-        placeholder={t("Commit message (Ctrl+Enter to commit)")}
+        placeholder={
+          state.merging
+            ? t("Leave empty to use the default merge message")
+            : t("Commit message (Ctrl+Enter to commit)")
+        }
         value={state.commitMessage}
         onChange={(event) => state.setCommitMessage(event.target.value)}
         onKeyDown={(event) => {

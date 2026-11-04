@@ -106,11 +106,40 @@ async function main() {
       git(f.target, ["branch", "--unset-upstream"]);
       await assert.rejects(() => new GitService(f.target).updateFastForward()); checks += 1;
     });
-    await withFixture(temporary, async (f) => {
+    // 分叉不能快进：不抛 git 英文原文，返回两侧提交数，由宿主询问合并或变基。
+    const diverged = async (f) => {
       await fs.writeFile(path.join(f.target, "local.txt"), "local\n");
       git(f.target, ["add", "local.txt"]); git(f.target, ["commit", "-m", "local"]);
       await addRemoteCommit(f);
-      await assert.rejects(() => new GitService(f.target).updateFastForward()); checks += 1;
+      const head = git(f.target, ["rev-parse", "HEAD"]);
+      assert.deepEqual(await new GitService(f.target).updateFastForward(), { upstream: "origin/main", ahead: 1, behind: 1 });
+      assert.equal(git(f.target, ["rev-parse", "HEAD"]), head);
+      checks += 2;
+    };
+    await withFixture(temporary, async (f) => {
+      await diverged(f);
+      assert.equal(await new GitService(f.target).integrateUpstream("merge"), 0);
+      assert.equal(git(f.target, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length, 3);
+      assert.equal(await fs.readFile(path.join(f.target, "tracked.txt"), "utf8"), "remote\n");
+      checks += 2;
+    });
+    await withFixture(temporary, async (f) => {
+      await diverged(f);
+      assert.equal(await new GitService(f.target).integrateUpstream("rebase"), 0);
+      assert.equal(git(f.target, ["rev-parse", "HEAD~1"]), git(f.target, ["rev-parse", "origin/main"]));
+      assert.equal(git(f.target, ["log", "-1", "--format=%s"]).trim(), "local");
+      checks += 2;
+    });
+    // 两侧改同一文件：合并留下冲突状态并返回冲突数，交给合并冲突分组处理。
+    await withFixture(temporary, async (f) => {
+      await addRemoteCommit(f);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local\n");
+      git(f.target, ["commit", "-am", "local"]);
+      await new GitService(f.target).updateFastForward();
+      assert.equal(await new GitService(f.target).integrateUpstream("merge"), 1);
+      git(f.target, ["rev-parse", "--verify", "MERGE_HEAD"]);
+      assert.match(await fs.readFile(path.join(f.target, "tracked.txt"), "utf8"), /^>>>>>>> origin\/main$/m);
+      checks += 3;
     });
     await withFixture(temporary, async (f) => {
       const marker = git(f.target, ["rev-parse", "--git-path", "MERGE_HEAD"]).trim();
@@ -153,6 +182,45 @@ async function main() {
       assert.doesNotMatch(message, /#|Conflicts/);
       assert.equal(git(f.target, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length, 3);
       checks += 4;
+    });
+    // 合并、cherry-pick、revert 进行中，提交区按所选路径提交也要生成完整的继续提交，并采用填写的说明。
+    const conflicted = async (f, start) => {
+      await addRemoteCommit(f);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local\n");
+      git(f.target, ["commit", "-am", "local"]); git(f.target, ["fetch"]);
+      assert.throws(() => git(f.target, start));
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "resolved\n");
+      const service = new GitService(f.target);
+      await service.stageFile("tracked.txt");
+      return service;
+    };
+    for (const [start, marker, parents] of [
+      [["merge", "origin/main"], "MERGE_HEAD", 3],
+      [["cherry-pick", "origin/main"], "CHERRY_PICK_HEAD", 2],
+    ]) {
+      await withFixture(temporary, async (f) => {
+        const service = await conflicted(f, start);
+        await fs.writeFile(path.join(f.target, "tracked.txt"), "resolved again\n");
+        await service.commitPaths("合并说明：采用双方修改", ["tracked.txt"]);
+        assert.equal(git(f.target, ["log", "-1", "--format=%B"]).trim(), "合并说明：采用双方修改");
+        assert.equal(git(f.target, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length, parents);
+        assert.equal(git(f.target, ["show", "HEAD:tracked.txt"]), "resolved again\n");
+        assert.throws(() => git(f.target, ["rev-parse", "--verify", "--quiet", marker]));
+        checks += 4;
+      });
+    }
+    await withFixture(temporary, async (f) => {
+      const service = await conflicted(f, ["merge", "origin/main"]);
+      await service.commitPaths("", ["tracked.txt"]);
+      const message = git(f.target, ["log", "-1", "--format=%B"]);
+      assert.match(message, /^Merge remote-tracking branch 'origin\/main'/);
+      assert.doesNotMatch(message, /#|Conflicts/);
+      checks += 2;
+    });
+    await withFixture(temporary, async (f) => {
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "plain\n");
+      await assert.rejects(() => new GitService(f.target).commitPaths(" ", ["tracked.txt"]));
+      checks += 1;
     });
     console.log(JSON.stringify({ checks, command: "pull --ff-only --no-rebase --no-autostash --no-recurse-submodules" }));
   } finally {

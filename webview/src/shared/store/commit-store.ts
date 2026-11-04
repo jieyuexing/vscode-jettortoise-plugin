@@ -40,6 +40,9 @@ interface CommitStore {
   // Commit state
   commitMessage: string;
   amend: boolean;
+  /** 合并进行中：说明可留空，由 Git 使用默认合并说明。 */
+  merging: boolean;
+  setMerging: (merging: boolean) => void;
 
   // Shelf
   shelves: ShelveEntry[];
@@ -101,6 +104,10 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   highlightedFiles: new Set<string>(),
   commitMessage: "",
   amend: false,
+  merging: false,
+  setMerging(merging) {
+    set({ merging });
+  },
   shelves: [],
   ideaShelves: [],
   activeTab: "commit",
@@ -275,11 +282,11 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   },
 
   async commit() {
-    const { commitMessage, changes, selectedFiles, amend } = get();
+    const { commitMessage, changes, selectedFiles, amend, merging } = get();
     const files = changes
       .filter((file) => canCommit(file) && selectedFiles.has(fileKey(file)))
       .map((file) => ({ repositoryId: file.repositoryId, path: file.path }));
-    if (!commitMessage.trim() || !files.length) return false;
+    if ((!commitMessage.trim() && !merging) || !files.length) return false;
     try {
       set({ loading: true, error: undefined });
       await bridge.request("commitRepositories", {

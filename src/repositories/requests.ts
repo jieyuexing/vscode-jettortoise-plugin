@@ -71,9 +71,9 @@ export function validateRepositoryRequest(
   if (command === "commitRepositories") {
     if (params.amend !== undefined && typeof params.amend !== "boolean")
       throw new Error("Invalid amend flag.");
+    // 空说明只在合并类操作进行中由 Git 会话接受，此处只校验形状。
     if (
       typeof params.message !== "string" ||
-      !params.message.trim() ||
       params.message.length > 16000 ||
       params.message.includes("\0")
     )

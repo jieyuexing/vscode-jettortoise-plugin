@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BranchTree } from "../panel/components/BranchTree";
 import { CvsHistory } from "../panel/components/CvsHistory";
 import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
@@ -28,6 +29,8 @@ vi.mock("../shared/bridge", () => ({
       return () => {};
     },
   },
+  bridgeWithProgress: (command: string, params?: Record<string, unknown>) =>
+    mocks.request(command, params),
 }));
 vi.mock("../panel/utils/file-icons", () => ({
   IconFolder: () => <svg />,
@@ -126,6 +129,7 @@ beforeEach(() => {
     error: undefined,
     loading: false,
     commitMode: false,
+    merging: false,
   });
 });
 afterEach(() => {
@@ -1017,5 +1021,103 @@ describe("日志历史差异", () => {
     } finally {
       logged.mockRestore();
     }
+  });
+});
+describe("合并进行中", () => {
+  const mergeMsg = "Merge remote-tracking branch 'origin/main'";
+  beforeEach(() => {
+    initializeI18n("zh-cn");
+    const base = mocks.request.getMockImplementation();
+    mocks.request.mockImplementation(
+      async (command: string, params?: Record<string, unknown>) =>
+        command === "getMergeState"
+          ? { isMerging: true, mergeHead: "f".repeat(40), mergeMsg }
+          : base?.(command, params),
+    );
+  });
+  afterEach(() => initializeI18n("en"));
+  it("横幅的继续与中止按钮有中文悬停提示和无障碍名称", async () => {
+    const view = render(<CommitApp />);
+    const proceed = await view.findByRole("button", {
+      name: "继续合并（仍有冲突时打开冲突列表）",
+    });
+    expect(proceed.getAttribute("title")).toBe(
+      "继续合并（仍有冲突时打开冲突列表）",
+    );
+    const abort = view.getByRole("button", {
+      name: "中止合并 (git merge --abort)",
+    });
+    expect(abort.getAttribute("title")).toBe("中止合并 (git merge --abort)");
+  });
+  it("说明留空也能提交，交给 Git 使用默认合并说明", async () => {
+    useCommitStore.setState({
+      commitMode: true,
+      selectedFiles: new Set([JSON.stringify(["a", "app.txt"])]),
+    });
+    const view = render(<CommitApp />);
+    await waitFor(() => expect(useCommitStore.getState().merging).toBe(true));
+    const message = view.getByRole("textbox", { name: "提交说明" });
+    expect(message.getAttribute("placeholder")).toBe(
+      "留空则使用 Git 生成的默认合并说明",
+    );
+    fireEvent.click(view.getByRole("button", { name: "提交" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("commitRepositories", {
+        message: "",
+        files: [{ repositoryId: "a", path: "app.txt" }],
+        amend: false,
+      }),
+    );
+  });
+  it("不在合并中时说明为空不能提交", async () => {
+    mocks.request.mockImplementation(async (command: string) =>
+      command === "getMergeState" ? { isMerging: false } : [],
+    );
+    useCommitStore.setState({
+      commitMode: true,
+      selectedFiles: new Set([JSON.stringify(["a", "app.txt"])]),
+    });
+    const view = render(<CommitApp />);
+    expect(
+      (view.getByRole("button", { name: "提交" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+  it("日志分支右键合并只由宿主确认一次", async () => {
+    usePanelStore.setState({
+      branches: [
+        {
+          name: "main",
+          isRemote: false,
+          isCurrent: true,
+          upstream: "origin/main",
+          ahead: 1,
+          behind: 1,
+          lastCommitHash: "a".repeat(40),
+        },
+        {
+          name: "origin/main",
+          isRemote: true,
+          isCurrent: false,
+          ahead: 0,
+          behind: 0,
+          lastCommitHash: "b".repeat(40),
+        },
+      ],
+      tags: [],
+      currentBranch: "main",
+    });
+    const view = render(<BranchTree />);
+    fireEvent.contextMenu(view.getByText("origin/main"));
+    fireEvent.click(await view.findByText("将 'origin/main' 合并到 'main'"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("mergeBranch", {
+        branchName: "origin/main",
+      }),
+    );
+    expect(mocks.request).not.toHaveBeenCalledWith(
+      "showConfirmMessage",
+      expect.anything(),
+    );
   });
 });

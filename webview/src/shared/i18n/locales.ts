@@ -108,6 +108,8 @@ export const en = {
   Conflicts: "Conflicts",
   "Continue Cherry-pick (git cherry-pick --continue)":
     "Continue Cherry-pick (git cherry-pick --continue)",
+  "Continue Merge (open conflicts if any remain)":
+    "Continue Merge (open conflicts if any remain)",
   "Continue Rebase (git rebase --continue)":
     "Continue Rebase (git rebase --continue)",
   "Copy File Name": "Copy File Name",
@@ -158,6 +160,8 @@ export const en = {
   "Last 30 days": "Last 30 days",
   "Last 7 days": "Last 7 days",
   "Last 90 days": "Last 90 days",
+  "Leave empty to use the default merge message":
+    "Leave empty to use the default merge message",
   "Left (Theirs)": "Left (Theirs)",
   "Loading file revisions…": "Loading file revisions…",
   "Loading merge editor...": "Loading merge editor...",
@@ -165,9 +169,7 @@ export const en = {
   "Loading...": "Loading...",
   Local: "Local",
   "Mark/Unmark As Favorite": "Mark/Unmark As Favorite",
-  Merge: "Merge",
   "Merge '{0}' into '{1}'": "Merge '{0}' into '{1}'",
-  "Merge '{0}' into '{1}'?": "Merge '{0}' into '{1}'?",
   "Merge in progress": "Merge in progress",
   "Merge...": "Merge...",
   Merging: "Merging",
@@ -238,7 +240,6 @@ export const en = {
     "Reset Current Branch to Here (Mixed)...",
   "Reset Current Branch to Here (Soft)...":
     "Reset Current Branch to Here (Soft)...",
-  "Resolve Conflicts": "Resolve Conflicts",
   Restore: "Restore",
   Revert: "Revert",
   "Revert Commit": "Revert Commit",
@@ -429,6 +430,8 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   Conflicts: "冲突",
   "Continue Cherry-pick (git cherry-pick --continue)":
     "继续拣选 (git cherry-pick --continue)",
+  "Continue Merge (open conflicts if any remain)":
+    "继续合并（仍有冲突时打开冲突列表）",
   "Continue Rebase (git rebase --continue)": "继续变基 (git rebase --continue)",
   "Copy File Name": "复制文件名",
   "Copy Path": "复制路径",
@@ -478,6 +481,8 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Last 30 days": "最近 30 天",
   "Last 7 days": "最近 7 天",
   "Last 90 days": "最近 90 天",
+  "Leave empty to use the default merge message":
+    "留空则使用 Git 生成的默认合并说明",
   "Left (Theirs)": "左侧（对方版本）",
   "Loading file revisions…": "正在加载文件修订…",
   "Loading merge editor...": "正在加载合并编辑器…",
@@ -485,9 +490,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Loading...": "正在加载…",
   Local: "本地",
   "Mark/Unmark As Favorite": "添加／取消收藏",
-  Merge: "合并",
   "Merge '{0}' into '{1}'": "将 '{0}' 合并到 '{1}'",
-  "Merge '{0}' into '{1}'?": "将 '{0}' 合并到 '{1}'？",
   "Merge in progress": "合并进行中",
   "Merge...": "合并...",
   Merging: "正在合并",
@@ -554,7 +557,6 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Reset Current Branch to Here (Hard)...": "将当前分支重置到此处（Hard）...",
   "Reset Current Branch to Here (Mixed)...": "将当前分支重置到此处（Mixed）...",
   "Reset Current Branch to Here (Soft)...": "将当前分支重置到此处（Soft）...",
-  "Resolve Conflicts": "解决冲突",
   Restore: "恢复",
   Revert: "还原",
   "Revert Commit": "还原提交",

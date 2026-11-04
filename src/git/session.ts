@@ -18,7 +18,7 @@ import { PushPanel } from "../views/pushPanel";
 import type { RollbackFileInfo } from "../views/rollbackPanel";
 import { RollbackPanel } from "../views/rollbackPanel";
 import { GitWatcher } from "../watchers/gitWatcher";
-import { GitService } from "./gitService";
+import { type DivergedUpstream, GitService } from "./gitService";
 import {
   resolveWorktreePath as resolveRepositoryPath,
   resolveShelfEntry,
@@ -113,7 +113,11 @@ export function createGitRepositorySession(
         confirmLabel = vscode.l10n.t("Delete");
         break;
       case "mergeBranch":
-        message = vscode.l10n.t('Merge branch "{0}"?', branchName);
+        message = vscode.l10n.t(
+          'Merge "{0}" into "{1}"?',
+          branchName,
+          (await gitService.getCurrentBranch()) ?? "HEAD",
+        );
         confirmLabel = vscode.l10n.t("Merge");
         break;
       case "rebaseBranch":
@@ -1733,7 +1737,7 @@ export function createGitRepositorySession(
       messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
     },
     async update() {
-      await runMutation("updateProject", async () => {
+      return runMutation("updateProject", async () => {
         const validate = async () => {
           await ensureAvailable();
           if (await hasDirtyEditors(workspaceRoot)) {
@@ -1744,7 +1748,7 @@ export function createGitRepositorySession(
             );
           }
         };
-        await withProgress(messageRouter, async () =>
+        const diverged = await withProgress(messageRouter, async () =>
           vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
@@ -1761,7 +1765,10 @@ export function createGitRepositorySession(
                 controller.abort(),
               );
               try {
-                await gitService.updateFastForward(validate, controller.signal);
+                return await gitService.updateFastForward(
+                  validate,
+                  controller.signal,
+                );
               } finally {
                 cancellation.dispose();
                 updates.delete(controller);
@@ -1771,7 +1778,28 @@ export function createGitRepositorySession(
         );
         messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
         messageRouter.broadcastEvent("commitStateChanged", {});
-      });
+        return diverged;
+      }) as Promise<DivergedUpstream | undefined>;
+    },
+    /** 分叉后用户在通知里选择的合并或变基，沿用更新的写队列与未保存编辑器检查。 */
+    async integrate(mode: "merge" | "rebase") {
+      return (await runMutation("updateProject", async () => {
+        await ensureAvailable();
+        if (await hasDirtyEditors(workspaceRoot))
+          throw new Error(
+            vscode.l10n.t(
+              "Save or close unsaved editors in this repository before updating.",
+            ),
+          );
+        try {
+          return await withProgress(messageRouter, () =>
+            gitService.integrateUpstream(mode),
+          );
+        } finally {
+          messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
+          messageRouter.broadcastEvent("commitStateChanged", {});
+        }
+      })) as number;
     },
     cancel() {
       for (const controller of updates) controller.abort();

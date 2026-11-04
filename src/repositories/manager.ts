@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { CvsSession } from "../cvs/session";
+import { type DivergedUpstream, divergedMessage } from "../git/gitService";
 import { resolveWorktreePath } from "../git/security";
 import { createGitRepositorySession } from "../git/session";
 import { isScanLimit, localizeError } from "../messages/errors";
@@ -725,8 +726,10 @@ export class RepositoryManager implements vscode.Disposable {
     await this.guard(entry);
     if (command === "updateProject") {
       try {
-        if (entry.git) await entry.git.update();
-        else {
+        if (entry.git) {
+          const diverged = await entry.git.update();
+          if (diverged) void this.divergedNotice(entry, diverged);
+        } else {
           const conflicts = await this.cvs(entry).update();
           if (conflicts.length)
             void this.conflictNotice(entry, conflicts.length);
@@ -854,6 +857,30 @@ export class RepositoryManager implements vscode.Disposable {
     await vscode.commands.executeCommand("jettortoise.commitPanel.focus");
     this.broadcast("revealConflicts", { repositoryId: entry.info.id });
   }
+  /** 分叉无法快进：说明两侧提交数，用户选择合并或变基后直接执行。 */
+  private async divergedNotice(entry: Entry, diverged: DivergedUpstream) {
+    const merge = vscode.l10n.t("Merge");
+    const rebase = vscode.l10n.t("Rebase");
+    const choice = await vscode.window.showWarningMessage(
+      divergedMessage(diverged),
+      merge,
+      rebase,
+    );
+    const git = entry.git;
+    if (!choice || !git || this.entries.get(entry.info.id) !== entry) return;
+    try {
+      await this.guard(entry);
+      const conflicts = await git.integrate(
+        choice === merge ? "merge" : "rebase",
+      );
+      if (conflicts) void this.conflictNotice(entry, conflicts);
+    } catch (error) {
+      void vscode.window.showErrorMessage(localizeError(error));
+    } finally {
+      await this.refresh(entry, true);
+      this.written(entry);
+    }
+  }
   private paths(value: unknown) {
     if (!Array.isArray(value) || !value.length || value.length > 2000)
       throw new Error(vscode.l10n.t("Select files."));
@@ -877,7 +904,6 @@ export class RepositoryManager implements vscode.Disposable {
   private async commit(values: Record<string, unknown>) {
     if (
       typeof values.message !== "string" ||
-      !values.message.trim() ||
       values.message.length > 16000 ||
       values.message.includes("\0")
     )
@@ -923,6 +949,12 @@ export class RepositoryManager implements vscode.Disposable {
         await assertOwnedPath(entry.info.root, entry.info.kind, file.path);
       }
     }
+    // 空说明只用于 Git 合并类操作的默认说明，由 Git 会话再核对进行中状态。
+    if (
+      !values.message.trim() &&
+      [...grouped.keys()].some((entry) => !entry.git)
+    )
+      throw new Error(vscode.l10n.t("Enter a commit message."));
     if (values.amend && (grouped.size !== 1 || ![...grouped.keys()][0].git))
       throw new Error(
         vscode.l10n.t("Amend is available for one Git repository only."),

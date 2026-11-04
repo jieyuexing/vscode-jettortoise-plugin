@@ -410,12 +410,13 @@ test('忽略目录不登记 Git，但其中独立 CVS 仍然发现，显式根�
     const {execFileSync}=require('node:child_process');execFileSync('git',['init','-q',fx.base]);
     await fs.writeFile(path.join(fx.base,'.gitignore'),'.local/tmp/\n');
     const ignored=path.join(fx.base,'.local','tmp','git');execFileSync('git',['init','-q',ignored]);
-    await fs.mkdir(path.join(ignored,'cvs','CVS'),{recursive:true});
-    for(const [name,value] of Object.entries({Root:':local:/nonexistent/cvsroot\n',Repository:'separate\n',Entries:''}))await fs.writeFile(path.join(ignored,'cvs','CVS',name),value);
+    // 目录名避开 cvs：大小写不敏感卷（macOS 默认 APFS）上 ignored/CVS 会解析到 ignored/cvs，把 Git 根误当 CVS 工作副本。
+    await fs.mkdir(path.join(ignored,'module','CVS'),{recursive:true});
+    for(const [name,value] of Object.entries({Root:':local:/nonexistent/cvsroot\n',Repository:'separate\n',Entries:''}))await fs.writeFile(path.join(ignored,'module','CVS',name),value);
     await fx.manager.scan();
     const roots=[...fx.manager.entries.values()].map(e=>e.info.root);
     assert.ok(!roots.includes(ignored),'忽略目录中的 Git 不自动登记');
-    assert.ok(roots.includes(path.join(ignored,'cvs')),'CVS 不随 Git 忽略目录丢失');global.__performanceVscode.workspace.workspaceFolders=[{uri:Uri.file(ignored)}];await fx.manager.scan();assert.ok(fx.manager.repositories.some(repo=>repo.root===ignored),'显式工作区根仍可登记');
+    assert.ok(roots.includes(path.join(ignored,'module')),'CVS 不随 Git 忽略目录丢失');global.__performanceVscode.workspace.workspaceFolders=[{uri:Uri.file(ignored)}];await fx.manager.scan();assert.ok(fx.manager.repositories.some(repo=>repo.root===ignored),'显式工作区根仍可登记');
   } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
 });
 

@@ -491,6 +491,7 @@ input:focus-visible {
   background: var(--sel);
 }
 .changes-tree {
+  --changes-base-inset: 8px;
   overflow-anchor: none;
   flex: 1;
   min-height: 0;
@@ -969,9 +970,6 @@ input:focus-visible {
 }
 .narrow:is(:hover, :focus-within) .changes-header-actions button {
   visibility: visible;
-}
-.narrow .changes-tree {
-  --changes-base-inset: 6px;
 }
 
 /* 树行焦点只用整行底色；按钮、输入和提交表单仍有自己的焦点标识。 */

@@ -43,7 +43,7 @@ Update Project 只更新当前分支 upstream，Git 固定 `pull --ff-only --no-
 - `src/views/html.ts` 将 `vscode.env.language` 经 HTML 转义写入根元素的 `data-language` 和页面 `lang`。`webview/src/shared/i18n/index.ts` 负责选择语言、替换参数和文件计数，`locales.ts` 保存英文字典及 `zh-cn` 字典；中文缺键回落英文，其它语言显示英文。不生成 `zh`、`zh-tw` 副本，不引入第三方 i18n 库。
 - 译名参考 `main` 的清单、扩展 bundle、webview/CVS 和 `packages/vcs-ui` 字典；本轮明确要求优先于旧译名，统一 Commit→提交、Update Project→更新项目、Rollback→回滚、Changes→更改、Unversioned Files→未受版本控制的文件、Incoming→传入、Shelf→搁置、Commit and Push→提交并推送、Amend→修改提交。没有旧译名时沿用 IntelliJ IDEA 简体中文的操作叫法。Git/CVS 标识、分支名、修订号、文件路径和原始提交说明保持原值。
 - 纯 Node 的 CVS 内核、路径和请求验证不导入 `vscode`。`src/cvs/session.ts` 在会话层将内核错误码转为译文；`src/messages/errors.ts` 在显示边界翻译固定错误与相对子仓提示，CLI 原始输出和开发者调试日志保持原值。
-- `webview/src/commit/commit.css` 的仓库、分组、目录、文件行统一 20px／12px，每级缩进 16px。当前变更树的行内起点为 `6px + 层级 × 16px`，箭头槽 12px、图标 16px、控件间距 4px；浏览态无复选框，提交态按原交互加入复选框，所以文件名起点随层级与模式变化，不再用固定横坐标描述。仓库和目录计数紧随名称并使用次要色。真实窗口尺寸与截断由隔离开发构建另验。
+- `webview/src/commit/commit.css` 的仓库、分组、目录、文件行统一 20px／12px，每级缩进 16px。当前变更树的行内起点为 `8px + 层级 × 16px`，箭头槽 12px、图标 16px、控件间距 4px；浏览态无复选框，提交态按原交互加入复选框，所以文件名起点随层级与模式变化，不再用固定横坐标描述。仓库和目录计数紧随名称并使用次要色。真实窗口尺寸与截断由隔离开发构建另验。
 
 `scripts/check-l10n.cjs` 已并入 headless：检查清单占位键、扩展端字面量翻译键、webview 全键及参数占位符，拒绝未翻译的 JSX/显示属性；用实际函数检查语言回落、中文计数、固定错误与 CLI 原文保留。
 
@@ -102,7 +102,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 ## 方案 C 组件化（2026-10-31，0.6.6）
 
-当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/components.html` 为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 6px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
+当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/b5/mock/components.html` 为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 8px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
 
 - 十个尺寸变量只在 `webview/src/shared/theme/variables.css` 镜像，名称和值与产品 `/Users/jieyuexing/jieyuexing-universe/projects/etech/etech-theia-ide/theia-extensions/etech-eclipse-layout/src/browser/style/tokens.css` 一致，改值两处同步。颜色只读 Theia 导出的 `--vscode-*`，本地更改浅色固定调色板已删除；编辑器／差异正文的代码字号仍沿宿主。
 - `webview/src/shared/components/VerticalToolbar.tsx` 与 `PanelHeader.tsx`、`panel-chrome.css` 供本地更改和日志共用。竖列 30px、按钮 22px、图标 16px、间距 1px、上下 4px，短面板滚动且隐藏工具列滚动条，禁用 40%。日志沿用分支工具列原动作；标题行 28px、12px，PanelHeader 的可选标题能力保留，本地更改与日志都不传标题，避免重复宿主页签名称；保留更改／搁置／储藏小页签与仓库选择行为。变更树容器不画焦点外框，选中行只在树内焦点时使用活动选中色，离焦消费 inactiveSelectionBackground／Foreground；按钮、输入、文本框自己的键盘焦点保留。日志列表沿用主题变量的活动／非活动选中，不新增列表级焦点框。
@@ -119,7 +119,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1/RECORD.md`。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。
 
-D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局继续沿用 6px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1b/RECORD.md`。
+D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局在该阶段沿用 6px；2026-11-04 按 D1b 与同角色一致原则统一宽窄布局为 8px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1b/RECORD.md`。
 
 
 ## 大工作区刷新与渲染（2026-11-03，0.6.8）
@@ -134,7 +134,7 @@ CVS 盘点、路径命令长度或无法完成的边界验证触发后，保留�
 E1 远端入口补查：CVS 历史挂载、自动选文件与编辑器跟随只读取本地文件清单，远端历史由现有文件选择、刷新历史或显式打开历史命令触发；写后历史刷新仍源于用户写操作。恢复的 CVS 修订 URI 不再直接取服务器；只有当前会话通过显式差异入口签发的 URI 才读取远端，保持队列内 BASE 解析、动态失效和独立边界预检。这是“打开不连网”优先于 0.6.0 自动恢复 CVS 内容的明确行为调整，没有新增控件。
 
 
-E1 追加视觉决定（2026-11-03）：用户否定 6 万列表观感，以 `local-changes.html` 的交互和 `components.html`「2 树行」为准，不新增控件。树行统一基础内边距 6px、每级 16px、行高 20px／字号 12px，箭头槽 14px 内放 12px 箭头、间距 5px、右留白 8px；覆盖 D1 的窄栏 8px 树基础内边距。类别标题 600，仓库／目录／文件 400；仓库仍是逻辑分组，保留 CVS/Git 标签，不把单文件仓库合并。目录用既有灰色文件夹，文件图标 16px 读取当前安装主题：公开 `vscode.extensions` 贡献和 workbench.iconTheme，限主题目录内的图片，批量读取仅可视文件，浅深色由 webview 主题类选择；无图片主题时沿用已有图标回落。字体图标主题的字体渲染不在本次范围。仓库按自然名称排序并以类型、根路径确定同名顺序。文件选择的背景横跨整行，活动／离焦分别消费宿主 list.activeSelectionBackground／list.inactiveSelectionBackground，移除文件和树标签描边；提交表单与工具按钮保留焦点标识。文件名只占剩余宽度，过长省略，不挤走图标。
+E1 追加视觉决定（2026-11-03）：用户否定 6 万列表观感，以 `local-changes.html` 的交互和 `components.html`「2 树行」为准，不新增控件。树行统一基础内边距 8px（2026-11-04 按 D1b 与同角色一致原则更新，覆盖 E1 原 6px）、每级 16px、行高 20px／字号 12px，箭头槽 14px 内放 12px 箭头、间距 5px、右留白 8px；宽窄布局均使用 8px 树基础内边距。类别标题 600，仓库／目录／文件 400；仓库仍是逻辑分组，保留 CVS/Git 标签，不把单文件仓库合并。目录用既有灰色文件夹，文件图标 16px 读取当前安装主题：公开 `vscode.extensions` 贡献和 workbench.iconTheme，限主题目录内的图片，批量读取仅可视文件，浅深色由 webview 主题类选择；无图片主题时沿用已有图标回落。字体图标主题的字体渲染不在本次范围。仓库按自然名称排序并以类型、根路径确定同名顺序。文件选择的背景横跨整行，活动／离焦分别消费宿主 list.activeSelectionBackground／list.inactiveSelectionBackground，移除文件和树标签描边；提交表单与工具按钮保留焦点标识。文件名只占剩余宽度，过长省略，不挤走图标。
 
 
 ## CVS 按需同步（2026-11-03，0.6.9-desk.1）

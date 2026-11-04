@@ -4,6 +4,7 @@ import { bridge } from "../../shared/bridge";
 import { PanelHeader } from "../../shared/components/PanelHeader";
 import { ToolbarButton } from "../../shared/components/ToolbarButton";
 import { t } from "../../shared/i18n";
+import { useRepositoryStore } from "../../shared/store/repository-store";
 
 interface Revision {
   revisionId: string;
@@ -29,6 +30,11 @@ export function CvsHistory({
   const fileGeneration = useRef(0);
   const handledRequest = useRef(0);
   const historyGeneration = useRef(0);
+  const scanPaused = useRepositoryStore(
+    (state) =>
+      state.snapshots.find((snapshot) => snapshot.repositoryId === repositoryId)
+        ?.scanPaused,
+  );
   const loadFiles = useCallback(async () => {
     const generation = ++fileGeneration.current;
     try {
@@ -36,6 +42,7 @@ export function CvsHistory({
         repositoryId,
       })) as string[];
       if (generation !== fileGeneration.current) return;
+      setError("");
       setFiles(names);
       setSelected((value) =>
         activeFile && names.includes(activeFile)
@@ -75,11 +82,15 @@ export function CvsHistory({
     setRevisions([]);
     setError("");
     setLoading(false);
-    void loadFiles();
+    if (!scanPaused) void loadFiles();
+    else {
+      setFiles([]);
+      setSelected("");
+    }
     return () => {
       fileGeneration.current++;
     };
-  }, [loadFiles]);
+  }, [loadFiles, scanPaused]);
   useEffect(() => {
     if (requestId && handledRequest.current !== requestId) {
       handledRequest.current = requestId;

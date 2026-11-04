@@ -299,6 +299,8 @@ export class RepositoryManager implements vscode.Disposable {
         );
       entry.disposables.push(watcher);
     }
+    // 首仓可用即选中，不能让日志等待整个工作区的发现遍历结束。
+    if (this.listed(entry) && !this.logId) this.logId = id;
     this.publish();
     void this.refresh(entry, false);
     return id;
@@ -361,17 +363,19 @@ export class RepositoryManager implements vscode.Disposable {
     } catch (error) {
       if (isScanLimit(error)) {
         entry.scanStopped = true;
-        void vscode.window.showWarningMessage(
-          `${entry.info.name}: ${localizeError(error)}`,
-        );
-        return;
-      }
-      entry.snapshot = {
-        ...entry.snapshot,
-        error: localizeError(
-          error instanceof Error ? error : "Repository refresh failed.",
-        ),
-      };
+        entry.snapshot = {
+          ...entry.snapshot,
+          error: undefined,
+          scanPaused: true,
+        };
+      } else
+        entry.snapshot = {
+          ...entry.snapshot,
+          scanPaused: undefined,
+          error: localizeError(
+            error instanceof Error ? error : "Repository refresh failed.",
+          ),
+        };
     }
     this.publishSnapshot(entry.snapshot);
   }
@@ -508,6 +512,14 @@ export class RepositoryManager implements vscode.Disposable {
       return getFileIcons(files);
     }
     if (command === "getRepositories") return this.state();
+    if (command === "scanRepository") {
+      const entry = this.selected(repositoryId);
+      await this.guard(entry);
+      entry.scanStopped = false;
+      if (entry.cvs) await entry.cvs.resumeScan();
+      else await this.refresh(entry, false);
+      return this.metadata();
+    }
     if (command === "removeSynchronizedRepository") {
       const entry = this.selected(repositoryId);
       await this.guard(entry);
@@ -614,12 +626,7 @@ export class RepositoryManager implements vscode.Disposable {
       if (!cvs.scanAvailable) return [];
       return await cvs.operate(
         vscode.l10n.t("CVS files"),
-        async (adapter) => {
-          const files = await adapter.localStatus();
-          return files
-            .filter((file) => file.entryRevision)
-            .map((file) => file.newPath);
-        },
+        () => cvs.fileNames(),
         false,
         vscode.ProgressLocation.Window,
       );

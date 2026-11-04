@@ -128,6 +128,32 @@ afterEach(() => {
 });
 
 describe("本地更改三态", () => {
+  it("干净暂停仓仍显示行内状态和扫描按钮，点击只发送登记仓的本地扫描请求", async () => {
+    initializeI18n("zh-cn");
+    useRepositoryStore.setState({
+      repositories: [repositories[0]],
+      snapshots: [{ repositoryId: "a", files: [], scanPaused: true }],
+    });
+    const view = render(<ChangeTree onSelect={() => {}} />);
+    const status = view.getByText("仓库较大，已暂停自动扫描");
+    const button = view.getByRole("button", { name: "扫描" });
+    expect(status.closest(".changes-row")).toBe(button.closest(".changes-row"));
+    mocks.request.mockClear();
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("scanRepository", {
+        repositoryId: "a",
+      }),
+    );
+    expect(mocks.request.mock.calls).toHaveLength(1);
+    act(() =>
+      useRepositoryStore.setState({
+        snapshots: [{ repositoryId: "a", files: [] }],
+      }),
+    );
+    expect(view.queryByRole("button", { name: "扫描" })).toBeNull();
+    initializeI18n("en");
+  });
   it("浏览态没有提交表单与复选框，点击只预览、双击打开完整差异", async () => {
     const view = render(<CommitApp />);
     await waitFor(() => expect(view.getByText("app.txt")).toBeTruthy());
@@ -445,6 +471,28 @@ it("快照增量更新保留其它仓库、说明与勾选，通知不重新请�
       ([command]) => command === "getRepositoryChanges",
     ),
   ).toBe(false);
+});
+
+it("CVS 暂停时历史不重新盘点，恢复只加载本地文件清单", async () => {
+  useRepositoryStore.setState({
+    snapshots: [{ repositoryId: "b", files: [], scanPaused: true }],
+  });
+  mocks.request.mockImplementation(async (command) =>
+    command === "getCvsFiles" ? ["app.txt"] : [],
+  );
+  const view = render(<CvsHistory repositoryId="b" />);
+  expect(mocks.request).not.toHaveBeenCalled();
+  act(() =>
+    useRepositoryStore.setState({
+      snapshots: [{ repositoryId: "b", files: [] }],
+    }),
+  );
+  await waitFor(() =>
+    expect(view.getByRole("combobox").textContent).toContain("app.txt"),
+  );
+  expect(
+    mocks.request.mock.calls.every(([command]) => command === "getCvsFiles"),
+  ).toBe(true);
 });
 
 it("CVS 历史挂载和编辑器跟随不联网，显式选文件与打开历史才查询", async () => {

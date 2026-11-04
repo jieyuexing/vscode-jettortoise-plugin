@@ -28,6 +28,7 @@ export interface RepositorySnapshot {
   nestedPaths?: string[];
   error?: string;
   refreshing?: boolean;
+  scanPaused?: boolean;
 }
 export const fileKey = (file: Pick<ChangeFile, "repositoryId" | "path">) =>
   JSON.stringify([file.repositoryId, file.path]);
@@ -117,6 +118,7 @@ export function groupChanges(
         .map(([path, files]) => ({ path, files })),
       error: snapshot?.error,
       refreshing: snapshot?.refreshing,
+      scanPaused: snapshot?.scanPaused,
       unversionedExpanded: false,
       incomingExpanded: false,
     };
@@ -147,6 +149,7 @@ export function snapshotDelta(
     !removed.length &&
     previous.error === next.error &&
     previous.refreshing === next.refreshing &&
+    previous.scanPaused === next.scanPaused &&
     previous.branch === next.branch &&
     JSON.stringify(previous.nestedPaths) === JSON.stringify(next.nestedPaths)
   )

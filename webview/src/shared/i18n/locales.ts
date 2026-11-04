@@ -1,4 +1,7 @@
 export const en = {
+  Scan: "Scan",
+  "Large repository: automatic scanning paused":
+    "Large repository: automatic scanning paused",
   "Synchronized at {0}": "Synchronized at {0}",
   "Remove from synchronization": "Remove from synchronization",
   "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’":
@@ -319,6 +322,8 @@ export const en = {
 } as const;
 
 export const zhCn: Partial<Record<keyof typeof en, string>> = {
+  Scan: "扫描",
+  "Large repository: automatic scanning paused": "仓库较大，已暂停自动扫描",
   "Synchronized at {0}": "同步于 {0}",
   "Remove from synchronization": "从同步中移除",
   "{0} more CVS repositories are not synchronized; right-click ‘Synchronize with Repository’":

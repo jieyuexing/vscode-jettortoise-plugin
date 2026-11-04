@@ -5,6 +5,7 @@ const fields: Record<string, readonly string[]> = {
   getFileIcons: ["filePaths"],
   getRepositoryChanges: [],
   refreshRepositories: [],
+  scanRepository: [],
   removeSynchronizedRepository: [],
   collapseLocalChanges: [],
   selectRepository: ["surface"],
@@ -30,6 +31,8 @@ export function validateRepositoryRequest(
   )
     throw new Error("Invalid repository ID.");
   if (!Object.hasOwn(fields, command)) return;
+  if (command === "scanRepository" && params.repositoryId === undefined)
+    throw new Error("Invalid repository ID.");
   for (const key of Object.keys(params))
     if (key !== "repositoryId" && !fields[command].includes(key))
       throw new Error(`Unexpected request field: ${key}`);

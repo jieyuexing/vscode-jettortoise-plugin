@@ -124,10 +124,24 @@ export class CvsSession {
         files: this.changes(this.files),
         error: this.error,
         refreshing,
+        scanPaused: this.scanStopped || undefined,
       });
   }
   get scanAvailable() {
     return !this.scanStopped;
+  }
+  async resumeScan() {
+    this.scanStopped = false;
+    await this.refresh();
+  }
+  async fileNames(): Promise<string[]> {
+    // 日志挂载也走同一条本地队列，避免与首次同步并行重复盘点。
+    await this.refresh();
+    if (this.scanStopped) return [];
+    if (this.error) throw new Error(this.error);
+    return this.files
+      .filter((file) => file.entryRevision)
+      .map((file) => file.newPath);
   }
   async refresh(paths?: string[], network = false): Promise<void> {
     const job = async () => {
@@ -152,6 +166,7 @@ export class CvsSession {
           ...local,
         ];
       } else this.files = local;
+      this.error = undefined;
       this.emit(!!this.network);
     };
     const next = this.localTail.then(job, job);
@@ -197,10 +212,6 @@ export class CvsSession {
   }
   private refreshError(error: unknown) {
     if (isScanLimit(error)) {
-      if (!this.scanStopped)
-        void vscode.window.showWarningMessage(
-          `${path.basename(this.root)}: ${cvsErrorText(error)}`,
-        );
       this.scanStopped = true;
       this.error = undefined;
     } else this.error = cvsErrorText(error);

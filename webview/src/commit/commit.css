@@ -542,6 +542,7 @@ input:focus-visible {
     .changes-row-label,
     .changes-branch,
     .changes-count,
+    .changes-scan-status,
     .changes-synced-at
   ) {
   display: block;
@@ -1028,6 +1029,20 @@ body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 0;
+}
+.changes-scan-status {
+  color: var(--dim);
+}
+.changes-row .changes-scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--etech-tool-button);
+  height: var(--etech-tool-button);
+  border-radius: 4px;
+  color: var(--dim);
+  margin-left: auto;
 }
 .changes-row .changes-remove-sync {
   display: flex;

@@ -79,7 +79,7 @@ test('显式多仓刷新最多并发 2 条网络命令', async () => {
     assert.equal(starts, 6); assert.equal(active, 0); assert.ok(peak <= 2, 'peak network concurrency: ' + peak);
   } finally { fx.manager.dispose(); await fs.rm(fx.base, { recursive: true, force: true }); }
 });
-test('扫描超限只提示一次并停止自动重试，不写入树快照错误', async () => {
+test('扫描超限静默发布暂停状态，停止自动重试，显式扫描仅重试本地', async () => {
   const fx = await setup();
   try {
     await fx.manager.scan(); await fx.settle();
@@ -89,11 +89,102 @@ test('扫描超限只提示一次并停止自动重试，不写入树快照错�
     let attempts = 0;
     session.adapter.localStatus = async () => { attempts++; throw Object.assign(new Error('inventoryLimit'), { code: 'inventoryLimit' }); };
     await session.refresh(); await session.refresh(); await session.refresh();
-    assert.equal(attempts, 1); assert.equal(fx.warnings.length, 1);
+    assert.equal(attempts, 1); assert.equal(fx.warnings.length, 0);
     assert.deepEqual(await fx.manager.request('getCvsFiles',{repositoryId:session.id}),[]);
     assert.equal(attempts,1,'history file list retried a stopped scan');
     assert.equal(fx.manager.state().snapshots[0].error, undefined);
+    assert.equal(fx.manager.state().snapshots[0].scanPaused, true);
+    const calls = (await fx.read()).length;
+    await fx.manager.request('scanRepository', {repositoryId:session.id});
+    assert.equal(attempts, 2);
+    assert.equal(fx.manager.state().snapshots[0].scanPaused, true);
+    session.adapter.localStatus = async () => { attempts++; return []; };
+    await fx.manager.request('scanRepository', {repositoryId:session.id});
+    assert.equal(attempts, 3);
+    assert.equal(fx.manager.state().snapshots[0].scanPaused, undefined);
+    assert.equal((await fx.read()).length, calls, 'local scan contacted CVS');
+    await assert.rejects(fx.manager.request('scanRepository', {repositoryId:session.id, network:true}), /Unexpected request field/);
   } finally { fx.manager.dispose(); await fs.rm(fx.base, { recursive: true, force: true }); }
+});
+
+test('Git 首次扫描超限仍发布首快照和仓库列表，路径与边界失败不冒充上限', async () => {
+  const fx = await setup();
+  try {
+    const git = path.join(fx.base,'git'); await fs.mkdir(git);
+    require('node:child_process').execFileSync('git',['init','-b','main'],{cwd:git,stdio:'ignore'});
+    const sent=[];fx.manager.connect({postMessage:msg=>{sent.push(msg);return Promise.resolve(true)},onDidReceiveMessage:()=>disposable()});
+    const id=fx.manager.add('git',git),entry=fx.manager.entries.get(id);
+    assert.equal(fx.manager.state().logRepositoryId,id,'first Git selection waited for full discovery');
+    let attempts=0;
+    entry.git.service.getWorkingTreeChanges=async()=>{attempts++;throw Object.assign(Error('scan limit'),{code:'SCAN_LIMIT'})};
+    await fx.settle();
+    assert.equal(attempts,1);assert.equal(fx.warnings.length,0);
+    assert.equal(fx.manager.state().repositories[0].id,id);
+    assert.ok(sent.some(msg=>msg.event==='repositoryList'&&msg.data.repositories.some(repo=>repo.id===id)));
+    assert.ok(sent.some(msg=>msg.event==='repositorySnapshot'&&msg.data.repositoryId===id&&msg.data.scanPaused===true),'paused first snapshot missing');
+    fx.events.focus.fire({focused:true});await fx.settle();assert.equal(attempts,1);
+    entry.git.service.getWorkingTreeChanges=async()=>[];
+    await fx.manager.request('scanRepository',{repositoryId:id});
+    assert.equal(fx.manager.state().snapshots[0].scanPaused,undefined);
+    assert.ok(sent.some(msg=>msg.event==='repositorySnapshotDelta'&&msg.data.scanPaused===undefined));
+    for(const code of ['BOUNDARY_UNAVAILABLE','path']) {
+      entry.git.service.getWorkingTreeChanges=async()=>{throw Object.assign(Error('real failure '+code),{code})};
+      await fx.manager.request('scanRepository',{repositoryId:id});
+      assert.equal(fx.manager.state().snapshots[0].scanPaused,undefined);
+      assert.match(fx.manager.state().snapshots[0].error,/real failure/);
+    }
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
+});
+
+test('超大 CVS 启动不盘点，首次同步超限发暂停首快照且不联网', async () => {
+  const fx=await setup();
+  try {
+    const root=path.join(fx.base,'wc-0');
+    await fs.writeFile(path.join(root,'CVS/Entries'),Array.from({length:20001},(_,i)=>`/file-${i}.txt/1.1///\n`).join(''));
+    const sent=[];fx.manager.connect({postMessage:msg=>{sent.push(msg);return Promise.resolve(true)},onDidReceiveMessage:()=>disposable()});
+    await fx.manager.scan();await fx.settle();
+    assert.equal(fx.localReads.length,0);assert.equal((await fx.read()).length,0);
+    const entry=[...fx.manager.entries.values()].find(e=>e.info.root===root);
+    await assert.rejects(fx.manager.request('scanRepository',{repositoryId:entry.info.id}),/available repository/);
+    assert.equal(fx.localReads.length,0,'scan button bypassed unsynced CVS gating');
+    entry.info.syncedAt=Date.now();
+    const concurrent=await Promise.allSettled([entry.cvs.refresh(),fx.manager.request('getCvsFiles',{repositoryId:entry.info.id})]);
+    assert.equal(concurrent[1].status,'fulfilled','history mount exposed the same inventory limit as an operation error');
+    assert.deepEqual(concurrent[1].value,[]);
+    await fx.manager.execute('jettortoise.synchronizeRepository',Uri.file(root));await fx.settle();
+    assert.equal(fx.warnings.length,0);assert.equal((await fx.read()).length,0);
+    assert.ok(sent.some(msg=>msg.event==='repositorySnapshot'&&msg.data.repositoryId===entry.info.id&&msg.data.scanPaused));
+    await fs.writeFile(path.join(root,'CVS/Entries'),'');
+    await fx.manager.request('scanRepository',{repositoryId:entry.info.id});
+    assert.equal(fx.manager.state().snapshots[0].scanPaused,undefined);
+    assert.equal((await fx.read()).length,0);
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
+});
+
+test('Git 自动状态不遍历两万忽略目录与嵌套仓内部，写预检仍检查忽略树', async () => {
+  const fx=await setup();
+  try {
+    const cp=require('node:child_process'),root=path.join(fx.base,'git-large');
+    await fs.mkdir(root);cp.execFileSync('git',['init','-b','main'],{cwd:root,stdio:'ignore'});
+    await fs.writeFile(path.join(root,'.gitignore'),'node_modules/\nbuild/\n.local/\ndist/\n');
+    for(const name of ['node_modules','build','.local','dist']) {
+      const dir=path.join(root,name);await fs.mkdir(dir);
+      for(let start=0;start<5000;start+=100) await Promise.all(Array.from({length:100},(_,i)=>fs.mkdir(path.join(dir,'d-'+(start+i)))));
+    }
+    const nested=path.join(root,'child');await fs.mkdir(nested);
+    cp.execFileSync('git',['init','-b','main'],{cwd:nested,stdio:'ignore'});
+    // 子仓中放损坏管理目录，若误进入会引起边界失败。
+    await fs.mkdir(path.join(nested,'broken/CVS'),{recursive:true});
+    await fs.writeFile(path.join(root,'visible.txt'),'visible\n');
+    const id=fx.manager.add('git',root);await fx.settle();
+    const snapshot=fx.manager.state().snapshots.find(s=>s.repositoryId===id);
+    assert.equal(snapshot.error,undefined);assert.equal(snapshot.scanPaused,undefined);
+    assert.deepEqual(snapshot.files.map(f=>f.path).sort(),['.gitignore','visible.txt']);
+    const {listNestedRepositories}=require('../src/repositories/boundaries.cjs');
+    await assert.rejects(listNestedRepositories(root,'git'),{code:'SCAN_LIMIT'},'write preflight silently skipped ignored directories');
+    assert.deepEqual(await listNestedRepositories(nested,'git').catch(e=>e.code),'BOUNDARY_UNAVAILABLE');
+    assert.equal(fx.warnings.length,0);
+  } finally {fx.manager.dispose();await fs.rm(fx.base,{recursive:true,force:true});}
 });
 
 test('CVS 与 Git 共用命令队列，本地命令不占网络位置且排队取消不启动进程', async () => {

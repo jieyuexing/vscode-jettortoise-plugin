@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import CodiconRefresh from "~icons/codicon/refresh";
 import { IconFolder } from "../../panel/utils/file-icons";
 import { bridge } from "../../shared/bridge";
 import { ToolbarButton } from "../../shared/components/ToolbarButton";
@@ -45,6 +46,7 @@ function fitRowText(tree: HTMLElement) {
       ".changes-branch",
       ".changes-synced-at",
       ".changes-count",
+      ".changes-scan-status",
       ".changes-row-label",
     ];
     const segments = selectors.flatMap((selector) => {
@@ -92,6 +94,12 @@ function fitRowText(tree: HTMLElement) {
       if (remaining >= minimum) {
         element.style.width = `${remaining}px`;
         break;
+      }
+      // 暂停原因至少留一个字与省略号，再让仓库名称缩短；操作入口始终保留。
+      if (element.classList.contains("changes-scan-status")) {
+        element.style.width = `${minimum}px`;
+        excess -= natural - minimum;
+        continue;
       }
       excess -= natural + margins(element) + gap;
       element.style.display = "none";
@@ -315,7 +323,10 @@ export function ChangeTree({
           !group[kind].length &&
           !(
             kind === "changes" &&
-            (group.error || group.refreshing || group.syncedAt !== undefined)
+            (group.error ||
+              group.refreshing ||
+              group.scanPaused ||
+              group.syncedAt !== undefined)
           )
         )
           continue;
@@ -337,6 +348,34 @@ export function ChangeTree({
                 {fileCount(group[kind].length)}
               </span>
               {branch && <span className="changes-branch">{branch}</span>}
+              {kind === "changes" && group.scanPaused && (
+                <>
+                  <span
+                    className="changes-scan-status"
+                    title={t("Large repository: automatic scanning paused")}
+                  >
+                    {t("Large repository: automatic scanning paused")}
+                  </span>
+                  <ToolbarButton
+                    label={t("Scan")}
+                    icon={
+                      <CodiconRefresh
+                        width={16}
+                        height={16}
+                        aria-hidden="true"
+                      />
+                    }
+                    className="changes-scan"
+                    action={() =>
+                      void changeAction(() =>
+                        bridge.request("scanRepository", {
+                          repositoryId: group.id,
+                        }),
+                      )
+                    }
+                  />
+                </>
+              )}
               {group.kind === "cvs" && group.syncedAt !== undefined && (
                 <>
                   <span className="changes-synced-at">

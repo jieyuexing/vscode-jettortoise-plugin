@@ -300,7 +300,7 @@ async function repositoryTree(start, ownerRoot = start, options = {}) {
       const results = await Promise.all(
         batch.map(async (directory) => {
           if (++visited > LIMIT)
-            throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+            throw new NestedRepositoryError([], "SCAN_LIMIT");
           const cvs = await read(directory);
           const roots = [];
           if (directory !== ownerRoot) {
@@ -382,7 +382,7 @@ async function registeredCvsDirectories(root) {
   try {
     for (let index = 0; index < pending.length; index++) {
       if (pending.length > LIMIT)
-        throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");
+        throw new NestedRepositoryError([], "SCAN_LIMIT");
       const directory = pending[index];
       const cvs = await readCvs(directory);
       if (!cvs) throw new NestedRepositoryError([], "BOUNDARY_UNAVAILABLE");

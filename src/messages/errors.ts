@@ -116,9 +116,9 @@ export function localizeError(error: unknown): string {
   return message;
 }
 
-/** 超限或无法完成的边界盘点停止本次会话的该段扫描；写入仍独立预检。 */
+/** 只把真实数量上限视为暂停；元数据与路径失败仍按错误显示。 */
 export function isScanLimit(error: unknown): boolean {
-  return ["inventoryLimit", "BOUNDARY_UNAVAILABLE", "path"].includes(
+  return ["inventoryLimit", "SCAN_LIMIT"].includes(
     String((error as { code?: string })?.code),
   );
 }

@@ -170,7 +170,7 @@ test("large directory preflight remains bounded at 10000 directories", async () 
     assert.deepEqual(await listNestedRepositories(base, "cvs"), []);
     assert.deepEqual(await new CvsAdapter(base).inventory(), []);
     await fs.mkdir(path.join(base, "one-too-many"));
-    await assert.rejects(listNestedRepositories(base, "cvs"), { code: "BOUNDARY_UNAVAILABLE" });
+    await assert.rejects(listNestedRepositories(base, "cvs"), { code: "SCAN_LIMIT" });
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
@@ -248,12 +248,13 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
     assert.ok(checks >= 2);
     await fs.rm(path.join(wc, "CVS", "Repository"));
     await session.refresh();
-    assert.equal(lastSnapshot.error, undefined);
-    assert.match(globalThis.__cvsBoundaryWarnings[0], /Repository boundaries could not be fully verified/);
-    const stoppedChecks = checks;
+    assert.match(lastSnapshot.error, /Repository boundaries could not be fully verified/);
+    assert.equal(lastSnapshot.scanPaused, undefined, "broken metadata is not an inventory limit");
+    const failedChecks = checks;
     await session.refresh();
-    assert.equal(checks, stoppedChecks);
-    assert.equal(globalThis.__cvsBoundaryWarnings.length, 1);
+    assert.ok(checks > failedChecks, "a real boundary failure must remain retryable");
+    assert.match(lastSnapshot.error, /Repository boundaries could not be fully verified/);
+    assert.equal(globalThis.__cvsBoundaryWarnings.length, 0);
     session.dispose();
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });

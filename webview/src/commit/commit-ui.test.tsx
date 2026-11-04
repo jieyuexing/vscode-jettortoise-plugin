@@ -136,7 +136,9 @@ describe("本地更改三态", () => {
     });
     const view = render(<ChangeTree onSelect={() => {}} />);
     const status = view.getByText("仓库较大，已暂停自动扫描");
-    const button = view.getByRole("button", { name: "扫描" });
+    const scanLabel = "仓库较大，已暂停自动扫描；点击继续扫描";
+    const button = view.getByRole("button", { name: scanLabel });
+    expect(button.title).toBe(scanLabel);
     expect(status.closest(".changes-row")).toBe(button.closest(".changes-row"));
     mocks.request.mockClear();
     fireEvent.click(button);
@@ -151,8 +153,135 @@ describe("本地更改三态", () => {
         snapshots: [{ repositoryId: "a", files: [] }],
       }),
     );
-    expect(view.queryByRole("button", { name: "扫描" })).toBeNull();
+    expect(view.queryByRole("button", { name: scanLabel })).toBeNull();
     initializeI18n("en");
+  });
+  it("暂停仓按名称、标签、分支、同步时间、计数、状态排列，扫描与移除位于行尾", () => {
+    useRepositoryStore.setState({
+      repositories: [{ ...repositories[1], syncedAt: Date.now() }],
+      snapshots: [
+        {
+          repositoryId: "b",
+          files: [],
+          branch: "feature-rework",
+          scanPaused: true,
+        },
+      ],
+    });
+    const view = render(<ChangeTree onSelect={() => {}} />);
+    const row = view.container.querySelector(".changes-row.repository")!;
+    expect(
+      Array.from(row.children).map((element) => element.className),
+    ).toEqual([
+      "changes-twisty",
+      "changes-row-label",
+      "changes-tag",
+      "changes-branch",
+      "changes-synced-at",
+      "changes-count",
+      "changes-scan-status",
+      "changes-actions",
+    ]);
+    expect(
+      Array.from(row.querySelector(".changes-actions")!.children).map(
+        (element) => element.className,
+      ),
+    ).toEqual([
+      expect.stringContaining("changes-scan"),
+      expect.stringContaining("changes-remove-sync"),
+    ]);
+  });
+  it.each([
+    170, 220, 300,
+  ])("%ipx 暂停仓按序让位，名称至少一字加省略号，扫描保持 22px", (width) => {
+    // jsdom 没有排版引擎；固定字体量值覆盖让位逻辑，实际像素另由 Electron CDP 验证。
+    const nativeStyle = getComputedStyle;
+    vi.stubGlobal("getComputedStyle", (element: Element) => ({
+      ...nativeStyle(element),
+      columnGap: "5px",
+      paddingLeft: "24px",
+      paddingRight: "8px",
+      marginLeft: "0px",
+      marginRight: "0px",
+      font: "12px sans-serif",
+      fontSize: "12px",
+      getPropertyValue: (name: string) =>
+        nativeStyle(element).getPropertyValue(name),
+    }));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      measureText: (text: string) => ({ width: text === "…" ? 12 : 6 }),
+    } as unknown as CanvasRenderingContext2D);
+    const natural: Record<string, number> = {
+      "changes-twisty": 14,
+      "changes-row-label": 48,
+      "changes-tag": 26,
+      "changes-branch": 84,
+      "changes-synced-at": 84,
+      "changes-count": 48,
+      "changes-scan-status": 156,
+      "changes-actions": 43,
+      "changes-scan": 22,
+      "changes-remove-sync": 16,
+    };
+    const measuredWidth = (element: HTMLElement) => {
+      if (element.style.display === "none") return 0;
+      if (element.style.width) return Number.parseFloat(element.style.width);
+      if (element.matches(".changes-tree,.changes-row")) return width - 6;
+      return (
+        natural[
+          Array.from(element.classList).find((name) => name in natural) ?? ""
+        ] ?? 0
+      );
+    };
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function () {
+        return new DOMRect(0, 0, measuredWidth(this), 20);
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function () {
+        return measuredWidth(this);
+      },
+    );
+    try {
+      useRepositoryStore.setState({
+        repositories: [{ ...repositories[1], syncedAt: Date.now() }],
+        snapshots: [
+          {
+            repositoryId: "b",
+            files: [],
+            branch: "feature-rework",
+            scanPaused: true,
+          },
+        ],
+      });
+      const view = render(<ChangeTree onSelect={() => {}} />);
+      const row = view.container.querySelector<HTMLElement>(
+        ".changes-row.repository",
+      )!;
+      expect(
+        row.querySelector<HTMLElement>(".changes-row-label")!.clientWidth,
+      ).toBeGreaterThanOrEqual(24);
+      expect(row.querySelector<HTMLElement>(".changes-scan")!.clientWidth).toBe(
+        22,
+      );
+      expect(row.querySelector<HTMLElement>(".changes-tag")!.clientWidth).toBe(
+        26,
+      );
+      for (const selector of [
+        ".changes-branch",
+        ".changes-synced-at",
+        ".changes-count",
+      ])
+        expect(row.querySelector<HTMLElement>(selector)!.clientWidth).toBe(0);
+      const statusWidth = row.querySelector<HTMLElement>(
+        ".changes-scan-status",
+      )!.clientWidth;
+      if (width === 170) expect(statusWidth).toBe(0);
+      else expect(statusWidth).toBeGreaterThanOrEqual(24);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
   it("浏览态没有提交表单与复选框，点击只预览、双击打开完整差异", async () => {
     const view = render(<CommitApp />);

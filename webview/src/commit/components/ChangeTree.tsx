@@ -95,11 +95,10 @@ function fitRowText(tree: HTMLElement) {
         element.style.width = `${remaining}px`;
         break;
       }
-      // 暂停原因至少留一个字与省略号，再让仓库名称缩短；操作入口始终保留。
-      if (element.classList.contains("changes-scan-status")) {
-        element.style.width = `${minimum}px`;
-        excess -= natural - minimum;
-        continue;
+      // 名称最后让位，至少保留一个字与省略号；辅助文字可整段隐藏。
+      if (element.classList.contains("changes-row-label")) {
+        element.style.width = `${Math.min(natural, minimum)}px`;
+        break;
       }
       excess -= natural + margins(element) + gap;
       element.style.display = "none";
@@ -344,63 +343,70 @@ export function ChangeTree({
               <span className="changes-tag">
                 {group.kind === "git" ? "Git" : "CVS"}
               </span>
+              {branch && <span className="changes-branch">{branch}</span>}
+              {group.kind === "cvs" && group.syncedAt !== undefined && (
+                <span className="changes-synced-at">
+                  {t(
+                    "Synchronized at {0}",
+                    new Date(group.syncedAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    }),
+                  )}
+                </span>
+              )}
               <span className="changes-count">
                 {fileCount(group[kind].length)}
               </span>
-              {branch && <span className="changes-branch">{branch}</span>}
               {kind === "changes" && group.scanPaused && (
-                <>
-                  <span
-                    className="changes-scan-status"
-                    title={t("Large repository: automatic scanning paused")}
-                  >
-                    {t("Large repository: automatic scanning paused")}
-                  </span>
-                  <ToolbarButton
-                    label={t("Scan")}
-                    icon={
-                      <CodiconRefresh
-                        width={16}
-                        height={16}
-                        aria-hidden="true"
-                      />
-                    }
-                    className="changes-scan"
-                    action={() =>
-                      void changeAction(() =>
-                        bridge.request("scanRepository", {
-                          repositoryId: group.id,
-                        }),
-                      )
-                    }
-                  />
-                </>
+                <span
+                  className="changes-scan-status"
+                  title={t("Large repository: automatic scanning paused")}
+                >
+                  {t("Large repository: automatic scanning paused")}
+                </span>
               )}
-              {group.kind === "cvs" && group.syncedAt !== undefined && (
-                <>
-                  <span className="changes-synced-at">
-                    {t(
-                      "Synchronized at {0}",
-                      new Date(group.syncedAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      }),
-                    )}
-                  </span>
-                  <ToolbarButton
-                    label={t("Remove from synchronization")}
-                    path="M4 4l8 8M12 4l-8 8"
-                    className="changes-remove-sync"
-                    action={() =>
-                      void changeAction(() =>
-                        bridge.request("removeSynchronizedRepository", {
-                          repositoryId: group.id,
-                        }),
-                      )
-                    }
-                  />
-                </>
+              {((kind === "changes" && group.scanPaused) ||
+                (group.kind === "cvs" && group.syncedAt !== undefined)) && (
+                <span className="changes-actions">
+                  {kind === "changes" && group.scanPaused && (
+                    <ToolbarButton
+                      label={t(
+                        "Large repository: automatic scanning paused; click to resume scanning",
+                      )}
+                      icon={
+                        <CodiconRefresh
+                          width={16}
+                          height={16}
+                          aria-hidden="true"
+                        />
+                      }
+                      className="changes-scan"
+                      action={() =>
+                        void changeAction(() =>
+                          bridge.request("scanRepository", {
+                            repositoryId: group.id,
+                          }),
+                        )
+                      }
+                    />
+                  )}
+                  {group.kind === "cvs" && group.syncedAt !== undefined && (
+                    <ToolbarButton
+                      label={t("Remove from synchronization")}
+                      path="M4 4l8 8M12 4l-8 8"
+                      className="changes-remove-sync"
+                      action={() =>
+                        void changeAction(() =>
+                          bridge.request("removeSynchronizedRepository", {
+                            repositoryId: group.id,
+                          }),
+                        )
+                      }
+                    />
+                  )}
+                </span>
               )}
             </>
           ),

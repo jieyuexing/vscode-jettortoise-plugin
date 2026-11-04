@@ -1033,6 +1033,13 @@ body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
 .changes-scan-status {
   color: var(--dim);
 }
+.changes-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  margin-left: auto;
+}
 .changes-row .changes-scan {
   display: flex;
   align-items: center;
@@ -1042,7 +1049,6 @@ body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
   height: var(--etech-tool-button);
   border-radius: 4px;
   color: var(--dim);
-  margin-left: auto;
 }
 .changes-row .changes-remove-sync {
   display: flex;
@@ -1050,7 +1056,6 @@ body:is(.vscode-dark, .vscode-high-contrast) .file-icon-dark {
   justify-content: center;
   width: 16px;
   height: 16px;
-  margin-left: auto;
   color: var(--dim);
   flex: none;
   border-radius: 4px;

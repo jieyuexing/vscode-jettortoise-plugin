@@ -145,6 +145,67 @@ describe("本地更改三态", () => {
     expect(row?.querySelector(".changes-count")?.textContent).toBe("正在加载…");
     initializeI18n("en");
   });
+  it.each(
+    repositories,
+  )("$kind 首屏及分批加载只在仓库行显示状态，树行均有明确类型", (repository) => {
+    initializeI18n("zh-cn");
+    try {
+      useRepositoryStore.setState({
+        repositories: [repository],
+        snapshots: [
+          { repositoryId: repository.id, files: [], refreshing: true },
+        ],
+      });
+      const view = render(<ChangeTree onSelect={() => {}} />);
+      const assertRows = () => {
+        const rows = [
+          ...view.container.querySelectorAll(".changes-tree [data-row-index]"),
+        ];
+        expect(rows.length).toBeGreaterThan(0);
+        expect(
+          rows
+            .filter(
+              (row) =>
+                !row.querySelector(
+                  ":scope > .changes-row.category, :scope > .changes-row.repository, :scope > .changes-file-row",
+                ),
+            )
+            .map((row) => row.textContent),
+        ).toEqual([]);
+        const loading = view.getAllByText(/正在加载…/);
+        expect(loading).toHaveLength(1);
+        expect(loading[0].closest(".changes-row.repository")).toBeTruthy();
+      };
+      assertRows();
+      const partial = [{ ...files[0], repositoryId: repository.id }];
+      act(() =>
+        useRepositoryStore.setState({
+          snapshots: [
+            { repositoryId: repository.id, files: partial, refreshing: true },
+          ],
+        }),
+      );
+      assertRows();
+      expect(
+        view.container.querySelector(".changes-row.repository .changes-count")
+          ?.textContent,
+      ).toBe("正在加载… 1 个文件");
+      act(() =>
+        useRepositoryStore.setState({
+          snapshots: [
+            { repositoryId: repository.id, files: partial, refreshing: false },
+          ],
+        }),
+      );
+      expect(view.queryByText(/正在加载…/)).toBeNull();
+      expect(
+        view.container.querySelector(".changes-row.repository .changes-count")
+          ?.textContent,
+      ).toBe("1 个文件");
+    } finally {
+      initializeI18n("en");
+    }
+  });
   it("干净暂停仓仍显示行内状态和扫描按钮，点击只发送登记仓的本地扫描请求", async () => {
     initializeI18n("zh-cn");
     useRepositoryStore.setState({

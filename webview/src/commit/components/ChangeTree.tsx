@@ -357,9 +357,15 @@ export function ChangeTree({
                 </span>
               )}
               <span className="changes-count">
-                {group.refreshing && !group[kind].length
-                  ? t("Loading...")
-                  : fileCount(group[kind].length)}
+                {group.refreshing ? (
+                  <>
+                    {t("Loading...")}
+                    {group[kind].length > 0 &&
+                      ` ${fileCount(group[kind].length)}`}
+                  </>
+                ) : (
+                  fileCount(group[kind].length)
+                )}
               </span>
               {kind === "changes" && group.scanPaused && (
                 <span
@@ -415,15 +421,6 @@ export function ChangeTree({
         });
         if (group.error)
           result.push({ key: `error:${key}`, level: 1, notice: group.error });
-        if (group.refreshing)
-          result.push({
-            key: `progress:${key}`,
-            level: 1,
-            notice:
-              group.kind === "git"
-                ? t("Loading...")
-                : t("Checking remote updates…"),
-          });
         if (state.collapsedDirs.has(key)) continue;
         if (kind === "changes" && state.groupByDirectory) {
           for (const file of group.rootFiles) addFile(file, 2);

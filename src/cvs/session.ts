@@ -34,7 +34,7 @@ interface Adapter {
   commit(names: string[], message: string, signal?: AbortSignal): Promise<void>;
   rollback(name: string, signal?: AbortSignal): Promise<string>;
   add(names: string[], signal?: AbortSignal): Promise<void>;
-  update(signal?: AbortSignal): Promise<void>;
+  update(signal?: AbortSignal): Promise<string[]>;
 }
 interface Process {
   readonly executable?: string;

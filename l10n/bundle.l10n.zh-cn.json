@@ -208,5 +208,7 @@
   "Invalid request field: {0}": "请求字段无效：{0}",
   "Forbidden request field: {0}": "禁止的请求字段：{0}",
   "Open the file diff or history again to load CVS revisions.": "请重新打开文件差异或历史以读取 CVS 修订。",
-  "Select a CVS repository root.": "请选择 CVS 仓库根目录。"
+  "Select a CVS repository root.": "请选择 CVS 仓库根目录。",
+  "Show Conflicts": "查看冲突",
+  "Update Project: {0} file(s) have merge conflicts.": "更新项目：{0} 个文件有合并冲突。"
 }

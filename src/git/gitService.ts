@@ -854,7 +854,8 @@ export class GitService {
     await this.assertWholeWorktreeOwned();
     // Stage all resolved files before committing
     await this.execGit(["add", "-u"]);
-    await this.execGit(["commit", "--no-edit"]);
+    // --no-edit 默认只清理空白；strip 去掉 MERGE_MSG 里的 # Conflicts: 注释行。
+    await this.execGit(["commit", "--no-edit", "--cleanup=strip"]);
     this.invalidateCache();
   }
 

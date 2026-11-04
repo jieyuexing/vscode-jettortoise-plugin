@@ -160,6 +160,23 @@ export function ChangeTree({
       }),
     [],
   );
+  // 宿主“查看冲突”：展开合并冲突分组和该仓，行出现后滚动定位。
+  const revealKey = useRef<string | undefined>(undefined);
+  useEffect(
+    () =>
+      bridge.onEvent((event, data) => {
+        if (event !== "revealConflicts") return;
+        const key = `repository:conflicts:${(data as { repositoryId: string }).repositoryId}`;
+        revealKey.current = key;
+        useCommitStore.setState((value) => ({
+          expandedGroups: new Set([...value.expandedGroups, "conflicts"]),
+          collapsedDirs: new Set(
+            [...value.collapsedDirs].filter((item) => item !== key),
+          ),
+        }));
+      }),
+    [],
+  );
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -316,7 +333,9 @@ export function ChangeTree({
       if (file.directory && state.expandedGroups.has(`lazy:${key}`))
         for (const child of lazy[key] ?? []) addFile(child, level + 1);
     };
-    const addRepos = (kind: "changes" | "unversioned" | "incoming") => {
+    const addRepos = (
+      kind: "conflicts" | "changes" | "unversioned" | "incoming",
+    ) => {
       for (const group of groups) {
         if (
           !group[kind].length &&
@@ -444,6 +463,7 @@ export function ChangeTree({
       }
     };
     for (const [kind, label] of [
+      ["conflicts", t("Merge Conflicts")],
       ["changes", t("Changes")],
       ["unversioned", t("Unversioned Files")],
       ["ignored", t("Ignored")],
@@ -451,7 +471,8 @@ export function ChangeTree({
     ] as const) {
       const files =
         kind === "ignored" ? [] : groups.flatMap((group) => group[kind]);
-      if (kind === "incoming" && !files.length) continue;
+      if ((kind === "incoming" || kind === "conflicts") && !files.length)
+        continue;
       result.push({
         key: kind,
         label,
@@ -546,6 +567,15 @@ export function ChangeTree({
       pendingFocus.current = undefined;
     }
   });
+  useLayoutEffect(() => {
+    const index = rows.findIndex((item) => item.key === revealKey.current);
+    const tree = treeRef.current;
+    if (index < 0 || !tree) return;
+    revealKey.current = undefined;
+    const top = index * viewport.rowHeight;
+    tree.scrollTop = top;
+    setViewport((value) => ({ ...value, top }));
+  }, [rows, viewport.rowHeight]);
   useLayoutEffect(() => {
     const tree = treeRef.current;
     if (!tree) return;

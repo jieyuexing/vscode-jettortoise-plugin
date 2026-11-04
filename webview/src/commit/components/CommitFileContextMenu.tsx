@@ -141,18 +141,32 @@ export function CommitFileContextMenu({
           )}
           {repository?.kind === "git" && (
             <>
-              <button
-                type="button"
-                role="menuitem"
-                className="commit-context-menu-item"
-                onClick={() =>
-                  void invoke(file.staged ? "unstageFile" : "stageFile", {
-                    filePath: file.path,
-                  })
-                }
-              >
-                {file.staged ? t("Unstage") : t("Stage")}
-              </button>
+              {file.status === "conflicted" ? (
+                // 编辑器里手工合并后暂存即标记已解决，随后可直接继续合并。
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="commit-context-menu-item"
+                  onClick={() =>
+                    void invoke("stageFile", { filePath: file.path })
+                  }
+                >
+                  {t("Mark Resolved")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="commit-context-menu-item"
+                  onClick={() =>
+                    void invoke(file.staged ? "unstageFile" : "stageFile", {
+                      filePath: file.path,
+                    })
+                  }
+                >
+                  {file.staged ? t("Unstage") : t("Stage")}
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

@@ -136,6 +136,24 @@ async function main() {
       await assert.rejects(() => new GitService(f.target).updateFastForward(undefined, controller.signal));
       assert.equal(await fs.readFile(path.join(f.target, "tracked.txt"), "utf8"), "base\n"); checks += 2;
     });
+    // 编辑器里手工合并后“标记已解决”（暂存）即可继续合并，提交说明不留 # Conflicts: 注释。
+    await withFixture(temporary, async (f) => {
+      await addRemoteCommit(f);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local\n");
+      git(f.target, ["commit", "-am", "local"]); git(f.target, ["fetch"]);
+      assert.throws(() => git(f.target, ["merge", "origin/main"]));
+      const service = new GitService(f.target);
+      assert.deepEqual(await service.getConflictFiles(), ["tracked.txt"]);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local and remote\n");
+      await service.stageFile("tracked.txt");
+      assert.deepEqual(await service.getConflictFiles(), []);
+      await service.mergeContinue();
+      const message = git(f.target, ["log", "-1", "--format=%B"]);
+      assert.match(message, /^Merge remote-tracking branch 'origin\/main'/);
+      assert.doesNotMatch(message, /#|Conflicts/);
+      assert.equal(git(f.target, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length, 3);
+      checks += 4;
+    });
     console.log(JSON.stringify({ checks, command: "pull --ff-only --no-rebase --no-autostash --no-recurse-submodules" }));
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });

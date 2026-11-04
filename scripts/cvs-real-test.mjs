@@ -67,6 +67,26 @@ test("temporary local CVS: an edited merge conflict becomes a local modification
     assert.ok((await f.cvs.log("other.txt")).some(item => item.subject === "resolved"));
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
+test("temporary local CVS: server-new files are incoming until update; update reports conflicts and hides .# backups", async () => {
+  const f = await fixture();
+  try {
+    const second = await checkout(f.process, f.root, "demo", path.join(f.base, "second")), other = new CvsAdapter(second, f.process);
+    await fs.writeFile(path.join(second, "fresh.txt"), "server new\n"); await other.add(["fresh.txt"]); await other.commit(["fresh.txt"], "server new file");
+    await fs.writeFile(path.join(second, "other.txt"), "colleague\n"); await other.commit(["other.txt"], "colleague");
+    const fresh = (await f.cvs.status()).find(item => item.newPath === "fresh.txt");
+    assert.equal(fresh?.state, "Needs Checkout", "server-new file missing from incoming");
+    // 本地刷新（焦点、保存）沿用最近网络结果，不能把服务器新文件丢掉。
+    assert.equal((await f.cvs.localStatus()).find(item => item.newPath === "fresh.txt")?.state, "Needs Checkout");
+    await fs.writeFile(path.join(f.wc, "other.txt"), "mine\n");
+    assert.deepEqual(await f.cvs.update(), ["other.txt"]);
+    assert.equal(await fs.readFile(path.join(f.wc, "fresh.txt"), "utf8"), "server new\n");
+    const local = await f.cvs.localStatus();
+    assert.equal(local.find(item => item.newPath === "fresh.txt").state, "Up-to-date", "updated server-new file still incoming");
+    assert.ok((await fs.readdir(f.wc)).some(name => name.startsWith(".#other.txt.")), "fixture did not produce a CVS conflict backup");
+    assert.deepEqual(local.filter(item => item.state === "Unknown").map(item => item.newPath), [], ".# backup listed as unversioned");
+    assert.ok((await f.cvs.status()).every(item => item.newPath !== "fresh.txt" || item.state === "Up-to-date"));
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));
   for (const value of ["-r1.1", "1.1;touch x", "HEAD", ""]) assert.throws(() => revision(value));

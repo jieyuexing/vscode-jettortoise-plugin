@@ -12,6 +12,7 @@ const checks = [
   ["--test", "scripts/cvs-nesting-check.mjs"],
   ["--test", "scripts/cvs-real-test.mjs"],
   ["scripts/restart-host-check.cjs"],
+  ["scripts/vcs-host-check.cjs"],
   ["--test", "scripts/repository-performance-check.cjs"],
 ];
 for (const args of checks) {

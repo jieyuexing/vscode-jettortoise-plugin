@@ -65,3 +65,32 @@ export async function hasDirtyEditors(
   }
   return false;
 }
+
+type EncodingWorkspace = typeof vscode.workspace & {
+  decode?(
+    content: Uint8Array,
+    options: { uri: vscode.Uri } | { encoding: string },
+  ): Thenable<string>;
+  encode?(content: string, options: { uri: vscode.Uri }): Thenable<Uint8Array>;
+};
+
+/** 修订内容按右侧工作文件的编码解码（已打开文档优先，否则由 IDE 按设置与
+ * 工程编码判定），再按 IDE 读取修订 URI 的编码写回，差异两侧编码一致。
+ * 宿主没有编码 API 或内容为二进制时原样返回。 */
+export async function revisionContent(
+  revision: vscode.Uri,
+  working: vscode.Uri,
+  content: Uint8Array,
+): Promise<Uint8Array> {
+  const workspace = vscode.workspace as EncodingWorkspace;
+  if (!workspace.decode || !workspace.encode || content.includes(0))
+    return content;
+  const document = workspace.textDocuments.find(
+    (item) => item.uri.toString() === working.toString(),
+  ) as { encoding?: string } | undefined;
+  const text = await workspace.decode(
+    content,
+    document?.encoding ? { encoding: document.encoding } : { uri: working },
+  );
+  return workspace.encode(text, { uri: revision });
+}

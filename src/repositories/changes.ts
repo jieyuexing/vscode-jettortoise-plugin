@@ -119,8 +119,10 @@ function collectFiles(snapshot: RepositorySnapshot) {
           file.path.startsWith(`${dir}/`),
       ),
   );
+  // 冲突单列“合并冲突”，解决（Git 暂存、CVS 编辑）后回到更改。
+  const conflicts = files.filter((file) => file.status === "conflicted");
   const changes = files.filter(
-    (file) => !["untracked", "incoming"].includes(file.status),
+    (file) => !["untracked", "incoming", "conflicted"].includes(file.status),
   );
   const incoming = files.filter((file) => file.status === "incoming");
   const rootFiles = changes.filter((file) => !file.path.includes("/"));
@@ -134,6 +136,7 @@ function collectFiles(snapshot: RepositorySnapshot) {
     directories.set(directory, children);
   }
   const grouped = {
+    conflicts,
     changes,
     unversioned,
     incoming,

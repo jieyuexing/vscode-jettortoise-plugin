@@ -183,5 +183,15 @@ ETECH 环节 7 写入部分用产品仓 `fixtures/vcs-sim/vcs-sim.py` 搭本机 
 - Entries 时间戳带 `+`（合并结果）时，文件 mtime 与 `+` 后时间相同才是冲突，否则为本地修改，与 CVS 自身判定一致；时间无法解析时保守视为冲突。残留冲突标记由 `cvs commit` 拒绝。
 - Git 快进更新的本地更改检查排除 `.idea/shelf`（本插件搁置区），其余已跟踪改动与未跟踪文件仍按原合同拒绝更新。
 
-未改：Git 更新仍不自动 stash；Git 冲突经冲突面板的合并编辑器“应用”后才算已解决（本地更改右键没有“暂存”）；CVS 新增的服务器文件不在传入中预先列出，更新时仍会取得；CVS 差异左侧修订内容按 UTF-8 解码，MS932 文件比较时左侧乱码。
+未改：Git 更新仍不自动 stash。0.6.12 走查留下的其余缺口由 0.6.13 补上，见下节。
+
+## 环节 7 缺口（2026-11-05，0.6.13）
+
+- 修订编码：`RepositoryManager.readFile` 取得修订字节后，按右侧工作文件解码：已打开的文档有 `encoding` 时用它，否则调 `workspace.decode(内容, {uri: 工作文件})`，由 IDE 按设置决定编码（ETECH 产品的 EncodingRegistry 读 Eclipse 工程 prefs）。解码后再用 `workspace.encode(文本, {uri: 修订 URI})` 写回成 IDE 读取修订 URI 的编码，两侧一致。Git 与 CVS 共用这一处。宿主没有这两个 API（VS Code 1.100 以前）或内容含 NUL 时原样返回。不在扩展里另行解析 prefs，以免与 IDE 的优先级（重新打开、文件夹设置）分叉。单击预览仍只显示 UTF-8，其他编码显示灰字。
+- 合并冲突：分组模型新增 `conflicts`，冲突文件只出现在置顶的「合并冲突」分类，有冲突时才显示，默认展开，不计入更改。Git 冲突行右键为「标记已解决」，即 `stageFile`。`mergeContinue` 使用 `commit --no-edit --cleanup=strip`。
+- CVS 传入：`status()` 把 `cvs -n update` 的 `U` 新文件（本地不存在）列为 Needs Checkout，本地刷新沿用最近一次网络结果。`update()` 返回本次的冲突文件并清空旧网络结果。工作副本有未解决冲突时 `cvs -n update` 退出码为 1，只在输出含 `C ` 行且没有 `aborted]` 时接受，其余仍按命令失败处理。
+- CVS 冲突通知：更新返回冲突时弹一条警告，写明数量，「查看冲突」选中该仓、聚焦提交视图并广播 `revealConflicts`，变更树展开并滚到该仓的冲突行。本地清单按 CVS 默认忽略规则跳过 `.#*` 备份。
+- 新签出发现：manager 监听 `**/CVS/Root`、`**/.git` 的创建事件。新目录不是已登记根，且（对 CVS）上级目录不是 CVS 目录时，防抖 500ms 后执行一次完整 `scan()`，与重开窗口时的发现相同。
+
+回归：`scripts/cvs-real-test.mjs`（传入、冲突返回、`.#`）、`scripts/git-update-check.cjs`（标记已解决后继续合并）、新入口 `scripts/vcs-host-check.cjs`（编码、通知、发现，并入 headless），以及 `commit-ui.test.tsx`（冲突分组、定位、右键）。
 

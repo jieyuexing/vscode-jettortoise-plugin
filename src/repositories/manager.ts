@@ -22,7 +22,7 @@ import {
   isCvsSyncRoot,
   readRepositoryReference,
 } from "./discovery";
-import { hasDirtyEditors } from "./editor-documents";
+import { hasDirtyEditors, revisionContent } from "./editor-documents";
 import { repositoryPath, validateRepositoryRequest } from "./requests";
 
 type GitSession = ReturnType<typeof createGitRepositorySession>;
@@ -56,6 +56,7 @@ export class RepositoryManager implements vscode.Disposable {
   private editorOwnerId?: string;
   private disposed = false;
   private publishTimer?: ReturnType<typeof setTimeout>;
+  private discoveryTimer?: ReturnType<typeof setTimeout>;
   private localActive = 0;
   private readonly localWaiters: (() => void)[] = [];
   private readonly streams = new Map<vscode.Webview, Map<string, symbol>>();
@@ -69,6 +70,19 @@ export class RepositoryManager implements vscode.Disposable {
       },
     );
     if (configuration) this.disposables.push(configuration);
+    // 运行中新签出的工作副本（出现 CVS/Root 或 .git）重新发现，无需重开窗口。
+    for (const pattern of ["**/CVS/Root", "**/.git"]) {
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        pattern,
+        false,
+        true,
+        true,
+      );
+      this.disposables.push(
+        watcher,
+        watcher.onDidCreate((uri) => void this.created(uri)),
+      );
+    }
     this.disposables.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         void this.scan();
@@ -321,6 +335,32 @@ export class RepositoryManager implements vscode.Disposable {
       this.commitId = undefined;
     await this.follow(vscode.window.activeTextEditor?.document.uri);
     this.publish();
+  }
+  private async created(uri: vscode.Uri) {
+    if (uri.scheme !== "file" || this.disposed) return;
+    const kind = path.basename(uri.fsPath) === ".git" ? "git" : "cvs";
+    const directory =
+      kind === "git"
+        ? path.dirname(uri.fsPath)
+        : path.dirname(path.dirname(uri.fsPath));
+    const root = await fs.realpath(directory).catch(() => directory);
+    // 已登记的根和已有 CVS 目录下新建的子目录不触发整区发现。
+    if (
+      [...this.entries.values()].some(
+        (entry) => entry.info.kind === kind && entry.info.root === root,
+      ) ||
+      (kind === "cvs" &&
+        (await fs.lstat(path.join(path.dirname(root), "CVS")).then(
+          () => true,
+          () => false,
+        )))
+    )
+      return;
+    if (this.discoveryTimer) clearTimeout(this.discoveryTimer);
+    this.discoveryTimer = setTimeout(() => {
+      this.discoveryTimer = undefined;
+      void this.scan();
+    }, 500);
   }
   private add(kind: "git" | "cvs", root: string) {
     const id = createHash("sha256")
@@ -685,7 +725,12 @@ export class RepositoryManager implements vscode.Disposable {
     await this.guard(entry);
     if (command === "updateProject") {
       try {
-        await (entry.git?.update() ?? this.cvs(entry).update());
+        if (entry.git) await entry.git.update();
+        else {
+          const conflicts = await this.cvs(entry).update();
+          if (conflicts.length)
+            void this.conflictNotice(entry, conflicts.length);
+        }
         return { success: true };
       } finally {
         await this.refresh(entry, true);
@@ -795,6 +840,19 @@ export class RepositoryManager implements vscode.Disposable {
     throw new Error(
       vscode.l10n.t("This action is available for Git repositories only."),
     );
+  }
+  // 更新产生冲突：一条通知写明数量，点开在本地更改定位到该仓的合并冲突分组。
+  private async conflictNotice(entry: Entry, count: number) {
+    const show = vscode.l10n.t("Show Conflicts");
+    const choice = await vscode.window.showWarningMessage(
+      vscode.l10n.t("Update Project: {0} file(s) have merge conflicts.", count),
+      show,
+    );
+    if (choice !== show || this.entries.get(entry.info.id) !== entry) return;
+    this.commitId = entry.info.id;
+    this.publish();
+    await vscode.commands.executeCommand("jettortoise.commitPanel.focus");
+    this.broadcast("revealConflicts", { repositoryId: entry.info.id });
   }
   private paths(value: unknown) {
     if (!Array.isArray(value) || !value.length || value.length > 2000)
@@ -936,7 +994,11 @@ export class RepositoryManager implements vscode.Disposable {
       ? entry.git.readFile(uri)
       : this.cvs(entry).readFile(uri));
     this.revisionUris.set(uri.toString(), uri);
-    return content;
+    return revisionContent(
+      uri,
+      vscode.Uri.file(path.join(entry.info.root, uri.path.slice(1))),
+      content,
+    );
   }
   async execute(command: string, ...args: unknown[]) {
     if (command === "jettortoise.synchronizeRepository") {
@@ -1029,6 +1091,7 @@ export class RepositoryManager implements vscode.Disposable {
   dispose() {
     this.disposed = true;
     if (this.publishTimer) clearTimeout(this.publishTimer);
+    if (this.discoveryTimer) clearTimeout(this.discoveryTimer);
     this.streams.clear();
     this.scanController?.abort();
     for (const id of this.entries.keys()) this.remove(id);

@@ -407,7 +407,12 @@ export class CvsAdapter {
         if (entry.isSymbolicLink()) fail("symlink");
       for (const entry of entries) {
         if (entry.isSymbolicLink()) fail("symlink");
-        if (entry.isFile() && !names.has(entry.name))
+        // CVS 默认忽略 .#*：更新冲突留下的原文件备份不是未受版本控制的文件。
+        if (
+          entry.isFile() &&
+          !names.has(entry.name) &&
+          !entry.name.startsWith(".#")
+        )
           unknown.push(relativeFile(prefix + entry.name));
       }
     }
@@ -458,7 +463,7 @@ export class CvsAdapter {
             .catch((error) => {
               if (error.code !== "ENOENT") throw error;
             });
-          if (stat?.isFile())
+          if (stat?.isFile() && !path.basename(name).startsWith(".#"))
             result.push({
               newPath: name,
               entryRevision: "",
@@ -470,6 +475,7 @@ export class CvsAdapter {
       return result;
     }
     const { files, unknown } = await this.localInventory();
+    const listed = new Set([...files.map((file) => file.newPath), ...unknown]);
     const result = [];
     for (let start = 0; start < files.length; start += 32)
       result.push(
@@ -479,6 +485,10 @@ export class CvsAdapter {
             .map(async (file) => this.withRemote(await this.localFile(file))),
         )),
       );
+    // 最近一次网络结果中服务器新增、本地仍没有的文件继续列为传入。
+    for (const [newPath, remote] of this.remoteStates)
+      if (remote.state === "Needs Checkout" && !listed.has(newPath))
+        result.push({ newPath, entryRevision: "", ...remote });
     return [
       ...result,
       ...unknown.map((newPath) => ({
@@ -566,10 +576,14 @@ export class CvsAdapter {
   }
   async status(signal, local) {
     const files = local ?? (await this.localStatus());
-    const output = await this.run(["-n", "-q", "update"], signal, [0], {
+    const output = await this.run(["-n", "-q", "update"], signal, [0, 1], {
       timeoutMs: 180000,
     });
-    const states = parseUpdateStatus(output.stdout.toString("utf8"));
+    const text = output.stdout.toString("utf8");
+    // 工作副本有未解决冲突时 cvs -n update 以 1 退出；仅在输出含冲突行且未中止时接受。
+    if (output.code === 1 && (!/^C /m.test(text) || /aborted\]/.test(text)))
+      fail("command");
+    const states = parseUpdateStatus(text);
     const result = files
       .filter((file) => file.state !== "Unknown")
       // 本地删掉的已登记文件，update 报 U／was lost；保持本地删除，提交时再 cvs remove。
@@ -588,12 +602,17 @@ export class CvsAdapter {
       );
     const known = new Set(result.map((file) => file.newPath));
     for (const [name, state] of states) {
-      if (known.has(name) || state.state !== "Unknown") continue;
+      if (
+        known.has(name) ||
+        !["Unknown", "Needs Checkout"].includes(state.state)
+      )
+        continue;
       try {
         relativeFile(name);
         await contained(this.root, name);
         await assertOwnedPath(this.root, "cvs", name);
         const stat = await fs.lstat(path.join(this.root, name));
+        if (state.state !== "Unknown") continue;
         const candidates = stat.isDirectory()
           ? [`${name}/`]
           : stat.isFile()
@@ -607,6 +626,11 @@ export class CvsAdapter {
             status: "untracked",
           });
       } catch (error) {
+        // 服务器新增、本地还没有的文件（U）：列为传入，更新时取得。
+        if (error.code === "ENOENT" && state.state === "Needs Checkout") {
+          result.push({ newPath: name, entryRevision: "", ...state });
+          continue;
+        }
         if (error.code === "BOUNDARY_UNAVAILABLE") throw error;
         if (
           !["NESTED_REPOSITORY", "path", "symlink", "ENOENT"].includes(
@@ -693,10 +717,18 @@ export class CvsAdapter {
       length += size(directory);
     }
     if (batch.length) batches.push(batch);
+    const conflicts = new Set();
     for (const args of batches) {
       if (signal?.aborted) fail("cancelled");
-      await this.run([...flags, ...args], signal);
+      const output = await this.run([...flags, ...args], signal);
+      for (const [name, state] of parseUpdateStatus(
+        output.stdout.toString("utf8"),
+      ))
+        if (state.state === "Needs Merge") conflicts.add(name);
     }
+    // 更新已取得的传入不再沿用旧网络结果；随后的网络刷新重新确认。
+    this.remoteStates = new Map();
+    return [...conflicts];
   }
   async commit(names, message, signal) {
     if (

@@ -116,7 +116,7 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
     if (!get().loading) set({ commitMode: false });
   },
   loading: false,
-  expandedGroups: new Set(["changes", "staged"]),
+  expandedGroups: new Set(["conflicts", "changes", "staged"]),
   groupByDirectory: true,
   showUnversioned: true,
   collapsedDirs: new Set<string>(),

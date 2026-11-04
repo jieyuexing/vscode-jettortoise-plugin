@@ -907,3 +907,75 @@ it("宿主内嵌摘要在消息往返前已有仓库与加载状态", async () =
     root.remove();
   }
 });
+
+describe("冲突", () => {
+  const conflicted = (repositoryId: string) => ({
+    repositoryId,
+    path: "conf.txt",
+    status: "conflicted" as const,
+    staged: repositoryId === "a",
+  });
+  it("冲突文件单列合并冲突分组，宿主通知点开后展开并定位该仓", async () => {
+    initializeI18n("zh-cn");
+    try {
+      useRepositoryStore.setState({
+        repositories,
+        snapshots: [
+          { repositoryId: "a", files: [files[0]] },
+          { repositoryId: "b", files: [files[1], conflicted("b")] },
+        ],
+      });
+      useCommitStore.setState({
+        expandedGroups: new Set(["changes"]),
+        collapsedDirs: new Set(["repository:conflicts:b"]),
+      });
+      const view = render(<ChangeTree onSelect={() => {}} />);
+      const [category] = view.getAllByRole("button", { name: "合并冲突" });
+      expect(
+        category.closest(".changes-row")?.querySelector(".changes-count")
+          ?.textContent,
+      ).toBe("1 个文件");
+      expect(view.queryByText("conf.txt")).toBeNull();
+      act(() => {
+        for (const fn of mocks.events)
+          fn("revealConflicts", { repositoryId: "b" });
+      });
+      expect(await view.findByText("conf.txt")).toBeTruthy();
+      expect(useCommitStore.getState().expandedGroups.has("conflicts")).toBe(
+        true,
+      );
+      // 冲突不计入更改，也不能被勾选提交。
+      const [changes] = view.getAllByRole("button", { name: "更改" });
+      expect(
+        changes.closest(".changes-row")?.querySelector(".changes-count")
+          ?.textContent,
+      ).toBe("2 个文件");
+    } finally {
+      initializeI18n("en");
+    }
+  });
+  it("Git 冲突文件右键“标记已解决”即暂存该文件", async () => {
+    initializeI18n("zh-cn");
+    try {
+      useRepositoryStore.setState({
+        repositories,
+        snapshots: [{ repositoryId: "a", files: [conflicted("a")] }],
+      });
+      useCommitStore.setState({
+        expandedGroups: new Set(["changes", "conflicts"]),
+      });
+      const view = render(<ChangeTree onSelect={() => {}} />);
+      fireEvent.contextMenu(await view.findByText("conf.txt"));
+      expect(view.queryByRole("menuitem", { name: "取消暂存" })).toBeNull();
+      fireEvent.click(view.getByRole("menuitem", { name: "标记已解决" }));
+      await waitFor(() =>
+        expect(mocks.request).toHaveBeenCalledWith("stageFile", {
+          repositoryId: "a",
+          filePath: "conf.txt",
+        }),
+      );
+    } finally {
+      initializeI18n("en");
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { bridge, bridgeWithProgress } from "../../shared/bridge";
+import { reportError } from "../../shared/bridge/report-error";
 import { t } from "../../shared/i18n";
 import { usePanelStore } from "../../shared/store/panel-store";
 import type { DiffFile } from "../../shared/types/git";
@@ -222,7 +223,7 @@ export function FileContextMenu({ x, y, file, onClose }: FileContextMenuProps) {
     try {
       await bridge.request("openFile", { filePath });
     } catch (err) {
-      console.error("Open file failed:", err);
+      reportError("openFile", err);
     }
   };
 
@@ -235,7 +236,7 @@ export function FileContextMenu({ x, y, file, onClose }: FileContextMenuProps) {
           ref: selectedCommitHash,
         });
       } catch (err) {
-        console.error("Open repo version failed:", err);
+        reportError("openFileAtRevision", err);
       }
     }
   };

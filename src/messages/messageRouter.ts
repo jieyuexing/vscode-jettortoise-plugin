@@ -43,7 +43,6 @@ type ValueRule =
   | "path[]"
   | "snapshot"
   | "diffFile"
-  | "diffFiles"
   | "rollbackFiles"
   | readonly string[];
 interface CommandSpec {
@@ -149,9 +148,8 @@ const SPECS: Readonly<Record<string, CommandSpec>> = {
       file: "diffFile",
       baseRef: "string",
       cherryPickHashes: "string[]",
-      fileList: "diffFiles",
     },
-    ["filePath", "file", "baseRef", "cherryPickHashes", "fileList"],
+    ["filePath", "file", "baseRef", "cherryPickHashes"],
   ),
   openMergeEditor: fields(commit, { file: "path" }),
   openConflictsPanel: empty(panel),
@@ -691,10 +689,6 @@ function matchesRule(value: unknown, rule: ValueRule): boolean {
   }
   if (rule === "diffFile")
     return isSafeRelativePath(value) || isDiffFile(value);
-  if (rule === "diffFiles")
-    return (
-      Array.isArray(value) && value.length <= 10000 && value.every(isDiffFile)
-    );
   if (rule === "rollbackFiles")
     return (
       Array.isArray(value) &&

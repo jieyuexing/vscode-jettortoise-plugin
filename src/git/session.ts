@@ -425,7 +425,6 @@ export function createGitRepositorySession(
     const fileParam = params.file as string | DiffFile | undefined;
     const baseRef = params.baseRef as string | undefined;
     const cherryPickHashes = params.cherryPickHashes as string[] | undefined;
-    const fileList = params.fileList as DiffFile[] | undefined;
     const fileMeta =
       typeof fileParam === "object" && fileParam !== null
         ? (fileParam as DiffFile)
@@ -437,21 +436,17 @@ export function createGitRepositorySession(
       fileMeta?.oldPath;
 
     if (commit && filePath) {
-      // Set file list for next/prev navigation
-      if (fileList && fileList.length > 0) {
-        diffManager.setDiffFileList(
-          fileList,
-          commit,
-          baseRef,
-          cherryPickHashes,
-        );
-        // Set current index to the file being opened
-        const idx = fileList.findIndex(
-          (f) => (f.newPath || f.oldPath) === filePath,
-        );
-        if (idx >= 0) {
-          diffManager.setCurrentIndex(idx);
-        }
+      // 上一个／下一个的文件列表由宿主按提交列出，不经 webview 回传：
+      // 浅克隆的根提交（GWH 有 5 万多个文件）远超消息字段的条数上限。
+      const fileList = await gitService.getCommitRangeFiles(
+        cherryPickHashes ?? [commit],
+      );
+      diffManager.setDiffFileList(fileList, commit, baseRef, cherryPickHashes);
+      const idx = fileList.findIndex(
+        (f) => (f.newPath || f.oldPath) === filePath,
+      );
+      if (idx >= 0) {
+        diffManager.setCurrentIndex(idx);
       }
 
       await diffManager.openDiffEditor(

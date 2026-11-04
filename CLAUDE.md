@@ -195,3 +195,12 @@ ETECH 环节 7 写入部分用产品仓 `fixtures/vcs-sim/vcs-sim.py` 搭本机 
 
 回归：`scripts/cvs-real-test.mjs`（传入、冲突返回、`.#`）、`scripts/git-update-check.cjs`（标记已解决后继续合并）、新入口 `scripts/vcs-host-check.cjs`（编码、通知、发现，并入 headless），以及 `commit-ui.test.tsx`（冲突分组、定位、右键）。
 
+## 日志历史差异（2026-11-05，0.6.14）
+
+GWH 只读副本（`--depth 1` 浅克隆，根提交 52692 个文件）在 0.6.11～0.6.13 里，日志变更文件右键「显示差异」和双击都没有反应。根因：webview 打开差异时把整个提交的文件列表作为 `fileList` 回传，供上一个／下一个导航；宿主消息合同对 `diffFiles` 限 10000 条，于是请求以“请求字段无效：fileList”被拒。webview 把 Error 对象直接交给 `console.error`，宿主转发日志时序列化成 `{}`，界面也没有通知。浅克隆缺父提交不是原因，resolver 对无父提交本来就给空左侧。
+
+- `openDiffEditor` 只传提交、所选文件与可选的多选提交；导航列表由 Git 会话按提交（多选时按各提交合并）用 `getCommitRangeFiles` 列出，与 webview 显示的变更文件同源同序。协议去掉 `fileList` 字段与只为它存在的 `diffFiles` 规则，单个 `diffFile` 校验不变。推送面板打开差异同样获得导航列表。
+- `webview/src/shared/bridge/report-error.ts` 的 `reportError` 把失败原文写成 `<动作> failed: <原文>` 并经 `showErrorNotification` 弹出；日志里的打开差异、编辑源、打开仓库版本使用它。CVS 文件历史的失败仍在面板内显示原文。
+- CVS 历史差异只传文件与修订号，没有列表上限问题；本地模拟 CVS 的 1.1↔1.2（MS932）、1.1↔1.1.1.1、空↔1.1 均已在开发构建打开。
+
+回归：`scripts/vcs-host-check.cjs` 用 10001 个文件的提交，断言不带列表也能打开差异、下一个跟随提交文件顺序；`commit-ui.test.tsx`「日志历史差异」断言请求不含 `fileList`、失败写日志原文并通知。

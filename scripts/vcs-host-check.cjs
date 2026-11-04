@@ -1,5 +1,5 @@
 /*
- * 宿主层回归：修订内容编码、CVS 更新冲突通知、运行中新签出的工作副本发现。
+ * 宿主层回归：修订内容编码、CVS 更新冲突通知、运行中新签出的工作副本发现、大提交的日志历史差异。
  * 只用临时 Git 仓、:local: CVSROOT 与模拟 VS Code API，不连网络。
  */
 const assert = require("node:assert/strict");
@@ -50,6 +50,16 @@ async function main() {
     await fs.writeFile(path.join(repo, "plain.txt"), "plain\n");
     git(repo, ["add", "."]);
     git(repo, ["commit", "-m", "base"]);
+    // 一次新增 10001 个文件的提交，超过 webview 消息的 10000 条上限（GWH 浅克隆根提交有 5 万多个）。
+    const bigRepo = path.join(root, "git-big");
+    await fs.mkdir(path.join(bigRepo, "module"), { recursive: true });
+    git(bigRepo, ["init", "-b", "main"]);
+    git(bigRepo, ["config", "user.name", "Host Fixture"]);
+    git(bigRepo, ["config", "user.email", "host@example.invalid"]);
+    const bigFile = (index) => `module/C${String(index).padStart(5, "0")}.txt`;
+    await Promise.all(Array.from({ length: 10001 }, (_, index) => fs.writeFile(path.join(bigRepo, bigFile(index)), `${index}\n`)));
+    git(bigRepo, ["add", "."]);
+    git(bigRepo, ["commit", "-q", "-m", "big"]);
 
     const watchers = [], warnings = [], commands = [], sent = [];
     const decodes = [];
@@ -80,7 +90,7 @@ async function main() {
         onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: () => disposable(),
         withProgress: (_options, run) => run({}, { onCancellationRequested: () => disposable() }),
         showWarningMessage: async (message, ...labels) => { warnings.push(message); return labels.find((label) => typeof label === "string"); },
-        showInformationMessage: async () => undefined, showErrorMessage: async () => undefined, activeTextEditor: undefined,
+        showInformationMessage: async () => undefined, showErrorMessage: async () => undefined, setStatusBarMessage: () => disposable(), activeTextEditor: undefined,
       },
       commands: { executeCommand: async (...args) => { commands.push(args); } },
     };
@@ -146,7 +156,17 @@ async function main() {
     await fs.mkdir(freshGit); git(freshGit, ["init", "-b", "main"]);
     created(path.join(freshGit, ".git"));
     await until(() => manager.repositories.some((item) => item.root === freshGit), "new Git repository was not discovered");
-    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true }));
+    // 6. 日志历史差异：webview 只传所选文件，宿主自己列出提交的文件供上一个／下一个导航。
+    const big = manager.repositories.find((item) => item.root === bigRepo);
+    const bigCommit = git(bigRepo, ["rev-parse", "HEAD"]);
+    await manager.request("selectRepository", { repositoryId: big.id, surface: "log" });
+    await manager.request("openDiffEditor", { repositoryId: big.id, commit: bigCommit, filePath: bigFile(5), file: { oldPath: "", newPath: bigFile(5), status: "added", isBinary: false } });
+    const historyDiff = () => commands.findLast((args) => args[0] === "vscode.diff" && args[2].authority === big.id);
+    assert.equal(historyDiff()[2].toString(), `jettortoise://${big.id}/${bigFile(5)}?ref=${bigCommit}`);
+    assert.equal(historyDiff()[1].toString(), `jettortoise://${big.id}/${bigFile(5)}?ref=empty`);
+    await manager.execute("jettortoise.nextDiff");
+    assert.equal(historyDiff()[2].path, `/${bigFile(6)}`, "next diff did not follow the commit file list");
+    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true }));
   } finally {
     manager?.dispose();
     delete global.__vcsHostVscode;

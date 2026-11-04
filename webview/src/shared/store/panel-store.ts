@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { bridge } from "../bridge";
+import { reportError } from "../bridge/report-error";
 import type { SelectionMode } from "../hooks/useModifierClickSelection";
 import type {
   BranchInfo,
@@ -443,28 +444,27 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
 
   async openDiffEditor(commitHash: string, file: DiffFile) {
     try {
-      const { selectedCommitHashes, commitFiles } = get();
+      const { selectedCommitHashes } = get();
       const filePath = file.newPath || file.oldPath;
       const isMulti = selectedCommitHashes.length > 1;
 
+      // 上一个／下一个的文件列表由宿主自己列出，大提交不整表回传。
       if (isMulti) {
         await bridge.request("openDiffEditor", {
           commit: selectedCommitHashes[0],
           filePath,
           file,
           cherryPickHashes: selectedCommitHashes,
-          fileList: commitFiles,
         });
       } else {
         await bridge.request("openDiffEditor", {
           commit: commitHash,
           filePath,
           file,
-          fileList: commitFiles,
         });
       }
     } catch (err) {
-      console.error("openDiffEditor failed:", err);
+      reportError("openDiffEditor", err);
     }
   },
 

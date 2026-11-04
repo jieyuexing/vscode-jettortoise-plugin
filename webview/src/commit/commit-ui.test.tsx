@@ -10,6 +10,7 @@ import { CvsHistory } from "../panel/components/CvsHistory";
 import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
 import { useCommitStore } from "../shared/store/commit-store";
+import { usePanelStore } from "../shared/store/panel-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { CommitApp } from "./App";
 import { ChangeTree } from "./components/ChangeTree";
@@ -976,6 +977,45 @@ describe("冲突", () => {
       );
     } finally {
       initializeI18n("en");
+    }
+  });
+});
+describe("日志历史差异", () => {
+  const commit = "c".repeat(40);
+  // GWH 浅克隆的根提交一次列出 5 万多个文件；0.6.13 把它们整表回传，宿主按 10000 条上限拒绝且错误被吞。
+  const commitFiles = Array.from({ length: 12001 }, (_, index) => ({
+    oldPath: "",
+    newPath: `module/C${index}.java`,
+    status: "added" as const,
+    isBinary: false,
+  }));
+  it("打开差异不回传提交的文件列表", async () => {
+    usePanelStore.setState({ selectedCommitHashes: [commit], commitFiles });
+    await usePanelStore.getState().openDiffEditor(commit, commitFiles[5]);
+    expect(mocks.request).toHaveBeenCalledWith("openDiffEditor", {
+      commit,
+      filePath: "module/C5.java",
+      file: commitFiles[5],
+    });
+  });
+  it("失败时把原文写进日志并弹出通知", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mocks.request.mockImplementation(async (command: string) => {
+        if (command === "openDiffEditor")
+          throw new Error("请求字段无效：fileList");
+        return undefined;
+      });
+      usePanelStore.setState({ selectedCommitHashes: [commit], commitFiles });
+      await usePanelStore.getState().openDiffEditor(commit, commitFiles[0]);
+      expect(logged).toHaveBeenCalledWith(
+        "openDiffEditor failed: 请求字段无效：fileList",
+      );
+      expect(mocks.request).toHaveBeenCalledWith("showErrorNotification", {
+        message: "请求字段无效：fileList",
+      });
+    } finally {
+      logged.mockRestore();
     }
   });
 });

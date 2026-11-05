@@ -1,5 +1,4 @@
 .vscode/**
-.vscode-test/**
 .claude/**
 out/**
 node_modules/**
@@ -19,7 +18,6 @@ CLAUDE.md
 **/eslint.config.mjs
 **/*.map
 **/*.ts
-**/.vscode-test.*
 images/assets/**
 images/*.gif
 

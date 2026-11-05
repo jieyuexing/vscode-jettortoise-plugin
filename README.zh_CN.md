@@ -107,25 +107,23 @@ IntelliJ IDEA 风格的 Git 可视化工具：提交图、分支管理、Cherry-
 
 ## 安装
 
-**从 Marketplace 安装：**
+0.6 系列以 GitHub 预发布提供，尚未上架 Marketplace（Marketplace 上的 `jieyuexing.jettortoise` 只有 0.5.0）。
 
-在 VS Code 扩展中搜索 **"IntelliJ Git Graph"** 即可安装。
-
-**从 .vsix 安装：**
-
-1. 从 [Releases](https://github.com/aotemj/jetbrains-git-graph/releases) 下载最新 `.vsix`
+1. 从 [Releases](https://github.com/jieyuexing/vscode-jettortoise-plugin/releases) 下载 `jettortoise-<版本>.vsix`
 2. `Cmd+Shift+P` → "Extensions: Install from VSIX..."
 
 ## 环境要求
 
 - VS Code 1.85.0+
-- Git 已安装并在 PATH 中
+- Git 仓库需要 Git 在 PATH 中
+- CVS 仓库需要 CVS 客户端（`cvs`，Windows 为 CVSNT）在 PATH 中
 
 ## 本地开发
 
 ```bash
-git clone https://github.com/aotemj/jetbrains-git-graph.git
-cd jetbrains-git-graph
+git clone https://github.com/jieyuexing/vscode-jettortoise-plugin.git
+cd vscode-jettortoise-plugin
+git checkout restart
 pnpm install
 cd webview && pnpm install && cd ..
 ```
@@ -134,8 +132,10 @@ cd webview && pnpm install && cd ..
 
 ```bash
 pnpm run watch          # 监听模式
-pnpm run build          # 生产构建
-pnpm run vsce:package   # 打包为 .vsix
+pnpm run check-types    # 类型检查
+pnpm run lint           # Biome 检查
+pnpm run test:headless  # 仓库、Git/CVS 与界面检查
+pnpm run vsce:package   # 打包为 release/jettortoise-<版本>.vsix
 ```
 
 ## 致谢

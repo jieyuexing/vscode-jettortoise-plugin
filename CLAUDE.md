@@ -1,6 +1,6 @@
 # JetTortoise 工程说明
 
-本仓扩展身份为 `jieyuexing.jettortoise`，本轮从上游 `32f7f5e`（0.4.17）建立 `restart` 分支，版本 0.6.0。用户 2026-10-29 决定保留上游 Commit webview 和底部 Log 外壳，在本机构建多仓 Git/CVS 实验。`main` 不动、不推送、不发布、不启动 GUI，不触及 141 或台式机。README 只改名称与简介。
+本仓扩展身份为 `jieyuexing.jettortoise`。现行开发分支 `restart` 于 2026-10-29 从上游 `32f7f5e`（0.4.17）建立（用户决定保留上游 Commit webview 和底部 Log 外壳，做多仓 Git/CVS），`main` 不动。版本只在 `package.json`，同时更新 `CHANGELOG.md`。M3 与台式机都有登记检出；每轮可改范围、是否启动 GUI、推送与发布由任务书决定，打包与发布流程见 [`docs/release.md`](docs/release.md)。提交身份用仓内 Git 配置（`jieyuexing@outlook.com`），不用 `git -c user.*` 等方式覆盖。
 
 ## 源码归属
 
@@ -70,7 +70,7 @@ pnpm run test:headless
 pnpm run vsce:package
 ```
 
-`test:headless` 合并分组、发现、Git/CVS 内核与子仓、消息合同、快进更新和公共 Host 集成检查，使用真实临时 Git 仓、本地 bare remote、`:local:` CVSROOT 与模拟 VS Code API。包装后路径为 `release/jettortoise-0.6.0.vsix`；打包已有 release 文件前先备份，打包后逐字节恢复并复核 SHA-256。
+`test:headless` 合并分组、发现、Git/CVS 内核与子仓、消息合同、快进更新和公共 Host 集成检查，使用真实临时 Git 仓、本地 bare remote、`:local:` CVSROOT 与模拟 VS Code API。包装后路径为 `release/jettortoise-<版本>.vsix`；打包已有 release 文件前先备份，打包后逐字节恢复并复核 SHA-256。
 
 Headless、fixture 和构建通过不代表 VS Code 窗口交互、加载版本、安装、焦点、布局或 Windows CVSNT/公司环境验收。GUI 由协调者另行在隔离窗口验证，不从本任务自动安装、启用或发布。
 
@@ -102,24 +102,24 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 ## 方案 C 组件化（2026-10-31，0.6.6）
 
-当前尺寸合同以组件目录 `/Users/jieyuexing/jieyuexing-universe/.state/records/vscode-jettortoise-plugin/design/components.html`（含公司内容，不入本仓，仅 M3）为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 8px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
+当前尺寸合同以组件目录 总仓 `.state/records/vscode-jettortoise-plugin/design/components.html`（含公司内容，不入本仓，仅 M3）为准，覆盖上文历史 22px 行高和 B5 的 14px 缩进。界面字号 12px，仓库、分组、目录、文件、Git 日志与图线、CVS 修订表、分支与标签树均为 20px；每级缩进 16px。浏览态根文件从 8px 内边距、12px 空箭头槽、4px 间距起排，文件项内图标仍 16px；提交态另加现有复选框，不能用历史 x=48 推断当前浏览态位置。
 
-- 十个尺寸变量只在 `webview/src/shared/theme/variables.css` 镜像，名称和值与产品 `/Users/jieyuexing/jieyuexing-universe/projects/etech/etech-theia-ide/theia-extensions/etech-eclipse-layout/src/browser/style/tokens.css` 一致，改值两处同步。颜色只读 Theia 导出的 `--vscode-*`，本地更改浅色固定调色板已删除；编辑器／差异正文的代码字号仍沿宿主。
+- 十个尺寸变量只在 `webview/src/shared/theme/variables.css` 镜像，名称和值与产品仓（总仓登记 id `etech-theia-ide`）的 `theia-extensions/etech-eclipse-layout/src/browser/style/tokens.css` 一致，改值两处同步。颜色只读 Theia 导出的 `--vscode-*`，本地更改浅色固定调色板已删除；编辑器／差异正文的代码字号仍沿宿主。
 - `webview/src/shared/components/VerticalToolbar.tsx` 与 `PanelHeader.tsx`、`panel-chrome.css` 供本地更改和日志共用。竖列 30px、按钮 22px、图标 16px、间距 1px、上下 4px，短面板滚动且隐藏工具列滚动条，禁用 40%。日志沿用分支工具列原动作；标题行 28px、12px，PanelHeader 的可选标题能力保留，本地更改与日志都不传标题，避免重复宿主页签名称；保留更改／搁置／储藏小页签与仓库选择行为。变更树容器不画焦点外框，选中行只在树内焦点时使用活动选中色，离焦消费 inactiveSelectionBackground／Foreground；按钮、输入、文本框自己的键盘焦点保留。日志列表沿用主题变量的活动／非活动选中，不新增列表级焦点框。
 - Git 图与虚拟滚动共享 `CommitRow.ROW_HEIGHT`，从 CSS 镜像变量读取，未加载 CSS 时按同合同回落 20；不更改数据与 VCS 写入通道。headless 的本地化入口检查尺寸镜像与无硬编码颜色。
 - 本轮允许在产品开发构建临时解包候选，不改安装版、不推送、不发布。VSIX 为 `release/jettortoise-0.6.6.vsix`；Windows、141、真实公司仓仍未验收。
 
 ## D1 左侧本地更改（2026-11-02，0.6.7）
 
-用户确认的窄栏底稿为 `/Users/jieyuexing/jieyuexing-universe/.state/records/vscode-jettortoise-plugin/design/workbench-c.html`（含公司内容，不入本仓，仅 M3），三态仍沿用 [`docs/design/local-changes.html`](docs/design/local-changes.html)；本轮开发构建可临时加载候选，交回前恢复原插件，不推送、不发布、不改安装版。
+用户确认的窄栏底稿为 总仓 `.state/records/vscode-jettortoise-plugin/design/workbench-c.html`（含公司内容，不入本仓，仅 M3），三态仍沿用 [`docs/design/local-changes.html`](docs/design/local-changes.html)；本轮开发构建可临时加载候选，交回前恢复原插件，不推送、不发布、不改安装版。
 
 - 现有 ResizeObserver 的小于 760px 布局改为单行「本地更改」、浅色文件数，以及刷新／提交／回滚／更多四个动作；删除旧窄栏整排工具按钮及常驻的更改／搁置／储藏页签，相关动作移入更多。宽布局保持原样。
 - 窄栏只有变更树，双击文件继续在编辑器打开差异。浏览态不显示复选框和说明；提交态在同一棵树显示勾选，说明框在树下。无仓库保持灰字空态。动作仍走现有 bridge、选仓、确认和写入队列，没有新增 VCS 写通道。
 - 产品控制容器位置与互斥显示；默认左侧本地更改、底部日志。仓库选择行使用已有 28px PanelHeader；真实 CDP 测得控件上／下留白 3.5／4.5px，文字居中误差 0.25px，无需改该行。
 
-`pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1/RECORD.md`。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。
+`pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run test:headless`、`pnpm run vsce:package` 均退出 0；新增窄栏交互用例先红后绿，headless 中 UI 共 9 项通过。实际加载版本、临时替换与逐文件恢复、截图及仓库发现排查见 总仓 `.local/tmp/etech-eclipse-ws/d1/RECORD.md`（M3 临时记录，可能已清理）。用户原工作区“没有仓库”与 `main*` 不一致未在四组合成仓复现，未据推断修改发现逻辑；Windows、141 和公司 SCM 未覆盖。
 
-D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局在该阶段沿用 6px；2026-11-04 按 D1b 与同角色一致原则统一宽窄布局为 8px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 `/Users/jieyuexing/jieyuexing-universe/.local/tmp/etech-eclipse-ws/d1b/RECORD.md`。
+D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将窄栏自有标题改为 10px 左内边距、28px 行高、12px／600／1.4 字体，与 Theia 原生项目标题分别实现且几何相同；更多／收起常显，刷新／提交／回滚在面板悬停或键盘焦点时出现。首行箭头从 8px 起排，后续层级仍加 16px，宽布局在该阶段沿用 6px；2026-11-04 按 D1b 与同角色一致原则统一宽窄布局为 8px。收起请求只允许固定空字段，通过已登记的 Theia 左面板命令或 VS Code closeSidebar 完成，不进入选仓或 VCS 写队列。既有 headless 入口覆盖两种宿主命令及额外字段拒绝，UI 用例覆盖收起入口；产品侧真实 CDP 测得标题左边距 10px、居中误差 0.398px、首行缩进 8px。测试、VSIX、实际加载版本、临时替换恢复与浅深色截图见 总仓 `.local/tmp/etech-eclipse-ws/d1b/RECORD.md`（M3 临时记录，可能已清理）。
 
 
 ## 大工作区刷新与渲染（2026-11-03，0.6.8）

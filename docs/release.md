@@ -16,6 +16,7 @@
 export TMPDIR="<总仓>/.local/tmp/<任务>"; export TMP="$TMPDIR" TEMP="$TMPDIR"
 pnpm install --frozen-lockfile && (cd webview && pnpm install --frozen-lockfile)
 pnpm run check-types && pnpm run lint && pnpm run test:headless
+mkdir -p release        # 没有该目录时 vsce 会把包写成名为 release 的文件
 pnpm run vsce:package
 ```
 

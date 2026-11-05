@@ -49,11 +49,7 @@ export function validateRepositoryRequest(
   if (Object.hasOwn(params, "filePath"))
     safeRelativePath(params.filePath as string);
   if (Object.hasOwn(params, "filePaths")) {
-    if (
-      !Array.isArray(params.filePaths) ||
-      !params.filePaths.length ||
-      params.filePaths.length > 2000
-    )
+    if (!Array.isArray(params.filePaths) || !params.filePaths.length)
       throw new Error("Select files.");
     for (const file of params.filePaths) safeRelativePath(file);
   }
@@ -78,10 +74,10 @@ export function validateRepositoryRequest(
       params.message.includes("\0")
     )
       throw new Error("Enter a commit message.");
+    // 文件为空只用于合并进行中直接提交，须指明仓库。
     if (
       !Array.isArray(params.files) ||
-      !params.files.length ||
-      params.files.length > 2000
+      (!params.files.length && params.repositoryId === undefined)
     )
       throw new Error("Select changed files.");
     for (const file of params.files) {

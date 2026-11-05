@@ -50,7 +50,6 @@ export function validateMessage(input, surface) {
     if (
       !Array.isArray(input.paths) ||
       !input.paths.length ||
-      input.paths.length > 2000 ||
       new Set(input.paths).size !== input.paths.length
     )
       fail("message");

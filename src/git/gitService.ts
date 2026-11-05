@@ -49,6 +49,7 @@ const FMT_RECORD_SEP = "%x00%x00%x01";
 // For git branch/tag --format (ref-format / for-each-ref): %00 produces null byte
 const REF_FMT_FIELD_SEP = "%00";
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
+const LARGE_BUFFER = 256 * 1024 * 1024;
 /** 这些状态下 git 拒绝按路径部分提交，提交区改为提交整个索引来完成该操作。 */
 const COMMIT_OPERATION_MARKERS = [
   "MERGE_HEAD",
@@ -69,6 +70,23 @@ export function divergedMessage({ upstream, ahead, behind }: DivergedUpstream) {
     upstream,
     behind,
   );
+}
+
+/** git 失败输出的摘要：取 stderr（其次 stdout）第一条 error／fatal 行，没有就取第一行。 */
+export function gitFailureReason(error: unknown): string {
+  const { stderr, stdout } = (error ?? {}) as {
+    stderr?: unknown;
+    stdout?: unknown;
+  };
+  const lines = `${stderr ?? ""}\n${stdout ?? ""}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const line =
+    lines.find((item) => /^(?:fatal|error):/.test(item)) ??
+    lines[0] ??
+    (error instanceof Error ? error.message : String(error));
+  return line.replace(/^(?:fatal|error):\s*/, "");
 }
 
 /** A bounded object read used by the read-only comparison workbench. */
@@ -110,8 +128,28 @@ export class GitService {
     return safePath;
   }
 
+  /** 批量版 checkedPath：子仓边界一次查完（同一次校验共用目录缓存），
+   * 路径与软链逐个确认，目录目标仍检查其下的嵌套仓。 */
   private async checkedPaths(filePaths: string[]): Promise<string[]> {
-    return Promise.all(filePaths.map((filePath) => this.checkedPath(filePath)));
+    const safePaths = filePaths.map((filePath) => safeRelativePath(filePath));
+    const boundaries = await boundariesForPaths(this.cwd, "git", safePaths);
+    if (boundaries.length)
+      throw new NestedRepositoryError(
+        boundaries,
+        "NESTED_REPOSITORY",
+        this.cwd,
+      );
+    await Promise.all(
+      safePaths.map(async (safePath) => {
+        const target = await resolveWorktreePath(this.cwd, safePath, {
+          allowMissing: true,
+        });
+        const stat = await fs.lstat(target).catch(() => undefined);
+        if (stat?.isDirectory())
+          await assertRepositoryOwnedPath(this.cwd, "git", safePath);
+      }),
+    );
+    return safePaths;
   }
 
   /** Reject a mutating operation that could cross an unregistered child root. */
@@ -122,17 +160,7 @@ export class GitService {
   /** Commit and index-wide operations must also reject entries staged outside this repository. */
   private async assertStagedPathsOwned(): Promise<void> {
     const output = await this.execGit(["ls-files", "--cached", "-z"]);
-    const paths = output.split("\0").filter(Boolean);
-    if (paths.length === 0) return;
-    const boundaries = await boundariesForPaths(this.cwd, "git", paths);
-    if (boundaries.length > 0) {
-      throw new NestedRepositoryError(
-        boundaries,
-        "NESTED_REPOSITORY",
-        this.cwd,
-      );
-    }
-    await Promise.all(paths.map((filePath) => this.checkedPath(filePath)));
+    await this.checkedPaths(output.split("\0").filter(Boolean));
   }
 
   /** Check the full existing index before a commit handler stages any files. */
@@ -192,19 +220,35 @@ export class GitService {
   private async execGit(
     args: string[],
     maxBuffer = MAX_BUFFER,
+    input?: string,
   ): Promise<string> {
     const execute = async () => {
       await this.ensureAvailable?.();
-      const { stdout } = await execFileAsync("git", args, {
+      const running = execFileAsync("git", args, {
         cwd: this.cwd,
         maxBuffer,
         env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
       });
-      return stdout;
+      if (input !== undefined) running.child.stdin?.end(input);
+      return (await running).stdout;
     };
     return ["fetch", "pull", "push", "ls-remote", "clone"].includes(args[0])
       ? runNetwork(execute)
       : execute();
+  }
+
+  /** 路径经标准输入以 NUL 分隔、按字面传给 git，数量不受命令行长度限制。 */
+  private execPaths(args: string[], paths: string[]): Promise<string> {
+    return this.execGit(
+      [
+        "--literal-pathspecs",
+        ...args,
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+      ],
+      MAX_BUFFER,
+      paths.join("\0"),
+    );
   }
 
   async checkGitAvailable(): Promise<boolean> {
@@ -843,16 +887,47 @@ export class GitService {
     this.invalidateCache();
   }
 
+  /** 合并／变基／更新失败：有冲突写冲突文件数与首个文件，否则写 git 的原因行。 */
+  private async failure(action: string, error: unknown): Promise<Error> {
+    const conflicts = await this.getConflictFiles().catch(() => []);
+    return new Error(
+      conflicts.length
+        ? vscode.l10n.t(
+            "{0} failed: {1} file(s) have conflicts, first: {2}",
+            action,
+            conflicts.length,
+            conflicts[0],
+          )
+        : vscode.l10n.t("{0} failed: {1}", action, gitFailureReason(error)),
+    );
+  }
+
+  /** 执行一次合并类 git 命令，失败时换成摘要。 */
+  private async integrate(action: string, args: string[]): Promise<void> {
+    try {
+      await this.execGit(args);
+    } catch (error) {
+      throw await this.failure(action, error);
+    } finally {
+      this.invalidateCache();
+    }
+  }
+
   async merge(branchName: string): Promise<void> {
     await this.assertWholeWorktreeOwned();
-    await this.execGit(["merge", "--", safeGitRef(branchName, "Branch")]);
-    this.invalidateCache();
+    await this.integrate(vscode.l10n.t("Merge"), [
+      "merge",
+      "--",
+      safeGitRef(branchName, "Branch"),
+    ]);
   }
 
   async rebase(onto: string): Promise<void> {
     await this.assertWholeWorktreeOwned();
-    await this.execGit(["rebase", safeGitRevision(onto, "Rebase target")]);
-    this.invalidateCache();
+    await this.integrate(vscode.l10n.t("Rebase"), [
+      "rebase",
+      safeGitRevision(onto, "Rebase target"),
+    ]);
   }
 
   async rebaseAction(action: "continue" | "abort" | "skip"): Promise<void> {
@@ -886,11 +961,10 @@ export class GitService {
   ): Promise<void> {
     await this.assertWholeWorktreeOwned();
     await this.execGit(["checkout", safeGitRef(branchToCheckout, "Branch")]);
-    await this.execGit([
+    await this.integrate(vscode.l10n.t("Rebase"), [
       "rebase",
       safeGitRevision(rebaseOnto, "Rebase target"),
     ]);
-    this.invalidateCache();
   }
 
   async push(
@@ -1060,7 +1134,8 @@ export class GitService {
         .trim()
         .split(/\s+/)
         .map(Number);
-      if (!(ahead > 0 && behind > 0)) throw error;
+      if (!(ahead > 0 && behind > 0))
+        throw await this.failure(vscode.l10n.t("Update Project"), error);
       return { upstream, ahead, behind };
     } finally {
       this.invalidateCache();
@@ -1091,11 +1166,19 @@ export class GitService {
       return 0;
     } catch (error) {
       const conflicts = await this.getConflictFiles();
-      if (!conflicts.length) throw error;
+      if (!conflicts.length)
+        throw await this.failure(
+          mode === "merge" ? vscode.l10n.t("Merge") : vscode.l10n.t("Rebase"),
+          error,
+        );
       return conflicts.length;
     } finally {
       this.invalidateCache();
     }
+  }
+
+  async mergeInProgress(): Promise<boolean> {
+    return this.gitPathExists("MERGE_HEAD");
   }
 
   async commitOperationInProgress(): Promise<boolean> {
@@ -1403,7 +1486,7 @@ export class GitService {
 
   async stageFiles(filePaths: string[]): Promise<void> {
     if (filePaths.length === 0) return;
-    await this.execGit(["add", "--", ...(await this.checkedPaths(filePaths))]);
+    await this.execPaths(["add"], await this.checkedPaths(filePaths));
   }
 
   async unstageFile(filePath: string): Promise<void> {
@@ -1453,7 +1536,7 @@ export class GitService {
     if (
       (!message.trim() && !operation) ||
       message.includes("\0") ||
-      !paths.length
+      (!paths.length && !operation)
     )
       throw new Error(
         vscode.l10n.t("Enter a commit message and select changed files."),
@@ -1462,7 +1545,8 @@ export class GitService {
     const checked = await this.checkedPaths([...new Set(paths)]);
     if (operation) {
       // 合并类操作只能整体提交：先暂存所选文件，再提交整个索引；说明留空时用 git 生成的说明。
-      await this.execGit(["add", "--", ...checked]);
+      // 解决结果与本地相同时没有可选文件，直接提交索引完成合并。
+      if (checked.length) await this.execPaths(["add"], checked);
       await this.execGit([
         "commit",
         ...(message.trim()
@@ -1473,14 +1557,10 @@ export class GitService {
       this.invalidateCache();
       return;
     }
-    await this.execGit([
-      "commit",
-      "-m",
-      message,
-      ...(amend ? ["--amend"] : []),
-      "--",
-      ...checked,
-    ]);
+    await this.execPaths(
+      ["commit", "-m", message, ...(amend ? ["--amend"] : [])],
+      checked,
+    );
     this.invalidateCache();
   }
 
@@ -1570,33 +1650,40 @@ export class GitService {
   }
 
   async rollbackFile(filePath: string): Promise<void> {
-    const safePath = await this.checkedPath(filePath);
-    // Check if file exists in HEAD (i.e., was previously committed)
-    let existsInHead = false;
-    try {
-      await this.execGit(["cat-file", "-e", `HEAD:${safePath}`]);
-      existsInHead = true;
-    } catch {
-      existsInHead = false;
-    }
+    await this.rollbackFiles([filePath]);
+  }
 
-    if (existsInHead) {
-      // File exists in HEAD - restore to HEAD version (handles both staged and unstaged changes)
-      await this.execGit(["checkout", "HEAD", "--", safePath]);
-    } else {
-      // File is new (not in HEAD) - remove from index and delete from disk
-      try {
-        await this.execGit(["rm", "-f", "--cached", "--", safePath]);
-      } catch {
-        // Not in index either, nothing to unstage
-      }
-      const fullPath = await resolveWorktreePath(this.cwd, safePath);
-      try {
-        await fs.unlink(fullPath);
-      } catch {
-        // File already doesn't exist on disk
-      }
+  /** 已在 HEAD 的路径一次 checkout 回 HEAD；新增文件取消暂存并从磁盘删除。 */
+  async rollbackFiles(filePaths: string[]): Promise<void> {
+    const checked = await this.checkedPaths([...new Set(filePaths)]);
+    if (!checked.length) return;
+    const head = new Set(
+      (
+        await this.execGit(
+          ["ls-tree", "-r", "-z", "--name-only", "HEAD"],
+          LARGE_BUFFER,
+        ).catch(() => "")
+      ).split("\0"),
+    );
+    const inHead = checked.filter((file) =>
+      head.has(file.split(path.sep).join("/")),
+    );
+    const added = checked.filter(
+      (file) => !head.has(file.split(path.sep).join("/")),
+    );
+    if (inHead.length) await this.execPaths(["checkout", "HEAD"], inHead);
+    if (added.length) {
+      await this.execPaths(
+        ["rm", "-f", "-q", "--cached", "--ignore-unmatch"],
+        added,
+      );
+      for (const file of added)
+        await fs.rm(
+          await resolveWorktreePath(this.cwd, file, { allowMissing: true }),
+          { force: true },
+        );
     }
+    this.invalidateCache();
   }
 
   // ─── Shelf (Stash-based) Operations ───────────────────────────────

@@ -5,7 +5,9 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import {
   assertOwnedPath,
+  boundariesForPaths,
   isCvsContinuation,
+  NestedRepositoryError,
   readCvsEntries,
   registeredCvsDirectories,
   repositoryTree,
@@ -697,28 +699,8 @@ export class CvsAdapter {
           if (entry.isSymbolicLink()) fail("symlink");
     }
     const flags = ["-q", "update", "-l", "-P"];
-    // 含可执行路径、-f、空格、引号及终止符；按 Windows 转义上界保守计长。
-    const size = (value) => 2 * value.length + 3;
-    const overhead = [this.process.executable ?? "cvs", "-f", ...flags].reduce(
-      (total, value) => total + size(value),
-      1,
-    );
-    const batches = [];
-    let batch = [],
-      length = overhead;
-    for (const directory of directories) {
-      if (overhead + size(directory) > 8000) fail("path");
-      if (length + size(directory) > 8000) {
-        batches.push(batch);
-        batch = [];
-        length = overhead;
-      }
-      batch.push(directory);
-      length += size(directory);
-    }
-    if (batch.length) batches.push(batch);
     const conflicts = new Set();
-    for (const args of batches) {
+    for (const args of this.batches(flags, directories)) {
       if (signal?.aborted) fail("cancelled");
       const output = await this.run([...flags, ...args], signal);
       for (const [name, state] of parseUpdateStatus(
@@ -730,11 +712,33 @@ export class CvsAdapter {
     this.remoteStates = new Map();
     return [...conflicts];
   }
+  /** 按命令行长度分批：含可执行路径、-f、空格、引号及终止符，按 Windows 转义上界保守计长，每批不超过 8000 字符。 */
+  batches(flags, items) {
+    const size = (value) => 2 * value.length + 3;
+    const overhead = [this.process.executable ?? "cvs", "-f", ...flags].reduce(
+      (total, value) => total + size(value),
+      1,
+    );
+    const batches = [];
+    let batch = [],
+      length = overhead;
+    for (const item of items) {
+      if (overhead + size(item) > 8000) fail("path");
+      if (length + size(item) > 8000) {
+        batches.push(batch);
+        batch = [];
+        length = overhead;
+      }
+      batch.push(item);
+      length += size(item);
+    }
+    if (batch.length) batches.push(batch);
+    return batches;
+  }
   async commit(names, message, signal) {
     if (
       !Array.isArray(names) ||
       !names.length ||
-      names.length > 2000 ||
       new Set(names).size !== names.length ||
       typeof message !== "string" ||
       !message.trim() ||
@@ -742,32 +746,45 @@ export class CvsAdapter {
       message.includes("\0")
     )
       fail("message");
-    const files = await this.inventory();
+    for (const name of names) relativeFile(name);
+    // 子仓边界一次查完（同一次校验共用目录缓存），再核对清单；清单只含文件。
+    const boundaries = await boundariesForPaths(this.root, "cvs", names);
+    if (boundaries.length)
+      throw new NestedRepositoryError(
+        boundaries,
+        "NESTED_REPOSITORY",
+        this.root,
+      );
+    const files = new Set((await this.inventory()).map((file) => file.newPath));
+    for (const name of names) if (!files.has(name)) fail("commitState");
+    const args = names.map((name) => "./" + name);
+    // 状态按批用 -n update 查询；工作副本有未解决冲突时以 1 退出，仅在输出含冲突行且未中止时接受。
+    const states = new Map();
+    for (const batch of this.batches(["-n", "-q", "update"], args)) {
+      const output = await this.run(
+        ["-n", "-q", "update", ...batch],
+        signal,
+        [0, 1],
+      );
+      const text = output.stdout.toString("utf8");
+      if (output.code === 1 && (!/^C /m.test(text) || /aborted\]/.test(text)))
+        fail("command");
+      for (const [name, state] of parseUpdateStatus(text))
+        states.set(name, state.state);
+    }
+    // 已登记文件在本地被删除：先 cvs remove 登记删除，再按删除提交。
+    const missing = [];
     for (const name of names) {
-      relativeFile(name);
-      await assertOwnedPath(this.root, "cvs", name);
-      const file = files.find((file) => file.newPath === name);
-      if (!file) fail("commitState");
-      const status = async () =>
-        parseStatus(
-          (await this.run(["status", "./" + name], signal)).stdout.toString(
-            "utf8",
-          ),
-        ).state;
-      let state = await status();
-      // 已登记文件在本地被删除：先 cvs remove 登记删除，再按删除提交。
-      const missing = await fs.lstat(path.join(this.root, name)).then(
+      const state = states.get(name);
+      const absent = await fs.lstat(path.join(this.root, name)).then(
         () => false,
         (error) => {
           if (error.code !== "ENOENT") throw error;
           return true;
         },
       );
-      if (missing && state === "Needs Checkout") {
-        await this.run(["remove", "./" + name], signal);
-        state = await status();
-      }
-      if (
+      if (state === "Needs Checkout" && absent) missing.push("./" + name);
+      else if (
         !["Locally Modified", "Locally Added", "Locally Removed"].includes(
           state,
         )
@@ -775,10 +792,11 @@ export class CvsAdapter {
         fail("commitState");
       await contained(this.root, name);
     }
-    await this.run(
-      ["commit", "-m", message, ...names.map((name) => "./" + name)],
-      signal,
-    );
+    for (const batch of this.batches(["remove"], missing))
+      await this.run(["remove", ...batch], signal);
+    // 说明不计入分批长度，与单批时一致；每批是一次 cvs commit。
+    for (const batch of this.batches(["commit", "-m"], args))
+      await this.run(["commit", "-m", message, ...batch], signal);
   }
   async rollback(name, signal) {
     relativeFile(name);

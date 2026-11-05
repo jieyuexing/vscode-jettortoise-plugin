@@ -344,6 +344,7 @@ export function ChangeTree({
             (group.error ||
               group.refreshing ||
               group.scanPaused ||
+              (group.merging && !group.conflicts.length) ||
               group.syncedAt !== undefined)
           )
         )
@@ -386,6 +387,16 @@ export function ChangeTree({
                   fileCount(group[kind].length)
                 )}
               </span>
+              {kind === "changes" &&
+                group.merging &&
+                !group.conflicts.length && (
+                  <span
+                    className="changes-scan-status"
+                    title={t("Merge in progress: commit to finish the merge")}
+                  >
+                    {t("Merge in progress: commit to finish the merge")}
+                  </span>
+                )}
               {kind === "changes" && group.scanPaused && (
                 <span
                   className="changes-scan-status"
@@ -604,6 +615,26 @@ export function ChangeTree({
       }}
       aria-label={t("Changed Files")}
       onKeyDown={(event) => {
+        // Ctrl+A 选中全部更改（浏览态），供回滚等按选中文件的动作使用。
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === "a" &&
+          (event.target as HTMLElement).tagName !== "INPUT"
+        ) {
+          event.preventDefault();
+          useCommitStore.setState({
+            highlightedFiles: new Set(
+              state.changes
+                .filter(
+                  (file) =>
+                    !file.directory &&
+                    !["incoming", "untracked"].includes(file.status),
+                )
+                .map(fileKey),
+            ),
+          });
+          return;
+        }
         if (
           !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) ||
           (event.target as HTMLElement).tagName === "INPUT"

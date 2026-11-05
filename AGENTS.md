@@ -13,6 +13,7 @@
 | 修订内容编码、CVS 更新冲突通知、新签出工作副本发现 | `pnpm run test:headless` | `CLAUDE.md`「环节 7 缺口」；入口 `scripts/vcs-host-check.cjs` |
 | 日志历史差异（大提交导航列表、打开差异失败通知） | `pnpm run test:headless` | `CLAUDE.md`「日志历史差异」；入口 `scripts/vcs-host-check.cjs` 与 `webview/src/commit/commit-ui.test.tsx` |
 | 合并／拣选／还原进行中的提交、分叉时更新（合并或变基）、合并确认、横幅按钮提示 | `pnpm run test:headless` | `CLAUDE.md`「合并中提交与分叉更新」；入口 `scripts/git-update-check.cjs`、`scripts/vcs-host-check.cjs` 与 `webview/src/commit/commit-ui.test.tsx` |
+| 无文件的合并提交、破坏性操作单次确认、合并／变基／更新失败原因、大批量提交与回滚、预览编码 | `pnpm run test:headless` | `CLAUDE.md`「环节 7 打磨」；入口 `scripts/git-update-check.cjs`、`scripts/vcs-host-check.cjs`、`scripts/cvs-real-test.mjs` 与 `webview/src/commit/commit-ui.test.tsx` |
 | 构建与打包候选 | `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run vsce:package` | `CLAUDE.md`「检查」 |
 | 中文界面、翻译覆盖与 Commit 列表密度 | `pnpm run test:headless`（包含 `scripts/check-l10n.cjs`） | `CLAUDE.md`「本地化与列表密度」 |
 

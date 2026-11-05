@@ -87,6 +87,33 @@ test("temporary local CVS: server-new files are incoming until update; update re
     assert.ok((await f.cvs.status()).every(item => item.newPath !== "fresh.txt" || item.state === "Up-to-date"));
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
+// 一次提交超过 2000 个文件（旧上限）：状态查询、cvs remove 与 cvs commit 都按 8000 字符分批。
+test("temporary local CVS: committing 2500 files runs in command-line batches", async () => {
+  const f = await fixture();
+  try {
+    const seed = path.join(f.base, "bulk-seed");
+    const names = Array.from({ length: 2500 }, (_, index) => `bulk/d${index % 25}/F${String(index).padStart(4, "0")}.txt`);
+    for (let index = 0; index < 25; index++) await fs.mkdir(path.join(seed, `bulk/d${index}`), { recursive: true });
+    await Promise.all(names.map((name) => fs.writeFile(path.join(seed, name), "v1\n")));
+    await f.process.run(["-d", f.root, "import", "-m", "bulk", "bulk", "vendor", "start"], seed);
+    const wc = await checkout(f.process, f.root, "bulk", path.join(f.base, "bulk-wc"));
+    const runs = [];
+    const adapter = new CvsAdapter(wc, { executable: f.process.executable, run: (...args) => { runs.push(args[0]); return f.process.run(...args); } });
+    const files = names;
+    await Promise.all(files.slice(1).map((name) => fs.writeFile(path.join(wc, name), "v2\n")));
+    await fs.rm(path.join(wc, files[0]));
+    const started = Date.now();
+    await adapter.commit(files, "bulk commit");
+    const commits = runs.filter((args) => args[0] === "commit");
+    console.log(JSON.stringify({ benchmark: "cvsBulkCommit", files: files.length, batches: commits.length, milliseconds: Date.now() - started }));
+    assert.ok(commits.length > 1, "commit was not batched");
+    assert.ok(runs.every((args) => args.reduce((total, value) => total + 2 * value.length + 3, 0) < 8000), "a batch exceeds 8000 characters");
+    assert.equal(runs.filter((args) => args[0] === "remove").length, 1);
+    const after = await new CvsAdapter(wc, f.process).status();
+    assert.ok(after.every((item) => item.state === "Up-to-date"), "some files were not committed");
+    assert.equal(after.length, files.length - 1);
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));
   for (const value of ["-r1.1", "1.1;touch x", "HEAD", ""]) assert.throws(() => revision(value));

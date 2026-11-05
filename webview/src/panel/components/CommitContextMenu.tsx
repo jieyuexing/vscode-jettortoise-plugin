@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { bridge, bridgeWithProgress } from "../../shared/bridge";
+import { reportError } from "../../shared/bridge/report-error";
 import { t } from "../../shared/i18n";
 import { usePanelStore } from "../../shared/store/panel-store";
 import type { Commit } from "../../shared/types/git";
@@ -214,7 +215,7 @@ export function CommitContextMenu({
     try {
       await bridgeWithProgress("cherryPick", { hash: commit.hash });
     } catch (err) {
-      console.error("Cherry-pick failed:", err);
+      reportError("Cherry-pick", err);
     }
   };
 
@@ -223,28 +224,19 @@ export function CommitContextMenu({
     try {
       await bridgeWithProgress("checkoutCommit", { hash: commit.hash });
     } catch (err) {
-      console.error("Checkout revision failed:", err);
+      reportError("Checkout revision", err);
     }
   };
 
   const handleResetHard = async () => {
     onClose();
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t(
-        "Reset '{0}' to {1} (hard)? This will discard all uncommitted changes.",
-        currentBranch,
-        shortHash,
-      ),
-      confirmLabel: t("Reset"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("resetToCommit", {
         hash: commit.hash,
         mode: "hard",
       });
     } catch (err) {
-      console.error("Reset failed:", err);
+      reportError("Reset", err);
     }
   };
 
@@ -256,7 +248,7 @@ export function CommitContextMenu({
         mode: "mixed",
       });
     } catch (err) {
-      console.error("Reset failed:", err);
+      reportError("Reset", err);
     }
   };
 
@@ -268,7 +260,7 @@ export function CommitContextMenu({
         mode: "soft",
       });
     } catch (err) {
-      console.error("Reset failed:", err);
+      reportError("Reset", err);
     }
   };
 
@@ -277,25 +269,16 @@ export function CommitContextMenu({
     try {
       await bridgeWithProgress("revertCommit", { hash: commit.hash });
     } catch (err) {
-      console.error("Revert failed:", err);
+      reportError("Revert", err);
     }
   };
 
   const handleDropCommit = async () => {
     onClose();
     try {
-      const result = (await bridge.request("showConfirmMessage", {
-        message: t(
-          'Drop commit {0} "{1}"?\n\nThis will remove the commit from history but keep its changes as unstaged modifications.\n\nThis operation cannot be undone.',
-          shortHash,
-          commit.subject,
-        ),
-        confirmLabel: t("Drop Commit"),
-      })) as { confirmed: boolean };
-      if (!result.confirmed) return;
       await bridgeWithProgress("dropCommit", { hash: commit.hash });
     } catch (err) {
-      console.error("Drop commit failed:", err);
+      reportError("Drop commit", err);
     }
   };
 
@@ -317,7 +300,7 @@ export function CommitContextMenu({
         hash: commit.hash,
       });
     } catch (err) {
-      console.error("Create branch failed:", err);
+      reportError("Create branch", err);
     }
   };
 
@@ -334,7 +317,7 @@ export function CommitContextMenu({
         hash: commit.hash,
       });
     } catch (err) {
-      console.error("Create tag failed:", err);
+      reportError("Create tag", err);
     }
   };
 

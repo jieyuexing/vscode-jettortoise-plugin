@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { bridge, bridgeWithProgress } from "../../shared/bridge";
+import { reportError } from "../../shared/bridge/report-error";
 import { Tooltip } from "../../shared/components/Tooltip";
 import { useModifierClickSelection } from "../../shared/hooks/useModifierClickSelection";
 import { usePreventSelect } from "../../shared/hooks/usePreventSelect";
@@ -728,7 +729,7 @@ export function BranchTree({
                     force,
                   });
                 } catch (err) {
-                  console.error("Push failed:", err);
+                  reportError("Push", err);
                 }
               }}
             />,
@@ -1166,7 +1167,7 @@ function BranchContextMenu({
         await bridgeWithProgress("checkoutBranch", { branchName: branch.name });
       }
     } catch (err) {
-      console.error("Checkout failed:", err);
+      reportError("Checkout", err);
     }
   };
 
@@ -1178,38 +1179,30 @@ function BranchContextMenu({
     onCreateBranch(branch.name, defaultName);
   };
 
+  // 宿主确认一次；git 因未完全合并拒绝删除时，改由宿主确认强制删除并写明后果。
   const handleDelete = async () => {
     onClose();
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t("Delete branch '{0}'?", branch.name),
-      confirmLabel: t("Delete"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
-    try {
-      await bridgeWithProgress("deleteBranch", {
+    const remove = (force: boolean) =>
+      bridgeWithProgress("deleteBranch", {
         branchName: branch.name,
         isRemote: branch.isRemote,
-        force: false,
+        force,
       });
-    } catch (_err) {
-      // If normal delete fails (unmerged), ask for force delete
-      const forceResult = (await bridge.request("showConfirmMessage", {
-        message: t(
-          "Branch '{0}' is not fully merged. Force delete?",
-          branch.name,
-        ),
-        confirmLabel: t("Force Delete"),
-      })) as { confirmed: boolean };
-      if (forceResult.confirmed) {
-        try {
-          await bridgeWithProgress("deleteBranch", {
-            branchName: branch.name,
-            isRemote: branch.isRemote,
-            force: true,
-          });
-        } catch (err2) {
-          console.error("Force delete failed:", err2);
-        }
+    try {
+      await remove(false);
+    } catch (err) {
+      if (
+        !String(err instanceof Error ? err.message : err).includes(
+          "not fully merged",
+        )
+      ) {
+        reportError("deleteBranch", err);
+        return;
+      }
+      try {
+        await remove(true);
+      } catch (forced) {
+        reportError("deleteBranch", forced);
       }
     }
   };
@@ -1232,7 +1225,7 @@ function BranchContextMenu({
         newName: result.value.trim(),
       });
     } catch (err) {
-      console.error("Rename failed:", err);
+      reportError("Rename", err);
     }
   };
 
@@ -1245,31 +1238,26 @@ function BranchContextMenu({
     try {
       await bridgeWithProgress("pullBranch", { branchName: branch.name });
     } catch (err) {
-      console.error("Update failed:", err);
+      reportError("Update", err);
     }
   };
 
-  // 宿主在执行合并前统一确认一次，这里不再重复询问。
+  // 合并、变基等破坏性操作只由宿主确认一次，这里不再重复询问。
   const handleMerge = async () => {
     onClose();
     try {
       await bridgeWithProgress("mergeBranch", { branchName: branch.name });
     } catch (err) {
-      console.error("Merge failed:", err);
+      reportError("Merge", err);
     }
   };
 
   const handleRebase = async () => {
     onClose();
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t("Rebase '{0}' onto '{1}'?", currentBranch, branch.name),
-      confirmLabel: t("Rebase"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("rebaseBranch", { onto: branch.name });
     } catch (err) {
-      console.error("Rebase failed:", err);
+      reportError("Rebase", err);
     }
   };
 
@@ -1281,7 +1269,7 @@ function BranchContextMenu({
         rebaseOnto: currentBranch,
       });
     } catch (err) {
-      console.error("Checkout and rebase failed:", err);
+      reportError("Checkout and rebase", err);
     }
   };
 

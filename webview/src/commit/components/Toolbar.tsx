@@ -16,6 +16,8 @@ interface ToolbarProps {
   onShelve: () => void;
   onRollback: () => void;
   hasChanges: boolean;
+  /** 合并进行中：没有可提交文件也能进入提交态完成合并。 */
+  merging: boolean;
   gitSelected: boolean;
   hasGit: boolean;
   onTogglePreview: () => void;
@@ -50,7 +52,7 @@ export function Toolbar(props: ToolbarProps) {
         t("Commit..."),
         "M3 8.5l3 3 7-7",
         state.enterCommitMode,
-        !props.hasChanges,
+        !props.hasChanges && !props.merging,
         state.commitMode,
       )}
       {button(

@@ -8,6 +8,7 @@ import {
   fileKey,
   groupChanges,
   initialSelection,
+  type RepositorySnapshot,
 } from "../models/changes";
 import { useRepositoryStore, type WorkspaceState } from "./repository-store";
 export type WorkingTreeFile = ChangeFile;
@@ -41,8 +42,6 @@ interface CommitStore {
   commitMessage: string;
   amend: boolean;
   /** 合并进行中：说明可留空，由 Git 使用默认合并说明。 */
-  merging: boolean;
-  setMerging: (merging: boolean) => void;
 
   // Shelf
   shelves: ShelveEntry[];
@@ -98,16 +97,27 @@ interface CommitStore {
   refresh: () => Promise<void>;
 }
 
+/** 合并进行中且冲突已解决的 Git 仓，提交区所选仓优先；提交区据此放开空说明和空选择。 */
+export function mergingRepository(state: {
+  snapshots: RepositorySnapshot[];
+  commitRepositoryId?: string;
+}): string | undefined {
+  const ids = state.snapshots
+    .filter(
+      (snapshot) =>
+        snapshot.merging &&
+        !snapshot.files.some((file) => file.status === "conflicted"),
+    )
+    .map((snapshot) => snapshot.repositoryId);
+  return ids.find((id) => id === state.commitRepositoryId) ?? ids[0];
+}
+
 export const useCommitStore = create<CommitStore>((set, get) => ({
   changes: [],
   selectedFiles: initialSelection([]),
   highlightedFiles: new Set<string>(),
   commitMessage: "",
   amend: false,
-  merging: false,
-  setMerging(merging) {
-    set({ merging });
-  },
   shelves: [],
   ideaShelves: [],
   activeTab: "commit",
@@ -282,17 +292,21 @@ export const useCommitStore = create<CommitStore>((set, get) => ({
   },
 
   async commit() {
-    const { commitMessage, changes, selectedFiles, amend, merging } = get();
+    const { commitMessage, changes, selectedFiles, amend } = get();
+    const merging = mergingRepository(useRepositoryStore.getState());
     const files = changes
       .filter((file) => canCommit(file) && selectedFiles.has(fileKey(file)))
       .map((file) => ({ repositoryId: file.repositoryId, path: file.path }));
-    if ((!commitMessage.trim() && !merging) || !files.length) return false;
+    if ((!commitMessage.trim() && !merging) || (!files.length && !merging))
+      return false;
     try {
       set({ loading: true, error: undefined });
       await bridge.request("commitRepositories", {
         message: commitMessage,
         files,
         amend,
+        // 没有可选文件时只提交该仓的合并（解决结果与本地相同）。
+        ...(files.length ? {} : { repositoryId: merging }),
       });
       set({
         commitMessage: "",

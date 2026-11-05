@@ -302,11 +302,18 @@ export class CvsSession {
         const backups = [];
         for (const file of paths)
           backups.push(await adapter.rollback(file, signal));
+        // 备份名最多列三个，其余只写数量，避免上万个文件时通知过长。
         void vscode.window.showInformationMessage(
-          vscode.l10n.t(
-            "CVS rollback completed. Backups: {0}",
-            backups.join(", "),
-          ),
+          backups.length > 3
+            ? vscode.l10n.t(
+                "CVS rollback completed. Backups: {0} and {1} more",
+                backups.slice(0, 3).join(", "),
+                backups.length - 3,
+              )
+            : vscode.l10n.t(
+                "CVS rollback completed. Backups: {0}",
+                backups.join(", "),
+              ),
         );
       },
       true,

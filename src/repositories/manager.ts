@@ -13,6 +13,7 @@ import { clearFileIconCache, getFileIcons } from "../views/file-icons";
 import {
   assertOwnedPath,
   boundariesForPaths,
+  NestedRepositoryError,
   nearestRepositories,
   within,
 } from "./boundaries.cjs";
@@ -510,6 +511,7 @@ export class RepositoryManager implements vscode.Disposable {
         repositoryId: entry.info.id,
         files: changes,
         branch: (await git.service.getCurrentBranch()) ?? undefined,
+        merging: (await git.service.mergeInProgress()) || undefined,
       };
     } catch (error) {
       if (isScanLimit(error)) {
@@ -719,7 +721,8 @@ export class RepositoryManager implements vscode.Disposable {
         await this.refresh(entry, true);
       return this.metadata();
     }
-    if (command === "commitRepositories") return this.commit(values);
+    if (command === "commitRepositories")
+      return this.commit(values, repositoryId as string | undefined);
     const entry = this.selected(
       repositoryId ?? (command === "updateProject" ? this.commitId : undefined),
     );
@@ -882,7 +885,7 @@ export class RepositoryManager implements vscode.Disposable {
     }
   }
   private paths(value: unknown) {
-    if (!Array.isArray(value) || !value.length || value.length > 2000)
+    if (!Array.isArray(value) || !value.length)
       throw new Error(vscode.l10n.t("Select files."));
     return value.map((item) => repositoryPath(item));
   }
@@ -901,7 +904,7 @@ export class RepositoryManager implements vscode.Disposable {
           vscode.l10n.t("Ignore/Add applies to unversioned entries only."),
         );
   }
-  private async commit(values: Record<string, unknown>) {
+  private async commit(values: Record<string, unknown>, repositoryId?: string) {
     if (
       typeof values.message !== "string" ||
       values.message.length > 16000 ||
@@ -912,15 +915,16 @@ export class RepositoryManager implements vscode.Disposable {
       repositoryId: string;
       path: string;
     }>;
-    if (!Array.isArray(selected) || !selected.length || selected.length > 2000)
-      throw new Error(vscode.l10n.t("Select changed files."));
-    const grouped = new Map<Entry, ChangeFile[]>();
+    const grouped = new Map<Entry, Map<string, ChangeFile>>();
+    // 合并进行中且解决结果与本地相同：没有可选文件，只提交该仓的合并。
+    if (Array.isArray(selected) && !selected.length && repositoryId)
+      grouped.set(this.selected(repositoryId), new Map());
     for (const file of selected) {
       const entry = this.selected(file.repositoryId);
       const name = repositoryPath(file.path);
-      const group = grouped.get(entry) ?? [];
-      if (!group.some((change) => change.path === name))
-        group.push({
+      const group = grouped.get(entry) ?? new Map<string, ChangeFile>();
+      if (!group.has(name))
+        group.set(name, {
           repositoryId: entry.info.id,
           path: name,
           status: "modified",
@@ -928,16 +932,20 @@ export class RepositoryManager implements vscode.Disposable {
         });
       grouped.set(entry, group);
     }
+    if (!grouped.size) throw new Error(vscode.l10n.t("Select changed files."));
     // 所有仓库先验证；实际提交仍逐仓独立，失败保留已成功仓库回执。
     for (const [entry, files] of grouped) {
       await this.guard(entry);
       await this.refresh(entry, false);
       if (entry.snapshot.error) throw new Error(entry.snapshot.error);
-      for (const file of files) {
-        const current = entry.snapshot.files.find(
-          (change) => change.path === file.path,
-        );
-        if (!current || !canCommit(current))
+      if (!files.size && !(entry.git && entry.snapshot.merging))
+        throw new Error(vscode.l10n.t("Select changed files."));
+      const current = new Map(
+        entry.snapshot.files.map((change) => [change.path, change]),
+      );
+      for (const file of files.values()) {
+        const change = current.get(file.path);
+        if (!change || !canCommit(change))
           throw new Error(
             vscode.l10n.t(
               "{0}: selected file cannot be committed: {1}",
@@ -945,9 +953,20 @@ export class RepositoryManager implements vscode.Disposable {
               file.path,
             ),
           );
-        Object.assign(file, current);
-        await assertOwnedPath(entry.info.root, entry.info.kind, file.path);
+        Object.assign(file, change);
       }
+      // 所选文件的子仓边界一次查完；目录不会出现在可提交更改里。
+      const boundaries = await boundariesForPaths(
+        entry.info.root,
+        entry.info.kind,
+        [...files.keys()],
+      );
+      if (boundaries.length)
+        throw new NestedRepositoryError(
+          boundaries,
+          "NESTED_REPOSITORY",
+          entry.info.root,
+        );
     }
     // 空说明只用于 Git 合并类操作的默认说明，由 Git 会话再核对进行中状态。
     if (
@@ -965,7 +984,7 @@ export class RepositoryManager implements vscode.Disposable {
         await this.guard(entry);
         const paths = [
           ...new Set(
-            files.flatMap((file) =>
+            [...files.values()].flatMap((file) =>
               file.oldPath ? [file.oldPath, file.path] : [file.path],
             ),
           ),

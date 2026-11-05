@@ -98,6 +98,19 @@ async function main() {
     await receive({ type: "request", id: "confirm", command: "deleteFiles", params: { filePaths: ["a.ts"] } });
     assert.equal(sent.at(-1).success, true);
     assert.equal(confirmed, 1, "confirmation belongs to the destructive request");
+    // 回滚、删除等路径列表不设条数上限（宿主按批调用 git／cvs）。
+    const many = Array.from({ length: 12000 }, (_, index) => `module/F${index}.java`);
+    await receive({ type: "request", id: "many", command: "deleteFiles", params: { filePaths: many } });
+    assert.equal(sent.at(-1).success, true, "12000 paths are accepted");
+    // 强制推送由宿主确认一次，普通推送不确认。
+    let pushes = 0;
+    router.handle("pushBranch", async () => { pushes++; return { success: true }; });
+    confirmed = 0;
+    await receive({ type: "request", id: "push", command: "pushBranch", params: { branchName: "main", force: false } });
+    assert.equal(confirmed, 0, "plain push needs no confirmation");
+    await receive({ type: "request", id: "force-push", command: "pushBranch", params: { branchName: "main", force: true } });
+    assert.equal(confirmed, 1, "force push is confirmed by the host once");
+    assert.equal(pushes, 2);
 
     const noConfirmSent = [];
     let noConfirmReceive;

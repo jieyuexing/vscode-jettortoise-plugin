@@ -355,9 +355,6 @@ function CherryPickBanner() {
 function MergeBanner() {
   const [state, setState] = useState<MergeStateInfo>({ isMerging: false });
   const [loading, setLoading] = useState(false);
-  const setMerging = useCommitStore((store) => store.setMerging);
-
-  useEffect(() => setMerging(state.isMerging), [setMerging, state.isMerging]);
 
   const fetchState = useCallback(async () => {
     try {

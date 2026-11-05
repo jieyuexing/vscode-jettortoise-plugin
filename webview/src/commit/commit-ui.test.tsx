@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BranchTree } from "../panel/components/BranchTree";
+import { CommitContextMenu } from "../panel/components/CommitContextMenu";
 import { CvsHistory } from "../panel/components/CvsHistory";
 import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
@@ -129,7 +130,6 @@ beforeEach(() => {
     error: undefined,
     loading: false,
     commitMode: false,
-    merging: false,
   });
 });
 afterEach(() => {
@@ -1025,6 +1025,14 @@ describe("日志历史差异", () => {
 });
 describe("合并进行中", () => {
   const mergeMsg = "Merge remote-tracking branch 'origin/main'";
+  // 宿主快照标记合并进行中（MERGE_HEAD）；横幅另取合并说明。
+  const merging = (files: (typeof snapshots)[number]["files"]) =>
+    useRepositoryStore.setState({
+      snapshots: [
+        { repositoryId: "a", files, merging: true },
+        ...snapshots.filter((item) => item.repositoryId !== "a"),
+      ],
+    });
   beforeEach(() => {
     initializeI18n("zh-cn");
     const base = mocks.request.getMockImplementation();
@@ -1050,12 +1058,12 @@ describe("合并进行中", () => {
     expect(abort.getAttribute("title")).toBe("中止合并 (git merge --abort)");
   });
   it("说明留空也能提交，交给 Git 使用默认合并说明", async () => {
+    merging(snapshots[0].files);
     useCommitStore.setState({
       commitMode: true,
       selectedFiles: new Set([JSON.stringify(["a", "app.txt"])]),
     });
     const view = render(<CommitApp />);
-    await waitFor(() => expect(useCommitStore.getState().merging).toBe(true));
     const message = view.getByRole("textbox", { name: "提交说明" });
     expect(message.getAttribute("placeholder")).toBe(
       "留空则使用 Git 生成的默认合并说明",
@@ -1068,6 +1076,51 @@ describe("合并进行中", () => {
         amend: false,
       }),
     );
+  });
+  it("解决结果与本地相同时，提交区显示合并进行中并可直接提交", async () => {
+    merging([]);
+    useCommitStore.setState({
+      changes: files.filter((file) => file.repositoryId !== "a"),
+    });
+    const view = render(<CommitApp />);
+    expect(await view.findByText("合并进行中，提交即完成合并")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "提交…" }));
+    await waitFor(() =>
+      expect(useCommitStore.getState().commitMode).toBe(true),
+    );
+    useCommitStore.setState({ selectedFiles: new Set() });
+    const commit = await view.findByRole("button", { name: "提交" });
+    expect((commit as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(commit);
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("commitRepositories", {
+        message: "",
+        files: [],
+        amend: false,
+        repositoryId: "a",
+      }),
+    );
+  });
+  it("仍有冲突时不显示合并进行中，也不放开空选择", async () => {
+    merging([
+      {
+        repositoryId: "a",
+        path: "app.txt",
+        status: "conflicted" as const,
+        staged: false,
+      },
+    ]);
+    const view = render(<CommitApp />);
+    await view.findByText("合并冲突");
+    expect(view.queryByText("合并进行中，提交即完成合并")).toBeNull();
+    useCommitStore.setState({ commitMode: true, selectedFiles: new Set() });
+    expect(
+      (
+        (await view.findByRole("button", {
+          name: "提交",
+        })) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
   it("不在合并中时说明为空不能提交", async () => {
     mocks.request.mockImplementation(async (command: string) =>
@@ -1119,5 +1172,192 @@ describe("合并进行中", () => {
       "showConfirmMessage",
       expect.anything(),
     );
+  });
+});
+describe("破坏性操作只确认一次", () => {
+  const branches = [
+    {
+      name: "main",
+      isRemote: false,
+      isCurrent: true,
+      upstream: "origin/main",
+      ahead: 1,
+      behind: 1,
+      lastCommitHash: "a".repeat(40),
+    },
+    {
+      name: "feature",
+      isRemote: false,
+      isCurrent: false,
+      ahead: 0,
+      behind: 0,
+      lastCommitHash: "b".repeat(40),
+    },
+  ];
+  beforeEach(() =>
+    usePanelStore.setState({ branches, tags: [], currentBranch: "main" }),
+  );
+  const noWebviewConfirm = () =>
+    expect(mocks.request).not.toHaveBeenCalledWith(
+      "showConfirmMessage",
+      expect.anything(),
+    );
+  it("分支变基与删除直接交给宿主确认", async () => {
+    const view = render(<BranchTree />);
+    fireEvent.contextMenu(view.getByText("feature"));
+    fireEvent.click(await view.findByText("Rebase 'main' onto 'feature'"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("rebaseBranch", {
+        onto: "feature",
+      }),
+    );
+    fireEvent.contextMenu(view.getByText("feature"));
+    fireEvent.click(await view.findByText("Delete"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("deleteBranch", {
+        branchName: "feature",
+        isRemote: false,
+        force: false,
+      }),
+    );
+    noWebviewConfirm();
+  });
+  it("未完全合并时改为强制删除，由宿主写明后果再确认", async () => {
+    mocks.request.mockImplementation(
+      async (command: string, params?: Record<string, unknown>) => {
+        if (command === "deleteBranch" && params?.force === false)
+          throw new Error("error: The branch 'feature' is not fully merged.");
+        return undefined;
+      },
+    );
+    const view = render(<BranchTree />);
+    fireEvent.contextMenu(view.getByText("feature"));
+    fireEvent.click(await view.findByText("Delete"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("deleteBranch", {
+        branchName: "feature",
+        isRemote: false,
+        force: true,
+      }),
+    );
+    noWebviewConfirm();
+  });
+  it("硬重置与丢弃提交直接交给宿主确认", async () => {
+    const commit = {
+      hash: "c".repeat(40),
+      shortHash: "ccccccc",
+      parents: ["d".repeat(40)],
+      authorName: "dev",
+      authorEmail: "dev@example.invalid",
+      authorDate: "2026-11-05T00:00:00Z",
+      subject: "change",
+      body: "",
+      refs: [],
+    };
+    for (const [label, command] of [
+      ["Reset Current Branch to Here (Hard)...", "resetToCommit"],
+      ["Drop Commit", "dropCommit"],
+    ]) {
+      const view = render(
+        <CommitContextMenu
+          x={0}
+          y={0}
+          commit={commit}
+          onClose={() => {}}
+          onCreateBranch={() => {}}
+        />,
+      );
+      fireEvent.click(await view.findByText(label));
+      await waitFor(() =>
+        expect(mocks.request).toHaveBeenCalledWith(
+          command,
+          expect.objectContaining({ hash: commit.hash }),
+        ),
+      );
+      cleanup();
+    }
+    noWebviewConfirm();
+  });
+});
+describe("合并失败原因", () => {
+  it("合并失败把宿主给的原因写进日志并通知，不再是 {}", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const reason = "Merge failed: 1 file(s) have conflicts, first: app.txt";
+      mocks.request.mockImplementation(async (command: string) => {
+        if (command === "mergeBranch") throw new Error(reason);
+        return undefined;
+      });
+      usePanelStore.setState({
+        branches: [
+          {
+            name: "main",
+            isRemote: false,
+            isCurrent: true,
+            ahead: 0,
+            behind: 0,
+            lastCommitHash: "a".repeat(40),
+          },
+          {
+            name: "feature",
+            isRemote: false,
+            isCurrent: false,
+            ahead: 0,
+            behind: 0,
+            lastCommitHash: "b".repeat(40),
+          },
+        ],
+        tags: [],
+        currentBranch: "main",
+      });
+      const view = render(<BranchTree />);
+      fireEvent.contextMenu(view.getByText("feature"));
+      fireEvent.click(await view.findByText("Merge 'feature' into 'main'"));
+      await waitFor(() =>
+        expect(logged).toHaveBeenCalledWith(`Merge failed: ${reason}`),
+      );
+      expect(mocks.request).toHaveBeenCalledWith("showErrorNotification", {
+        message: reason,
+      });
+    } finally {
+      logged.mockRestore();
+    }
+  });
+});
+describe("大批量回滚", () => {
+  it("Ctrl+A 选中全部更改，回滚一次带上全部文件", async () => {
+    const many = Array.from({ length: 12000 }, (_, index) => ({
+      repositoryId: "a",
+      path: `bulk/F${index}.txt`,
+      status: "modified" as const,
+      staged: false,
+    }));
+    useRepositoryStore.setState({
+      snapshots: [
+        { repositoryId: "a", files: many },
+        ...snapshots.filter((item) => item.repositoryId !== "a"),
+      ],
+    });
+    useCommitStore.setState({ changes: many });
+    const view = render(<CommitApp />);
+    const tree = await view.findByLabelText("Changed Files");
+    fireEvent.keyDown(tree, { key: "a", ctrlKey: true });
+    // 全部更改（含另一仓的 1 个），不含未受版本控制的文件。
+    expect(useCommitStore.getState().highlightedFiles.size).toBe(12001);
+    fireEvent.click(view.getByRole("button", { name: "Rollback" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith(
+        "openRollbackPanel",
+        expect.objectContaining({
+          files: expect.arrayContaining([
+            { path: "bulk/F11999.txt", status: "modified", staged: false },
+          ]),
+        }),
+      ),
+    );
+    const call = mocks.request.mock.calls.find(
+      ([command]) => command === "openRollbackPanel",
+    );
+    expect((call?.[1] as { files: unknown[] }).files).toHaveLength(12000);
   });
 });

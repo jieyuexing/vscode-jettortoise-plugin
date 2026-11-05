@@ -397,6 +397,8 @@ export function requiresHostConfirmation(
   params: Readonly<Record<string, unknown>>,
 ): boolean {
   if (command === "resetToCommit") return params.mode === "hard";
+  if (command === "pushBranch" || command === "executePush")
+    return params.force === true;
   if (
     command === "createBranch" ||
     command === "createBranchFromCommit" ||
@@ -680,11 +682,10 @@ function matchesRule(value: unknown, rule: ValueRule): boolean {
       value.every((entry) => matchesRule(entry, "string"))
     );
   }
+  // 路径列表不设条数上限：提交与回滚按批（Git 经标准输入、CVS 按命令行长度）调用。
   if (rule === "path[]") {
     return (
-      Array.isArray(value) &&
-      value.length <= 10_000 &&
-      value.every((entry) => isSafeRelativePath(entry))
+      Array.isArray(value) && value.every((entry) => isSafeRelativePath(entry))
     );
   }
   if (rule === "diffFile")
@@ -692,7 +693,6 @@ function matchesRule(value: unknown, rule: ValueRule): boolean {
   if (rule === "rollbackFiles")
     return (
       Array.isArray(value) &&
-      value.length <= 10000 &&
       value.every(
         (item) =>
           isPlainObject(item) &&

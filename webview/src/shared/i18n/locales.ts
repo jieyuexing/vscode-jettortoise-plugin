@@ -65,15 +65,11 @@ export const en = {
   "Amend is available for one selected Git repository.":
     "Amend is available for one selected Git repository.",
   Apply: "Apply",
-  "Apply changes to '{0}' from this commit to working tree?":
-    "Apply changes to '{0}' from this commit to working tree?",
   "Apply failed: {0}": "Apply failed: {0}",
   Author: "Author",
   Branch: "Branch",
   "Branch '{0}' already exists.\nChange the name or overwrite existing branch.":
     "Branch '{0}' already exists.\nChange the name or overwrite existing branch.",
-  "Branch '{0}' is not fully merged. Force delete?":
-    "Branch '{0}' is not fully merged. Force delete?",
   "Branch Name:": "Branch Name:",
   "Branch or tag": "Branch or tag",
   "CVS file": "CVS file",
@@ -126,14 +122,11 @@ export const en = {
   Date: "Date",
   Delete: "Delete",
   "Delete Branch": "Delete Branch",
-  "Delete branch '{0}'?": "Delete branch '{0}'?",
   "Delete local copies of added files": "Delete local copies of added files",
   "Delete...": "Delete...",
   Directory: "Directory",
   "Discard changes and close": "Discard changes and close",
   "Drop Commit": "Drop Commit",
-  'Drop commit {0} "{1}"?\n\nThis will remove the commit from history but keep its changes as unstaged modifications.\n\nThis operation cannot be undone.':
-    'Drop commit {0} "{1}"?\n\nThis will remove the commit from history but keep its changes as unstaged modifications.\n\nThis operation cannot be undone.',
   "Edit Source": "Edit Source",
   "Everything is up to date": "Everything is up to date",
   "Expand All": "Expand All",
@@ -141,7 +134,6 @@ export const en = {
   Fetch: "Fetch",
   "Flat List": "Flat List",
   "Flatten List": "Flatten List",
-  "Force Delete": "Force Delete",
   "Force Push": "Force Push",
   "Git repositories only": "Git repositories only",
   "Git:": "Git:",
@@ -162,6 +154,8 @@ export const en = {
   "Last 90 days": "Last 90 days",
   "Leave empty to use the default merge message":
     "Leave empty to use the default merge message",
+  "Merge in progress: commit to finish the merge":
+    "Merge in progress: commit to finish the merge",
   "Left (Theirs)": "Left (Theirs)",
   "Loading file revisions…": "Loading file revisions…",
   "Loading merge editor...": "Loading merge editor...",
@@ -218,7 +212,6 @@ export const en = {
   "Pushing...": "Pushing...",
   Rebase: "Rebase",
   "Rebase '{0}' onto '{1}'": "Rebase '{0}' onto '{1}'",
-  "Rebase '{0}' onto '{1}'?": "Rebase '{0}' onto '{1}'?",
   Rebasing: "Rebasing",
   "Rebasing {0}": "Rebasing {0}",
   "Recent commit messages": "Recent commit messages",
@@ -232,8 +225,6 @@ export const en = {
   "Repository selection changed.": "Repository selection changed.",
   "Request '{0}' timed out": "Request '{0}' timed out",
   Reset: "Reset",
-  "Reset '{0}' to {1} (hard)? This will discard all uncommitted changes.":
-    "Reset '{0}' to {1} (hard)? This will discard all uncommitted changes.",
   "Reset Current Branch to Here (Hard)...":
     "Reset Current Branch to Here (Hard)...",
   "Reset Current Branch to Here (Mixed)...":
@@ -244,8 +235,6 @@ export const en = {
   Revert: "Revert",
   "Revert Commit": "Revert Commit",
   "Revert Selected Changes": "Revert Selected Changes",
-  "Revert changes to '{0}' from this commit?":
-    "Revert changes to '{0}' from this commit?",
   Revision: "Revision",
   "Right (Yours)": "Right (Yours)",
   Rollback: "Rollback",
@@ -388,15 +377,11 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Amend is available for one selected Git repository.":
     "修改提交仅适用于一个已选 Git 仓库。",
   Apply: "应用",
-  "Apply changes to '{0}' from this commit to working tree?":
-    "将此提交中对 '{0}' 的更改应用到工作区？",
   "Apply failed: {0}": "应用失败：{0}",
   Author: "作者",
   Branch: "分支",
   "Branch '{0}' already exists.\nChange the name or overwrite existing branch.":
     "分支“{0}”已存在。\n请更改名称或覆盖现有分支。",
-  "Branch '{0}' is not fully merged. Force delete?":
-    "分支 '{0}' 尚未完全合并。强制删除？",
   "Branch Name:": "分支名称：",
   "Branch or tag": "分支或标签",
   "CVS file": "CVS 文件",
@@ -447,14 +432,11 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   Date: "日期",
   Delete: "删除",
   "Delete Branch": "删除分支",
-  "Delete branch '{0}'?": "删除分支 '{0}'？",
   "Delete local copies of added files": "删除新增文件的本地副本",
   "Delete...": "删除...",
   Directory: "目录",
   "Discard changes and close": "放弃变更并关闭",
   "Drop Commit": "丢弃提交",
-  'Drop commit {0} "{1}"?\n\nThis will remove the commit from history but keep its changes as unstaged modifications.\n\nThis operation cannot be undone.':
-    "要丢弃提交 {0}“{1}”吗？\n\n这将从历史记录中移除此提交，并将其更改保留为未暂存的修改。\n\n此操作无法撤销。",
   "Edit Source": "编辑源文件",
   "Everything is up to date": "已是最新状态",
   "Expand All": "全部展开",
@@ -462,7 +444,6 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   Fetch: "获取",
   "Flat List": "平铺列表",
   "Flatten List": "平铺列表",
-  "Force Delete": "强制删除",
   "Force Push": "强制推送",
   "Git repositories only": "仅限 Git 仓库",
   "Git:": "Git：",
@@ -481,6 +462,7 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Last 30 days": "最近 30 天",
   "Last 7 days": "最近 7 天",
   "Last 90 days": "最近 90 天",
+  "Merge in progress: commit to finish the merge": "合并进行中，提交即完成合并",
   "Leave empty to use the default merge message":
     "留空则使用 Git 生成的默认合并说明",
   "Left (Theirs)": "左侧（对方版本）",
@@ -538,7 +520,6 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Pushing...": "正在推送...",
   Rebase: "变基",
   "Rebase '{0}' onto '{1}'": "将 '{0}' 变基到 '{1}'",
-  "Rebase '{0}' onto '{1}'?": "将 '{0}' 变基到 '{1}'？",
   Rebasing: "正在变基",
   "Rebasing {0}": "正在变基 {0}",
   "Recent commit messages": "最近的提交说明",
@@ -552,8 +533,6 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "Repository selection changed.": "所选仓库已更改。",
   "Request '{0}' timed out": "请求“{0}”超时",
   Reset: "重置",
-  "Reset '{0}' to {1} (hard)? This will discard all uncommitted changes.":
-    "将 '{0}' 重置到 {1}（hard）？这会丢弃所有未提交的更改。",
   "Reset Current Branch to Here (Hard)...": "将当前分支重置到此处（Hard）...",
   "Reset Current Branch to Here (Mixed)...": "将当前分支重置到此处（Mixed）...",
   "Reset Current Branch to Here (Soft)...": "将当前分支重置到此处（Soft）...",
@@ -561,7 +540,6 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   Revert: "还原",
   "Revert Commit": "还原提交",
   "Revert Selected Changes": "还原选中的更改",
-  "Revert changes to '{0}' from this commit?": "还原此提交中对 '{0}' 的更改？",
   Revision: "修订号",
   "Right (Yours)": "右侧（你的版本）",
   Rollback: "回滚",

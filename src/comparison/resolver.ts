@@ -6,6 +6,7 @@ import { GitContentTooLargeError, type GitService } from "../git/gitService";
 import { resolveWorktreePath, safeRelativePath } from "../git/security";
 import type { DiffFile } from "../git/types";
 import { assertOwnedPath } from "../repositories/boundaries.cjs";
+import { decodeAsWorkingFile } from "../repositories/editor-documents";
 
 /** The small adapter surface shared with the native CVS core. */
 export interface CvsComparisonAdapter {
@@ -278,7 +279,7 @@ export class GitComparisonResolver {
   async materialize(
     comparison: ResolvedComparison,
   ): Promise<MaterializedComparison> {
-    return materialize(comparison, async (side) => {
+    return materialize(this.root, comparison, async (side) => {
       if (side.source === "empty") return Buffer.alloc(0);
       if (side.source === "git")
         return this.git.getFileContentBufferLimited(
@@ -345,7 +346,7 @@ export class CvsComparisonResolver {
     comparison: ResolvedComparison,
     signal?: AbortSignal,
   ): Promise<MaterializedComparison> {
-    return materialize(comparison, async (side) => {
+    return materialize(this.root, comparison, async (side) => {
       if (side.source === "empty") return Buffer.alloc(0);
       if (side.source === "cvs")
         return this.cvs.content(side.path, side.revision ?? "", signal, {
@@ -372,13 +373,17 @@ async function cvsWorktreeExists(
   }
 }
 
+/** 两侧都按工作文件的编码解码（与编辑器同一来源）；宿主没有编码 API 时只认 UTF-8。 */
 async function materialize(
+  root: string,
   comparison: ResolvedComparison,
   read: (side: ComparisonSide) => Promise<Buffer>,
 ): Promise<MaterializedComparison> {
+  const working = vscode.Uri.file(path.join(root, comparison.filePath));
+  const decode = (bytes: Buffer) => decodeAsWorkingFile(working, bytes);
   const [leftContent, rightContent] = await Promise.all([
-    readSide(comparison.left, read),
-    readSide(comparison.right, read),
+    readSide(comparison.left, read, decode),
+    readSide(comparison.right, read, decode),
   ]);
   return { ...comparison, leftContent, rightContent };
 }
@@ -386,6 +391,7 @@ async function materialize(
 async function readSide(
   side: ComparisonSide,
   read: (side: ComparisonSide) => Promise<Buffer>,
+  decode: (bytes: Buffer) => Promise<string | undefined>,
 ): Promise<ComparisonMaterialization> {
   let bytes: Buffer;
   try {
@@ -401,9 +407,9 @@ async function readSide(
   if (bytes.byteLength > COMPARISON_MAX_BYTES)
     return { available: false, reason: "tooLarge" };
   if (bytes.includes(0)) return { available: false, reason: "binary" };
-  let text: string;
+  let text = await decode(bytes);
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    text ??= new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return { available: false, reason: "undecodable" };
   }

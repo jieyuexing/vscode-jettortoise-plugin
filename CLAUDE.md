@@ -95,7 +95,7 @@ Webview 显示／隐藏只由宿主布局负责；提交 provider 不再据可�
 
 - 浏览默认没有复选框与提交说明。30px 竖排工具栏、22px 行、14px 层级增量；按更改列表→仓库→目录分组，浅色逐项采用底稿变量，深色映射宿主主题。Git 的更改／搁置／储藏小页签仅在树列存在 Git 仓库时出现；窄于 760px 改为横排工具栏与树。
 - 单击文件请求 `getWorkingFilePreview`；双击沿用 `showDiffForWorkingFile`。预览 Git 比较 HEAD 与磁盘，CVS 比较当前 Entries 的 BASE 与磁盘；只读并排／统一视图共用滚动、行号与行内着色。中缝回滚入口打开已有完整差异，不新增文件写入通道。
-- 有界读取沿用 comparison resolver：每侧 2MiB、20000 行，前端最多合计 8000 行、diff 150ms/2000 次编辑，行内比较最多 4000 字符。超限、二进制或非 UTF-8 显示灰字，过时请求不覆盖新选择。忽略文件不参与现有变更扫描，树保留折叠入口并明确说明，不伪造忽略文件计数；传入分组保留只读。
+- 有界读取沿用 comparison resolver：每侧 2MiB、20000 行，前端最多合计 8000 行、diff 150ms/2000 次编辑，行内比较最多 4000 字符。超限、二进制或（宿主没有编码 API 时）非 UTF-8 显示灰字（0.6.16 起按文件编码解码，见「环节 7 打磨」），过时请求不覆盖新选择。忽略文件不参与现有变更扫描，树保留折叠入口并明确说明，不伪造忽略文件计数；传入分组保留只读。
 - Ctrl+K 或工具栏进入提交态：预选全部可提交更改，复选框出现在同一棵树，说明框在树下获得焦点；Esc 或提交成功返回浏览，失败保留说明。提交并推送与修改上次提交仍仅允许单个 Git 仓库选择，不改原命令与写队列。无仓库只显示“此工作区没有 Git 或 CVS 仓库”。
 - CVS 只读查询（预览、文件历史、文件清单）的进度位置为状态栏，写操作保持可取消通知；由 `scripts/restart-host-check.cjs` 断言。
 - `webview/src/commit/commit-ui.test.tsx` 由既有 `pnpm run test:headless` 执行，原生 Git/CVS 预览与请求拒绝继续放 `scripts/restart-host-check.cjs`。结构、模拟交互与实际开发窗口分别记录，Windows 与真实公司仓未实机。
@@ -187,7 +187,7 @@ ETECH 环节 7 写入部分用产品仓 `fixtures/vcs-sim/vcs-sim.py` 搭本机 
 
 ## 环节 7 缺口（2026-11-05，0.6.13）
 
-- 修订编码：`RepositoryManager.readFile` 取得修订字节后，按右侧工作文件解码：已打开的文档有 `encoding` 时用它，否则调 `workspace.decode(内容, {uri: 工作文件})`，由 IDE 按设置决定编码（ETECH 产品的 EncodingRegistry 读 Eclipse 工程 prefs）。解码后再用 `workspace.encode(文本, {uri: 修订 URI})` 写回成 IDE 读取修订 URI 的编码，两侧一致。Git 与 CVS 共用这一处。宿主没有这两个 API（VS Code 1.100 以前）或内容含 NUL 时原样返回。不在扩展里另行解析 prefs，以免与 IDE 的优先级（重新打开、文件夹设置）分叉。单击预览仍只显示 UTF-8，其他编码显示灰字。
+- 修订编码：`RepositoryManager.readFile` 取得修订字节后，按右侧工作文件解码：已打开的文档有 `encoding` 时用它，否则调 `workspace.decode(内容, {uri: 工作文件})`，由 IDE 按设置决定编码（ETECH 产品的 EncodingRegistry 读 Eclipse 工程 prefs）。解码后再用 `workspace.encode(文本, {uri: 修订 URI})` 写回成 IDE 读取修订 URI 的编码，两侧一致。Git 与 CVS 共用这一处。宿主没有这两个 API（VS Code 1.100 以前）或内容含 NUL 时原样返回。不在扩展里另行解析 prefs，以免与 IDE 的优先级（重新打开、文件夹设置）分叉。单击预览在 0.6.16 起同样按工作文件编码解码，见「环节 7 打磨」。
 - 合并冲突：分组模型新增 `conflicts`，冲突文件只出现在置顶的「合并冲突」分类，有冲突时才显示，默认展开，不计入更改。Git 冲突行右键为「标记已解决」，即 `stageFile`。`mergeContinue` 使用 `commit --no-edit --cleanup=strip`。
 - CVS 传入：`status()` 把 `cvs -n update` 的 `U` 新文件（本地不存在）列为 Needs Checkout，本地刷新沿用最近一次网络结果。`update()` 返回本次的冲突文件并清空旧网络结果。工作副本有未解决冲突时 `cvs -n update` 退出码为 1，只在输出含 `C ` 行且没有 `aborted]` 时接受，其余仍按命令失败处理。
 - CVS 冲突通知：更新返回冲突时弹一条警告，写明数量，「查看冲突」选中该仓、聚焦提交视图并广播 `revealConflicts`，变更树展开并滚到该仓的冲突行。本地清单按 CVS 默认忽略规则跳过 `.#*` 备份。
@@ -209,9 +209,21 @@ GWH 只读副本（`--depth 1` 浅克隆，根提交 52692 个文件）在 0.6.1
 
 M3 安装版 0.6.13 在本地模拟 Git 远端上走查（ETECH 环节 7 串联）发现四处：合并解决冲突后在提交区点「提交」报 `fatal: cannot do a partial commit during a merge.`，只能点横幅无文字的继续按钮且说明不被采用；分叉时更新项目抛 git 英文原文；日志分支右键合并连弹两次确认；横幅按钮悬停无提示。
 
-- 提交：`commitPaths` 发现 `MERGE_HEAD`、`CHERRY_PICK_HEAD` 或 `REVERT_HEAD`（`rev-parse --git-path`，worktree 也适用）时，完整索引检查不变，先 `git add -- <所选路径>`，再不带 pathspec 提交整个索引；有说明用 `-m`，说明为空用 `--no-edit --cleanup=strip`（Git 生成的说明，去掉 `# Conflicts:` 注释）。未选文件里已暂存的合并结果同样进入合并提交，这是 Git 对合并提交的要求。空说明只在这三种状态下被 Git 会话接受；请求合同与 manager 只校验形状，选中含 CVS 仓时仍要求说明。提交区由合并横幅取得的合并状态放开空说明，占位文字提示留空用默认说明；cherry-pick、revert 的空说明宿主可接受，但提交区按钮只在合并时放开。
+- 提交：`commitPaths` 发现 `MERGE_HEAD`、`CHERRY_PICK_HEAD` 或 `REVERT_HEAD`（`rev-parse --git-path`，worktree 也适用）时，完整索引检查不变，先 `git add -- <所选路径>`，再不带 pathspec 提交整个索引；有说明用 `-m`，说明为空用 `--no-edit --cleanup=strip`（Git 生成的说明，去掉 `# Conflicts:` 注释）。未选文件里已暂存的合并结果同样进入合并提交，这是 Git 对合并提交的要求。空说明只在这三种状态下被 Git 会话接受；请求合同与 manager 只校验形状，选中含 CVS 仓时仍要求说明。提交区按合并状态（0.6.16 起取自快照，见「环节 7 打磨」）放开空说明，占位文字提示留空用默认说明；cherry-pick、revert 的空说明宿主可接受，但提交区按钮只在合并时放开。
 - 分叉：`updateFastForward` 的 pull 失败且 `HEAD...@{upstream}` 两侧都有独有提交时，不再抛原文，返回上游名与两侧提交数（工作区不变）；其他失败与取消保留原文。manager 像 CVS 冲突通知一样不等待地弹警告，写明数量并提供「合并」「变基」；选择后在同一写队列里检查未保存编辑器，先把 `@{upstream}` 解析成上游名（如 `origin/main`，冲突标记与说明显示真实分支），再执行 `git merge --no-edit <上游>` 或 `git rebase <上游>`。有冲突时保留进行中状态并沿用「更新项目：N 个文件有合并冲突」通知与合并冲突分组；无冲突的其他失败弹错误原文。分支右键「更新」（`pullBranch`）分叉时报同一中文说明，不给动作。
-- 合并确认：分支右键合并不再在 webview 先问一次，只保留宿主 `mergeBranch` 的模态确认，文字写明合并到当前分支。变基、删除分支等其他入口的 webview 与宿主双重确认未改。
+- 合并确认：分支右键合并不再在 webview 先问一次，只保留宿主 `mergeBranch` 的模态确认，文字写明合并到当前分支。变基、删除分支等其他入口的双重确认由 0.6.16 统一，见「环节 7 打磨」。
 - 横幅：变基、拣选、合并横幅的图标按钮改用原生 `title` 与 `aria-label`（与 `ToolbarButton` 一致），不再包自绘 Tooltip（M3 走查中自绘 Tooltip 悬停无提示，原因未单独排查）。
 
 回归：`scripts/git-update-check.cjs`（合并与 cherry-pick 中按路径提交、空说明默认合并说明、非合并空说明拒绝、分叉返回、合并／变基、合并冲突），`scripts/vcs-host-check.cjs` 第 7、8 节（分叉通知选合并、冲突通知后空说明提交），`commit-ui.test.tsx`「合并进行中」（横幅提示、空说明提交、非合并禁用、合并只确认一次）。
+
+## 环节 7 打磨（2026-11-05，0.6.16）
+
+M3 安装版 0.6.15 复测（ETECH 环节 7）留下六处：解决结果与本地相同时文件不在本地更改里，只能经横幅继续合并；变基、删除分支等仍确认两次；冲突时日志 `Merge failed: {}`；提交超过 2000、回滚超过 10000 个文件被拒；单击预览只认 UTF-8；合并中留空说明只在台式机开发构建测过。
+
+- 合并进行中：Git 快照带 `merging`（`rev-parse --git-path MERGE_HEAD`）。冲突都已解决后，更改组在该仓没有文件时仍列出仓库行，行内 dim 状态「合并进行中，提交即完成合并」；工具栏「提交」在没有可提交更改但有合并时可用，提交区在合并中允许空说明与空选择。空选择时 `commitRepositories` 带 `repositoryId`、`files: []`，manager 只接受该 Git 仓快照为合并中，`commitPaths` 不暂存、直接提交索引（说明空则 Git 默认说明）。webview 的合并状态改由快照决定（合并中且没有冲突文件，提交区所选仓优先），横幅只负责显示与继续／中止，不再写提交区状态。
+- 确认：破坏性操作只由宿主模态确认一次，webview 不再先问。宿主文字写明对象与后果：变基（当前分支、目标、本地提交将被重写）、检出并变基、删除本地／远端分支、强制删除（未合并提交将丢失）、硬重置（当前分支、目标、未提交更改将丢弃）、丢弃提交、强制推送（远端／分支、远端多出的提交将被覆盖；`pushBranch`／`executePush` 在 `force` 时才确认）。删除分支先按普通删除确认；git 报未完全合并时由 webview 发起强制删除，宿主再确认这一不同后果。修订文件还原与应用沿用宿主确认。`Commit and Push` 的修改上次提交强推沿用原行为，未加确认。
+- 失败原因：`GitService` 的合并、变基、检出并变基、分叉后合并／变基与更新项目失败时，有冲突写“<动作>失败：N 个文件有冲突，首个为 X”，否则取 stderr（其次 stdout）第一条 `error:`／`fatal:` 行；取消仍保留原错误。日志分支与提交右键的 git 写操作失败统一经 `reportError` 写日志并弹通知。
+- 大批量：Git 提交、暂存与回滚用 `--literal-pathspecs … --pathspec-from-file=- --pathspec-file-nul`，路径经标准输入一次传给 git；回滚先 `ls-tree HEAD` 一次区分已跟踪与新增，前者一次 `checkout HEAD`，后者一次 `rm --cached` 再删文件。`checkedPaths` 与 manager 提交校验对整批路径调用一次 `boundariesForPaths`（同次缓存），目录目标仍走完整嵌套检查。消息合同 `path[]`、`rollbackFiles` 与 manager／请求合同去掉 2000／10000 条上限。CVS 提交先一次核对清单与子仓边界，再按 8000 字符分批 `cvs -n -q update <文件…>` 取状态（代替逐文件 `cvs status`）、分批 `cvs remove` 本地已删文件、分批 `cvs commit`（说明不计入批长度）；每批是一次 CVS 提交，CVS 本身不是原子事务。CVS 回滚仍逐文件取 BASE 修订内容并留备份，只去掉条数上限。完成通知最多列三个备份名，其余写“另有 N 个”。台式机开发构建实测一次回滚 12000 个 CVS 文件约 23.7 分钟，期间 webview 请求超时提示、备份全部列为未受版本控制，均未处理。浏览态变更树新增 Ctrl+A 选中全部更改（不含传入与未受版本控制），工具栏「回滚」按选中文件工作，此前没有一次选中上万个文件的入口。
+- 预览编码：comparison resolver 两侧都调 `decodeAsWorkingFile`（与 0.6.13 修订内容同一函数：已打开文档的编码优先，否则 `workspace.decode(内容, {uri: 工作文件})`），宿主没有该 API 时回落严格 UTF-8。
+
+回归：`scripts/git-update-check.cjs`（空选择合并提交、合并／变基／更新失败摘要、12000 个文件暂存／提交／回滚并输出耗时）、`scripts/vcs-host-check.cjs` 第 9～12 节（CVS 回滚通知只列三个备份名、快照合并标记与空选择提交、Git／CVS 预览 MS932、10001 个文件经 manager 提交与回滚）、`scripts/message-security-check.cjs`（12000 条路径、强制推送确认一次）、`scripts/cvs-real-test.mjs`（2500 个文件分批提交含一个本地删除）、`scripts/cvs-nesting-check.mjs`（所选文件状态查询不做整树 update），以及 `commit-ui.test.tsx`「合并进行中」「破坏性操作只确认一次」「合并失败原因」「大批量回滚」。

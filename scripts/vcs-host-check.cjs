@@ -77,7 +77,7 @@ async function main() {
       git(divRepo, ["add", file]); git(divRepo, ["commit", "-q", "-m", "local"]);
     };
 
-    const watchers = [], warnings = [], commands = [], sent = [];
+    const watchers = [], warnings = [], infos = [], commands = [], sent = [];
     const decodes = [];
     const vscode = {
       Uri, EventEmitter: Emitter, Disposable: class { constructor(fn) { this.dispose = fn; } },
@@ -106,7 +106,7 @@ async function main() {
         onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: () => disposable(),
         withProgress: (_options, run) => run({}, { onCancellationRequested: () => disposable() }),
         showWarningMessage: async (message, ...labels) => { warnings.push(message); return labels.find((label) => typeof label === "string"); },
-        showInformationMessage: async () => undefined, showErrorMessage: async () => undefined, setStatusBarMessage: () => disposable(), activeTextEditor: undefined,
+        showInformationMessage: async (message) => { infos.push(message); return undefined; }, showErrorMessage: async () => undefined, setStatusBarMessage: () => disposable(), activeTextEditor: undefined,
       },
       commands: { executeCommand: async (...args) => { commands.push(args); } },
     };
@@ -120,6 +120,8 @@ async function main() {
     await cvs.run(["-d", cvsRoot, "init"], base);
     await fs.writeFile(path.join(seed, "legacy.txt"), MS932);
     await fs.writeFile(path.join(seed, "same.txt"), "base\n");
+    const rollbackNames = ["r1.txt", "r2.txt", "r3.txt", "r4.txt"];
+    for (const name of rollbackNames) await fs.writeFile(path.join(seed, name), "base\n");
     await cvs.run(["-d", cvsRoot, "import", "-m", "base", "demo", "vendor", "start"], seed);
     const wc = await core.checkout(cvs, cvsRoot, "demo", path.join(root, "legacy"));
 
@@ -205,7 +207,57 @@ async function main() {
     await manager.request("refreshRepositories");
     await assert.rejects(() => manager.request("commitRepositories", { message: "", files: [{ repositoryId: a.id, path: "plain.txt" }] }), /commit message/);
     await fs.writeFile(path.join(repo, "plain.txt"), "plain\n");
-    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true, divergedUpdate: true, mergeCommitDefaultMessage: true }));
+    // 9. 解决结果与本地相同：快照标记合并进行中、更改为空，不选文件也能提交完成合并。
+    await diverge("tracked.txt");
+    const mine = await fs.readFile(path.join(divRepo, "tracked.txt"));
+    await manager.request("updateProject", { repositoryId: div.id });
+    const divSnapshot = () => manager.state().snapshots.find((item) => item.repositoryId === div.id);
+    await until(() => divSnapshot().merging, "merge state was not published");
+    await fs.writeFile(path.join(divRepo, "tracked.txt"), mine);
+    git(divRepo, ["add", "tracked.txt"]);
+    await manager.request("refreshRepositories");
+    assert.deepEqual(divSnapshot().files, []);
+    assert.equal(divSnapshot().merging, true);
+    await assert.rejects(() => manager.request("commitRepositories", { message: "", files: [{ repositoryId: div.id, path: "tracked.txt" }] }), /cannot be committed/);
+    await manager.request("commitRepositories", { repositoryId: div.id, message: "", files: [] });
+    assert.equal(parents(), 3);
+    assert.match(git(divRepo, ["log", "-1", "--format=%B"]), /^Merge remote-tracking branch 'origin\/main'/);
+    await until(() => !divSnapshot().merging, "merge state was not cleared");
+    await assert.rejects(() => manager.request("commitRepositories", { repositoryId: a.id, message: "x", files: [] }), /Select changed files/);
+    // 10. 单击预览按工作文件的 IDE 编码解码（与编辑器同一来源），MS932 两侧都不乱码。
+    await fs.writeFile(path.join(repo, "legacy.txt"), Buffer.concat([MS932, Buffer.from("added\n")]));
+    await fs.writeFile(path.join(wc, "legacy.txt"), Buffer.concat([MS932, Buffer.from("added\n")]));
+    await manager.request("refreshRepositories");
+    for (const id of [a.id, c.id]) {
+      const preview = await manager.request("getWorkingFilePreview", { repositoryId: id, filePath: "legacy.txt", staged: false });
+      assert.equal(preview.leftContent.text, JAPANESE, "preview base side is not decoded with the working-file encoding");
+      assert.equal(preview.rightContent.text, `${JAPANESE}added\n`, "preview working side is not decoded with the working-file encoding");
+    }
+    await fs.writeFile(path.join(repo, "legacy.txt"), MS932);
+    await fs.writeFile(path.join(wc, "legacy.txt"), MS932);
+    // 11. 大批量：一次提交与回滚超过 10000 个文件（旧上限为提交 2000、回滚 10000）。
+    const bigNames = Array.from({ length: 10001 }, (_, index) => bigFile(index));
+    await Promise.all(bigNames.map((name) => fs.writeFile(path.join(bigRepo, name), "changed\n")));
+    await manager.request("refreshRepositories");
+    let started = Date.now();
+    await manager.request("commitRepositories", { message: "bulk", files: bigNames.map((name) => ({ repositoryId: big.id, path: name })) });
+    const bulkCommitMs = Date.now() - started;
+    assert.equal(git(bigRepo, ["show", "--name-only", "--format=", "HEAD"]).split("\n").length, 10001);
+    await Promise.all(bigNames.map((name) => fs.writeFile(path.join(bigRepo, name), "again\n")));
+    await manager.request("refreshRepositories");
+    started = Date.now();
+    await manager.request("rollbackFiles", { repositoryId: big.id, filePaths: bigNames });
+    const bulkRollbackMs = Date.now() - started;
+    assert.equal(git(bigRepo, ["status", "--porcelain"]), "");
+    console.log(JSON.stringify({ benchmark: "managerBulk", files: 10001, bulkCommitMs, bulkRollbackMs }));
+    // 12. CVS 回滚完成通知最多列三个备份名，其余只写数量。
+    for (const name of rollbackNames) await fs.writeFile(path.join(wc, name), "changed\n");
+    await manager.request("refreshRepositories");
+    await manager.request("rollbackFiles", { repositoryId: c.id, filePaths: rollbackNames });
+    const notice = infos.findLast((message) => message.startsWith("CVS rollback completed"));
+    assert.match(notice, /^CVS rollback completed\. Backups: r1\.txt\.jettortoise-backup-[^,]+, r2\.txt\.[^,]+, r3\.txt\.\S+ and 1 more$/);
+    for (const name of rollbackNames) assert.equal(await fs.readFile(path.join(wc, name), "utf8"), "base\n");
+    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true, divergedUpdate: true, mergeCommitDefaultMessage: true, mergeCommitWithoutFiles: true, previewEncoding: true, bulkCommitRollback: true, rollbackNoticeBounded: true }));
   } finally {
     manager?.dispose();
     delete global.__vcsHostVscode;

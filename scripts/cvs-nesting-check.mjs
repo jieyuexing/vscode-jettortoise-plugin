@@ -194,7 +194,8 @@ test("selected-file commits validate each selected status without a tree update"
       run: (...args) => { commands.push(args[0]); return f.process.run(...args); },
     });
     await adapter.commit(["ordinary.txt"], "selected fixture");
-    assert.deepEqual(commands.map(args => args[0]), ["status", "commit"]);
+    // 状态只查所选文件（-n update 带显式路径），不做整树 update。
+    assert.deepEqual(commands, [["-n", "-q", "update", "./ordinary.txt"], ["commit", "-m", "selected fixture", "./ordinary.txt"]]);
     await assert.rejects(adapter.commit(["ordinary.txt"], "reject unchanged"), { code: "commitState" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });

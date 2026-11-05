@@ -29,6 +29,8 @@ export interface RepositorySnapshot {
   error?: string;
   refreshing?: boolean;
   scanPaused?: boolean;
+  /** Git 合并进行中（有 MERGE_HEAD）；没有可选文件时也可直接提交完成合并。 */
+  merging?: boolean;
 }
 export const fileKey = (file: Pick<ChangeFile, "repositoryId" | "path">) =>
   JSON.stringify([file.repositoryId, file.path]);
@@ -67,6 +69,7 @@ export function groupChanges(
       error: snapshot?.error,
       refreshing: snapshot?.refreshing,
       scanPaused: snapshot?.scanPaused,
+      merging: snapshot?.merging,
       unversionedExpanded: false,
       incomingExpanded: false,
     };
@@ -174,6 +177,7 @@ export function snapshotDelta(
     previous.error === next.error &&
     previous.refreshing === next.refreshing &&
     previous.scanPaused === next.scanPaused &&
+    previous.merging === next.merging &&
     previous.branch === next.branch &&
     JSON.stringify(previous.nestedPaths) === JSON.stringify(next.nestedPaths)
   )

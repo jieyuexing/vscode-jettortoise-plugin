@@ -99,7 +99,7 @@ export function createGitRepositorySession(
         break;
       case "checkoutAndRebase":
         message = vscode.l10n.t(
-          'Checkout "{0}" and rebase onto "{1}"?',
+          'Checkout "{0}" and rebase it onto "{1}"? Its local commits will be rewritten.',
           typeof params.branchToCheckout === "string"
             ? params.branchToCheckout
             : "",
@@ -109,8 +109,22 @@ export function createGitRepositorySession(
         break;
       case "deleteBranch":
       case "deleteBranchPrompt":
-        message = vscode.l10n.t('Delete branch "{0}"?', branchName);
-        confirmLabel = vscode.l10n.t("Delete");
+        message =
+          params.isRemote === true
+            ? vscode.l10n.t(
+                'Delete remote branch "{0}"? It will be removed from the remote repository.',
+                branchName,
+              )
+            : params.force === true
+              ? vscode.l10n.t(
+                  'Branch "{0}" is not fully merged. Force delete it? Its unmerged commits will be lost.',
+                  branchName,
+                )
+              : vscode.l10n.t('Delete branch "{0}"?', branchName);
+        confirmLabel =
+          params.force === true
+            ? vscode.l10n.t("Force Delete")
+            : vscode.l10n.t("Delete");
         break;
       case "mergeBranch":
         message = vscode.l10n.t(
@@ -122,17 +136,27 @@ export function createGitRepositorySession(
         break;
       case "rebaseBranch":
         message = vscode.l10n.t(
-          'Rebase onto "{0}"?',
+          'Rebase "{0}" onto "{1}"? Its local commits will be rewritten.',
+          (await gitService.getCurrentBranch()) ?? "HEAD",
           typeof params.onto === "string" ? params.onto : "",
         );
         confirmLabel = vscode.l10n.t("Rebase");
         break;
       case "dropCommit":
         message = vscode.l10n.t(
-          'Drop commit "{0}"? This rewrites history.',
-          hash,
+          'Drop commit "{0}"? It is removed from history and its changes are kept as unstaged modifications.',
+          hash.slice(0, 8),
         );
         confirmLabel = vscode.l10n.t("Drop Commit");
+        break;
+      case "pushBranch":
+      case "executePush":
+        message = vscode.l10n.t(
+          'Force push "{0}" to "{1}"? Remote commits that are not in your branch will be overwritten.',
+          branchName,
+          `${typeof params.remote === "string" && params.remote ? params.remote : "origin"}/${typeof params.targetBranch === "string" && params.targetBranch ? params.targetBranch : branchName}`,
+        );
+        confirmLabel = vscode.l10n.t("Force Push");
         break;
       case "revertFileChanges":
         message = vscode.l10n.t(
@@ -150,8 +174,9 @@ export function createGitRepositorySession(
         break;
       case "resetToCommit":
         message = vscode.l10n.t(
-          'Hard reset to "{0}"? This cannot be undone.',
-          hash,
+          'Hard reset "{0}" to "{1}"? All uncommitted changes will be discarded. This cannot be undone.',
+          (await gitService.getCurrentBranch()) ?? "HEAD",
+          hash.slice(0, 8),
         );
         confirmLabel = vscode.l10n.t("Reset");
         break;
@@ -901,6 +926,7 @@ export function createGitRepositorySession(
         statusMap.set(file.path, file.status);
       }
 
+      const tracked: string[] = [];
       for (const filePath of filePaths) {
         const status = statusMap.get(filePath) ?? "modified";
         if (status === "added" || status === "untracked") {
@@ -914,11 +940,10 @@ export function createGitRepositorySession(
             await vscode.workspace.fs.delete(absPath);
           }
           // If deleteLocalCopies is false, skip untracked/added files
-        } else {
-          // Revert tracked file changes via git checkout
-          await gitService.rollbackFile(filePath);
-        }
+        } else tracked.push(filePath);
       }
+      // 已跟踪文件一次回滚，不逐个启动 git。
+      await gitService.rollbackFiles(tracked);
 
       messageRouter.broadcastEvent("commitStateChanged", {});
       rollbackPanel.close();
@@ -1221,9 +1246,7 @@ export function createGitRepositorySession(
     if (!gitService) return NOT_GIT_REPO;
     const filePaths = params.filePaths as string[];
     if (!filePaths || filePaths.length === 0) return { success: false };
-    for (const filePath of filePaths) {
-      await gitService.rollbackFile(filePath);
-    }
+    await gitService.rollbackFiles(filePaths);
     messageRouter.broadcastEvent("commitStateChanged", {});
     return { success: true };
   });

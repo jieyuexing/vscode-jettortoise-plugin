@@ -7,7 +7,10 @@ import {
   canCommit,
   fileKey,
 } from "../../shared/models/changes";
-import { useCommitStore } from "../../shared/store/commit-store";
+import {
+  mergingRepository,
+  useCommitStore,
+} from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 import { ChangeTree, changeAction } from "./ChangeTree";
 import { CommitMessageArea } from "./CommitMessageArea";
@@ -25,6 +28,7 @@ export function CommitTab() {
     unsyncedCvsCount = 0,
   } = useRepositoryStore();
   const state = useCommitStore();
+  const merging = useRepositoryStore(mergingRepository) !== undefined;
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [preview, setPreview] = useState(true);
@@ -125,6 +129,7 @@ export function CommitTab() {
             hasGit={hasGit}
             gitSelected={current?.kind === "git"}
             hasChanges={state.changes.some(canCommit)}
+            merging={merging}
             previewVisible={preview}
             onTogglePreview={() => setPreview((value) => !value)}
             onRefresh={() =>

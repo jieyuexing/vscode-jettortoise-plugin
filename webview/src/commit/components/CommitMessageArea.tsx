@@ -1,12 +1,16 @@
 import { useEffect, useRef } from "react";
 import { t } from "../../shared/i18n";
 import { canCommit, fileKey } from "../../shared/models/changes";
-import { useCommitStore } from "../../shared/store/commit-store";
+import {
+  mergingRepository,
+  useCommitStore,
+} from "../../shared/store/commit-store";
 import { useRepositoryStore } from "../../shared/store/repository-store";
 
 export function CommitMessageArea() {
   const state = useCommitStore();
   const { repositories } = useRepositoryStore();
+  const merging = useRepositoryStore(mergingRepository) !== undefined;
   const input = useRef<HTMLTextAreaElement>(null);
   const selected = state.changes.filter(
     (file) => canCommit(file) && state.selectedFiles.has(fileKey(file)),
@@ -23,8 +27,8 @@ export function CommitMessageArea() {
     if (!singleGit && state.amend) state.setAmend(false);
   }, [singleGit, state.amend, state.setAmend]);
   const disabled =
-    !selected.length ||
-    (!state.commitMessage.trim() && !state.merging) ||
+    (!selected.length && !merging) ||
+    (!state.commitMessage.trim() && !merging) ||
     state.loading;
   return (
     <div className="changes-commit">
@@ -32,7 +36,7 @@ export function CommitMessageArea() {
         ref={input}
         aria-label={t("Commit Message")}
         placeholder={
-          state.merging
+          merging
             ? t("Leave empty to use the default merge message")
             : t("Commit message (Ctrl+Enter to commit)")
         }

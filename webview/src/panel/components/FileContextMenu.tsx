@@ -263,14 +263,6 @@ export function FileContextMenu({ x, y, file, onClose }: FileContextMenuProps) {
   const handleRevertFileChanges = async () => {
     onClose();
     if (!selectedCommitHash) return;
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t(
-        "Revert changes to '{0}' from this commit?",
-        filePath.split("/").pop(),
-      ),
-      confirmLabel: t("Revert"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("revertFileChanges", {
         hash: selectedCommitHash,
@@ -278,28 +270,20 @@ export function FileContextMenu({ x, y, file, onClose }: FileContextMenuProps) {
         status: file.status,
       });
     } catch (err) {
-      console.error("Revert file changes failed:", err);
+      reportError("Revert file changes", err);
     }
   };
 
   const handleCherryPickFileChanges = async () => {
     onClose();
     if (!selectedCommitHash) return;
-    const result = (await bridge.request("showConfirmMessage", {
-      message: t(
-        "Apply changes to '{0}' from this commit to working tree?",
-        filePath.split("/").pop(),
-      ),
-      confirmLabel: t("Apply"),
-    })) as { confirmed: boolean };
-    if (!result.confirmed) return;
     try {
       await bridgeWithProgress("cherryPickFileChanges", {
         hash: selectedCommitHash,
         filePath,
       });
     } catch (err) {
-      console.error("Cherry-pick file changes failed:", err);
+      reportError("Cherry-pick file changes", err);
     }
   };
 

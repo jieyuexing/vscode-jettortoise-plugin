@@ -21,7 +21,7 @@ async function bundleService(projectRoot, temporary) {
   const entry = path.join(temporary, "entry.ts");
   const output = path.join(temporary, "service.cjs");
   const vscode = path.join(temporary, "vscode.cjs");
-  await fs.writeFile(vscode, "exports.l10n = { t: (value) => value };\n");
+  await fs.writeFile(vscode, "exports.l10n = { t: (value, ...args) => value.replace(/\\{(\\d+)\\}/g, (_, index) => String(args[index])) };\n");
   await fs.writeFile(entry, `export { GitService } from ${JSON.stringify(path.join(projectRoot, "src/git/gitService.ts"))};\n`);
   await esbuild.build({
     entryPoints: [entry], bundle: true, platform: "node", format: "cjs", outfile: output,
@@ -221,6 +221,57 @@ async function main() {
       await fs.writeFile(path.join(f.target, "tracked.txt"), "plain\n");
       await assert.rejects(() => new GitService(f.target).commitPaths(" ", ["tracked.txt"]));
       checks += 1;
+    });
+    // 解决结果与本地相同：暂存后没有可选文件，提交区不选文件也能完成合并。
+    await withFixture(temporary, async (f) => {
+      const service = await conflicted(f, ["merge", "origin/main"]);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local\n");
+      await service.stageFile("tracked.txt");
+      assert.equal(git(f.target, ["status", "--porcelain"]), "");
+      assert.equal(await service.mergeInProgress(), true);
+      await service.commitPaths("", []);
+      assert.equal(git(f.target, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ").length, 3);
+      assert.equal(await service.mergeInProgress(), false);
+      await assert.rejects(() => service.commitPaths("", []), /select changed files/);
+      checks += 4;
+    });
+    // 合并／变基／更新失败：报冲突文件数与首个文件，或 git 的原因行，不带“Command failed”原文。
+    await withFixture(temporary, async (f) => {
+      await addRemoteCommit(f);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "local\n");
+      git(f.target, ["commit", "-am", "local"]); git(f.target, ["fetch"]);
+      await assert.rejects(() => new GitService(f.target).merge("origin/main"), { message: "Merge failed: 1 file(s) have conflicts, first: tracked.txt" });
+      git(f.target, ["merge", "--abort"]);
+      await fs.writeFile(path.join(f.target, "tracked.txt"), "dirty\n");
+      await assert.rejects(() => new GitService(f.target).rebase("origin/main"), (error) => /^Rebase failed: cannot rebase: You have unstaged changes\.$/.test(error.message));
+      git(f.target, ["reset", "--hard", "origin/main"]);
+      git(f.target, ["remote", "set-url", "origin", path.join(temporary, "missing.git")]);
+      await assert.rejects(() => new GitService(f.target).updateFastForward(), (error) => /^Update Project failed: '.*missing\.git' does not appear to be a git repository$/.test(error.message));
+      checks += 3;
+    });
+    // 大批量：12000 个路径经标准输入一次交给 git，提交与回滚都不受命令行长度限制。
+    await withFixture(temporary, async (f) => {
+      const names = Array.from({ length: 12000 }, (_, index) => `bulk/dir${index % 40}/F${String(index).padStart(5, "0")}.txt`);
+      for (let index = 0; index < 40; index++) await fs.mkdir(path.join(f.target, `bulk/dir${index}`), { recursive: true });
+      await Promise.all(names.map((name) => fs.writeFile(path.join(f.target, name), "v1\n")));
+      const service = new GitService(f.target);
+      let started = Date.now();
+      await service.stageFiles(names);
+      const stageMs = Date.now() - started;
+      started = Date.now();
+      await service.commitPaths("bulk add", names);
+      const commitMs = Date.now() - started;
+      assert.equal(git(f.target, ["show", "--name-only", "--format=", "HEAD"]).trim().split("\n").length, 12000);
+      await Promise.all(names.map((name) => fs.writeFile(path.join(f.target, name), "v2\n")));
+      await fs.writeFile(path.join(f.target, "bulk/new.txt"), "new\n");
+      git(f.target, ["add", "bulk/new.txt"]);
+      started = Date.now();
+      await service.rollbackFiles([...names, "bulk/new.txt"]);
+      const rollbackMs = Date.now() - started;
+      assert.equal(git(f.target, ["status", "--porcelain"]), "");
+      await assert.rejects(fs.access(path.join(f.target, "bulk/new.txt")));
+      console.log(JSON.stringify({ benchmark: "gitBulk", files: 12000, stageMs, commitMs, rollbackMs }));
+      checks += 3;
     });
     console.log(JSON.stringify({ checks, command: "pull --ff-only --no-rebase --no-autostash --no-recurse-submodules" }));
   } finally {

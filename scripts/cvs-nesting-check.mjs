@@ -185,6 +185,29 @@ test("inventory accepts 20000 files and rejects the next record explicitly", asy
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
+// pserver 下服务器对客户端未忽略的名字再按内置表判断：目录 .cvsignore 的 ! 清不掉，CVSIGNORE 的 ! 才行（vcs-sim pserver 与 cvs -n update 对过）。
+test("pserver unversioned files keep the server built-in ignore list unless a global ! inhibits it", async () => {
+  const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-pserver-ignore-")), saved = { HOME: process.env.HOME, CVSIGNORE: process.env.CVSIGNORE };
+  try {
+    process.env.HOME = base; delete process.env.CVSIGNORE;
+    const wc = path.join(base, "wc");
+    await metadata(wc, "demo");
+    for (const name of ["y.o", "keep.txt", "a.tmp"]) await fs.writeFile(path.join(wc, name), "1\n");
+    await fs.writeFile(path.join(wc, ".cvsignore"), "!\n*.tmp\n");
+    const unknown = async (names) => (await new CvsAdapter(wc).localStatus(names)).filter((item) => item.state === "Unknown").map((item) => item.newPath).sort();
+    const root = async (value) => fs.writeFile(path.join(wc, "CVS", "Root"), `${value}\n`);
+    assert.deepEqual(await unknown(), [".cvsignore", "keep.txt", "y.o"], ":local: directory ! clears the built-in list");
+    await root(":pserver:dev@127.0.0.1:2401/repo");
+    assert.deepEqual(await unknown(), [".cvsignore", "keep.txt"], "pserver lists a name the server ignores");
+    assert.deepEqual(await unknown(["y.o", "keep.txt", "a.tmp"]), ["keep.txt"], "pserver per-file refresh lists a name the server ignores");
+    process.env.CVSIGNORE = "!";
+    assert.deepEqual(await unknown(), [".cvsignore", "keep.txt", "y.o"], "global ! did not inhibit the server list");
+  } finally {
+    for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    await fs.rm(base, { recursive: true, force: true });
+  }
+});
+
 test("selected-file commits validate each selected status without a tree update", async () => {
   const f = await fixture();
   try {

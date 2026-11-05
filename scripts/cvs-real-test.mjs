@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -147,6 +149,48 @@ test("temporary local CVS: local unversioned files follow the built-in CVS ignor
     assert.deepEqual(unknown(await f.cvs.localStatus()), expected, "local inventory lists CVS-ignored names");
     assert.deepEqual(unknown(await f.cvs.localStatus(["x.o", "keep.txt"])), ["keep.txt"]);
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+// 用户层规则按 CVS 客户端顺序叠加：内置表 → ~/.cvsignore → CVSIGNORE → 本目录 .cvsignore，"!" 清空此前规则；改规则后缓存失效。
+test("temporary local CVS: local unversioned files follow ~/.cvsignore, CVSIGNORE and per-directory .cvsignore like cvs -n update", async () => {
+  const f = await fixture(), saved = { HOME: process.env.HOME, CVSIGNORE: process.env.CVSIGNORE };
+  try {
+    const home = path.join(f.base, "home"); await fs.mkdir(home); process.env.HOME = home; delete process.env.CVSIGNORE;
+    for (const directory of ["sub", "sub/deep"]) { await fs.mkdir(path.join(f.wc, directory)); await f.process.run(["-Q", "add", directory], f.wc); }
+    const names = ["x.log", "y.o", "keep.txt", "build1", "buildA", "ax.tmp", "abx.tmp", "#h", ".#bk", "z.txt"], files = [];
+    for (const directory of ["", "sub/", "sub/deep/"]) {
+      for (const name of names) { await fs.writeFile(path.join(f.wc, directory + name), "1\n"); files.push(directory + name); }
+      await fs.mkdir(path.join(f.wc, directory + ".gradle")); await fs.writeFile(path.join(f.wc, directory + ".gradle", "f"), "1\n");
+    }
+    await fs.writeFile(path.join(f.wc, ".cvsignore"), ".gradle *.log\nbuild[0-9] ?x.tmp\n"); await fs.writeFile(path.join(f.wc, "sub", ".cvsignore"), "!\nkeep*\n");
+    files.push(".cvsignore", "sub/.cvsignore");
+    const unknown = (items) => items.filter((item) => item.state === "Unknown").map((item) => item.newPath.replace(/\/$/, "")).sort();
+    const cvsUpdate = async () => {
+      const { stdout } = await promisify(execFile)(f.process.executable, ["-f", "-n", "-q", "update"], { cwd: f.wc, env: { ...process.env, LC_ALL: "C" } });
+      return stdout.split("\n").filter((line) => line.startsWith("? ")).map((line) => line.slice(2)).sort();
+    };
+    const compare = async (label) => {
+      const expected = await cvsUpdate();
+      assert.deepEqual(unknown(await f.cvs.localStatus()), expected, `${label}: local inventory differs from cvs -n update`);
+      assert.deepEqual(unknown(await f.cvs.localStatus(files)), expected.filter((name) => !name.endsWith(".gradle")), `${label}: per-file refresh differs from cvs -n update`);
+      assert.deepEqual(unknown(await f.cvs.status()), expected, `${label}: network refresh differs from cvs -n update`);
+      return expected;
+    };
+    const plain = await compare("directory rules");
+    for (const name of ["abx.tmp", "buildA", "keep.txt", "sub/#h", "sub/.gradle", "sub/y.o", "sub/deep/.gradle", "sub/deep/keep.txt", "sub/deep/x.log"]) assert.ok(plain.includes(name), `fixture lost ${name}`);
+    for (const name of [".gradle", "x.log", "build1", "ax.tmp", "y.o", "sub/keep.txt", "sub/deep/y.o"]) assert.ok(!plain.includes(name), `fixture lists ${name}`);
+    await fs.writeFile(path.join(home, ".cvsignore"), "z.txt\n");
+    assert.ok(!(await compare("home rules")).includes("sub/deep/z.txt"));
+    process.env.CVSIGNORE = "! ab*";
+    const bang = await compare("CVSIGNORE with !");
+    assert.ok(bang.includes("z.txt") && bang.includes("y.o") && !bang.includes("abx.tmp"));
+    await fs.writeFile(path.join(f.wc, "sub", ".cvsignore"), "!\nkeep* z*\n");
+    assert.ok(!(await compare("edited .cvsignore")).includes("sub/z.txt"));
+    await fs.rm(path.join(f.wc, ".cvsignore"));
+    assert.ok((await compare("removed .cvsignore")).includes(".gradle"));
+  } finally {
+    for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    await fs.rm(f.base, { recursive: true, force: true });
+  }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));

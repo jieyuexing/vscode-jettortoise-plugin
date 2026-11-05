@@ -234,7 +234,19 @@ M3 安装版 0.6.15 复测（ETECH 环节 7）留下六处：解决结果与本�
 
 - CVS 回滚：`CvsAdapter.rollback(names, signal, progress)` 先一次核对子仓边界与清单（新增、已删除登记的文件没有可恢复修订，全部校验通过才写），再用提交同一个 8000 字符 `batches()` 分批 `cvs -q update -C ./<文件…>`。本地修改由 CVS 改名为同目录 `.#<文件>.<修订>`，原 `.jettortoise-backup-*` 与逐文件 `log`／`update -p` 删除；返回实际存在的备份相对路径，完成通知仍最多列三个。`update -C` 取分支上的资源库副本：服务器已有新修订的文件同时更新到新修订（本机 CVS 1.12.13 实测），确认框写明；`-r BASE` 会写入粘性标记 `TBASE`，因此不用。本地被删的已登记文件同样恢复。
 - 不阻塞请求：`CvsSession.rollback` 先在队列外模态确认，返回 `{ done }`；manager 不等待 `done`，面板请求立即返回，回滚在队列内重新核验工作区、信任与未保存编辑器后进入可取消的通知进度，每批报告「N / 总数 个文件」，失败经错误通知显示，结束后刷新并触发修订失效。`operate` 的动作回调因此多收一个 `progress`。
-- 忽略表：`cvsIgnored` 使用 CVS 1.12 内置忽略表（ignore.c 的 `ign_default`），本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；与 `cvs -n update` 的 `?` 行逐项对过。不读 `.cvsignore`、`~/.cvsignore`、`CVSIGNORE` 与 `CVSROOT/cvsignore`，这些规则只在网络刷新的 `?` 行里生效。
+- 忽略表：`cvsIgnored` 使用 CVS 1.12 内置忽略表（ignore.c 的 `ign_default`），本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；与 `cvs -n update` 的 `?` 行逐项对过。本版不读 `.cvsignore` 等用户层规则；0.6.19 起读取，见「CVS 忽略规则」。
 - 修改已推送的上次提交：`GitService.amendedRemoteCommit` 只在分支 reflog 最近一条为 `commit (amend)` 且 `<分支>@{1}` 正是远端跟踪分支时返回被替换的提交；没有 reflog 或远端另有提交都不算。`getAheadCommits` 带回该值，推送面板目标分支与本地同名时主按钮改为「强制推送」，发 `force: true` 走原 `executePush` 宿主确认一次；确认文字写明被替换的远端提交，并说明远端在上次获取后有变化时 `--force-with-lease` 会拒绝。确认被取消时面板保持打开、不再提示“已推送”。旧 `commitAndPush` 消息只在同一条件下强制推送并先确认，拒绝则只保留本地提交；`GitService.commitAndPush` 删除。普通推送被拒仍沿用原“推送被拒绝”对话框。
 
 回归：`scripts/cvs-real-test.mjs`（2499 个文件分批 `update -C`、进度、备份不列出、忽略表与 `cvs -n update` 一致）、`scripts/vcs-host-check.cjs` 第 12、13 节（`openRollbackPanel` 不等回滚完成即返回、`.#` 备份名通知；修改已推送提交后 `getAheadCommits` 报告、强制推送确认文字、旧 `commitAndPush` 拒绝后远端不变、普通提交并推送不确认）、`scripts/restart-host-check.cjs`（后台回滚后的修订失效与 `.#` 备份），以及 `commit-ui.test.tsx`「修改上次提交后推送」。真实窗口的耗时与截图写在本轮 RECORD；Windows CVSNT、pserver 下的大批量与公司仓未覆盖。
+
+## CVS 忽略规则（2026-11-05，0.6.19）
+
+M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n update` 不报它，本地更改的未受控列表却列出 `.gradle`。0.6.18 的本地判定只用内置表。
+
+- 规则：`src/cvs/core.mjs` 按 CVS 1.12 客户端（ignore.c 的 `ign_setup`）顺序叠加内置表 → `~/.cvsignore`（家目录先取 `HOME`）→ 环境变量 `CVSIGNORE` → 各目录自己的 `.cvsignore`；目录规则只作用于该目录下的名字，不继承到子目录。规则按空白切分；单独的 `!` 清空此前规则（仍保留 `CVS`），目录里的 `!` 只影响该目录。模式按无标志 `fnmatch`：`*`、`?` 也匹配开头的点，方括号支持 `!`／`^` 取反与范围，反斜杠转义；无效范围不匹配任何名字，POSIX 字符类（`[[:alpha:]]`）不支持。本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；未管理目录按其所在目录的规则判断。
+- pserver：客户端未忽略的名字再由服务器按它自己的表（内置表与 `CVSROOT/cvsignore`）判断，目录 `.cvsignore` 里的 `!` 清不掉服务器的内置表；只有 `~/.cvsignore` 或 `CVSIGNORE` 里的 `!` 让服务器也不忽略。因此 `:pserver:` 根在目录有 `.cvsignore` 且全局没有 `!` 时，末尾再并上内置表（vcs-sim pserver 实测）。
+- 不读服务器端 `CVSROOT/cvsignore`：pserver 下要连网，`:local:` 下为与 pserver 一致也不读。它只在网络刷新的结果（`?` 行）里生效，之后的本地刷新仍会列出这些文件。
+- 缓存：规则文件按路径缓存模式与编译后的匹配器，mtime、ctime 或大小变化即重读，删除即失效；`~/.cvsignore` 与 `CVSIGNORE` 每次清单读一次。清单只在目录列表里有 `.cvsignore` 时才读它，没有时直接用全局匹配器。读不到的规则文件按不存在处理（CVS 只警告后继续）。
+- 环境：`CvsProcess` 清除 `CVS*`／`RCS*` 环境变量时保留 `CVSIGNORE`，网络刷新与本地清单用同一套规则。
+
+回归：`scripts/cvs-real-test.mjs`（三层目录、`!`、`~/.cvsignore`、`CVSIGNORE`、改写与删除 `.cvsignore`，本地清单、按文件刷新、网络刷新都与同一时刻 `cvs -f -n -q update` 的 `?` 行逐项比较）、`scripts/cvs-nesting-check.mjs`（`:pserver:` 根目录 `!` 不清服务器内置表、全局 `!` 才清）。vcs-sim（`:local:` 与 pserver）上的逐场景对比与 6 万文件清单改前改后耗时写在本轮 RECORD。Windows CVSNT 的家目录、大小写与服务器端忽略语义未覆盖。

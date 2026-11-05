@@ -1,6 +1,7 @@
 // biome-ignore-all lint/suspicious/noControlCharactersInRegex: CVS protocol validation must reject C0 bytes.
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   assertOwnedPath,
@@ -13,17 +14,123 @@ import {
 } from "../repositories/boundaries.cjs";
 import { runNetwork } from "../repositories/network.cjs";
 
-// CVS 1.12 内置忽略表（ignore.c 的 ign_default），与 cvs -n update 不报 ? 的名字一致；不读 .cvsignore 等用户层规则。
-const IGNORED_NAME = new RegExp(
-  `^(?:${". .. core RCSLOG tags TAGS RCS SCCS .make.state .nse_depinfo #* .#* cvslog.* ,* CVS CVS.adm .del-* *.a *.olb *.o *.obj *.so *.Z *~ *.old *.elc *.ln *.bak *.BAK *.orig *.rej *.exe _$* *$"
-    .split(" ")
-    .map((pattern) =>
-      pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*"),
-    )
-    .join("|")})$`,
-);
-export function cvsIgnored(name) {
-  return IGNORED_NAME.test(name);
+// CVS 1.12 内置忽略表（ignore.c 的 ign_default）。
+const DEFAULT_IGNORE =
+  ". .. core RCSLOG tags TAGS RCS SCCS .make.state .nse_depinfo #* .#* cvslog.* ,* CVS CVS.adm .del-* *.a *.olb *.o *.obj *.so *.Z *~ *.old *.elc *.ln *.bak *.BAK *.orig *.rej *.exe _$* *$".split(
+    " ",
+  );
+// 规则文件路径 → 模式与已编译匹配器；mtime、ctime 或大小变化即重读。
+const ignoreFiles = new Map();
+let globalIgnoreCache;
+// fnmatch(3) 无标志语义：* 与 ? 也匹配开头的点；方括号支持 ! 取反与范围；反斜杠转义下一个字符。
+function globSource(pattern) {
+  const literal = (char) => char.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+  let source = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === "*") source += "[^]*";
+    else if (char === "?") source += "[^]";
+    else if (char === "\\" && i + 1 < pattern.length)
+      source += literal(pattern[++i]);
+    else if (char === "[") {
+      let end = i + 1;
+      if (pattern[end] === "!" || pattern[end] === "^") end++;
+      if (pattern[end] === "]") end++;
+      while (end < pattern.length && pattern[end] !== "]")
+        end += pattern[end] === "\\" ? 2 : 1;
+      if (end >= pattern.length) {
+        source += "\\[";
+        continue;
+      }
+      let body = "",
+        j = i + 1;
+      if (pattern[j] === "!" || pattern[j] === "^") {
+        body = "^";
+        j++;
+      }
+      for (; j < end; j++)
+        body +=
+          pattern[j] === "\\"
+            ? literal(pattern[++j])
+            : pattern[j] === "-"
+              ? "-"
+              : literal(pattern[j]);
+      source += `[${body}]`;
+      i = end;
+    } else source += literal(char);
+  }
+  return source;
+}
+// 按顺序叠加；单独的 ! 清空此前规则，CVS 仍保留 CVS 目录本身。无效范围（如 [z-a]）不匹配任何名字。
+function ignoreMatcher(patterns) {
+  let active = [];
+  for (const pattern of patterns)
+    if (pattern === "!") active = ["CVS"];
+    else active.push(pattern);
+  const sources = active.map(globSource).filter((source) => {
+    try {
+      RegExp(source);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  const expression = new RegExp(`^(?:${sources.join("|")})$`);
+  return (name) => expression.test(name);
+}
+// 读不到的规则文件按不存在处理，与 CVS 只警告后继续一致。
+async function ignoreFile(file) {
+  const stat = await fs.stat(file).catch(() => undefined);
+  if (!stat?.isFile()) {
+    ignoreFiles.delete(file);
+    return undefined;
+  }
+  const key = `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+  let cached = ignoreFiles.get(file);
+  if (cached?.key !== key) {
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    cached = { key, patterns: text.split(/\s+/).filter(Boolean) };
+    ignoreFiles.set(file, cached);
+  }
+  return cached;
+}
+// CVS 客户端顺序：内置表 → ~/.cvsignore → CVSIGNORE；家目录与 CVS 1.12 相同先取 HOME。
+// 服务器端 CVSROOT/cvsignore 要连网，本地清单不读。
+async function globalIgnore() {
+  const home = await ignoreFile(
+    path.join(process.env.HOME || os.homedir(), ".cvsignore"),
+  );
+  const user = [
+    ...(home?.patterns ?? []),
+    ...(process.env.CVSIGNORE ?? "").split(/\s+/).filter(Boolean),
+  ];
+  const patterns = [...DEFAULT_IGNORE, ...user];
+  const key = patterns.join("\n");
+  if (globalIgnoreCache?.key !== key)
+    globalIgnoreCache = {
+      key,
+      patterns,
+      inhibit: user.includes("!"),
+      test: ignoreMatcher(patterns),
+    };
+  return globalIgnoreCache;
+}
+// 目录自己的 .cvsignore 只作用于该目录下的名字，不继承到子目录。
+// pserver 下客户端未忽略的名字再由服务器按内置表判断，目录里的 ! 清不掉它；只有 ~/.cvsignore 或 CVSIGNORE 的 ! 让服务器也不忽略。
+async function directoryIgnore(global, directory, remote, present = true) {
+  const local =
+    present && (await ignoreFile(path.join(directory, ".cvsignore")));
+  if (!local) return global.test;
+  const server = remote && !global.inhibit;
+  if (local.global !== global.key || local.server !== server) {
+    Object.assign(local, { global: global.key, server });
+    local.test = ignoreMatcher([
+      ...global.patterns,
+      ...local.patterns,
+      ...(server ? DEFAULT_IGNORE : []),
+    ]);
+  }
+  return local.test;
 }
 export class CvsError extends Error {
   constructor(code) {
@@ -150,8 +257,9 @@ export class CvsProcess {
     if (signal?.aborted) return Promise.reject(new CvsError("cancelled"));
     return new Promise((resolve, reject) => {
       const env = { ...process.env, LC_ALL: "C", LANG: "C" };
+      // CVSIGNORE 保留，网络刷新的 ? 行与本地清单用同一套忽略规则。
       for (const key of Object.keys(env))
-        if (/^(CVS|RCS)/.test(key)) delete env[key];
+        if (/^(CVS|RCS)/.test(key) && key !== "CVSIGNORE") delete env[key];
       const child = spawn(this.executable, ["-f", ...args], {
         cwd,
         env,
@@ -381,14 +489,21 @@ export class CvsAdapter {
     });
     this.lastNestedBoundaries = tree.nested;
     const files = [],
-      unknown = [];
+      unknown = [],
+      global = await globalIgnore();
     for (const { directory, entries, cvs } of tree.directories) {
       if (!cvs) {
         const relative = path
           .relative(this.root, directory)
           .split(path.sep)
           .join("/");
-        if (relative && !cvsIgnored(path.basename(directory)))
+        // 未管理目录由所在目录的规则判断。
+        const test = await directoryIgnore(
+          global,
+          path.dirname(directory),
+          this.remote(),
+        );
+        if (relative && !test(path.basename(directory)))
           unknown.push(relativeFile(relative) + "/");
         continue;
       }
@@ -419,15 +534,24 @@ export class CvsAdapter {
         withFileTypes: true,
       }))
         if (entry.isSymbolicLink()) fail("symlink");
+      // 按 CVS 忽略规则跳过 .#*（更新冲突与回滚留下的备份）、*.o、.cvsignore 所列等；只有目录里有 .cvsignore 才读它。
+      const test = await directoryIgnore(
+        global,
+        directory,
+        this.remote(),
+        entries.some((entry) => entry.name === ".cvsignore"),
+      );
       for (const entry of entries) {
         if (entry.isSymbolicLink()) fail("symlink");
-        // 按 CVS 内置忽略表跳过 .#*（更新冲突与回滚留下的备份）、*.o、*~ 等。
-        if (entry.isFile() && !names.has(entry.name) && !cvsIgnored(entry.name))
+        if (entry.isFile() && !names.has(entry.name) && !test(entry.name))
           unknown.push(relativeFile(prefix + entry.name));
       }
     }
     files.sort((a, b) => a.newPath.localeCompare(b.newPath));
     return { files, unknown };
+  }
+  remote() {
+    return this.repositoryRoot?.startsWith(":pserver:") ?? false;
   }
   async entriesAt(directory) {
     const admin = path.join(directory, "CVS");
@@ -441,7 +565,8 @@ export class CvsAdapter {
   }
   async localStatus(names) {
     if (names) {
-      const result = [];
+      const result = [],
+        global = await globalIgnore();
       for (const name of names) {
         relativeFile(name);
         await contained(this.root, name);
@@ -473,7 +598,12 @@ export class CvsAdapter {
             .catch((error) => {
               if (error.code !== "ENOENT") throw error;
             });
-          if (stat?.isFile() && !cvsIgnored(path.basename(name)))
+          if (
+            stat?.isFile() &&
+            !(await directoryIgnore(global, directory, this.remote()))(
+              path.basename(name),
+            )
+          )
             result.push({
               newPath: name,
               entryRevision: "",

@@ -35,3 +35,4 @@ macOS 上 `TMPDIR` 要用真实路径（不经 `/var` 这类软链），否则�
 
 - 2026-10-15 `0.5.0`：Marketplace 首次上架（`main`），GitHub Release `v0.5.0` 同一 VSIX，SHA-256 `0be67fdd9f1e390f67a063c1d2e83c818faccb1ac274da6a2b41c25c6d63cd23`。
 - 2026-10-30 起 `0.6.x`：`restart` 的 GitHub 预发布，各版本资产见 Releases 页。
+- 2026-11-05 提交身份改写：11-04 的 4 个提交误用公司身份，按用户决定改为仓内身份并强推 `restart`，v0.6.10～v0.6.19 重打到改写后的对应提交（tree 不变，Release 与资产不变）。改写前的哈希与前态在总仓 `.state/records/vscode-jettortoise-plugin/recovery/r2c01-rewrite-20261105/`（仅 M3）。

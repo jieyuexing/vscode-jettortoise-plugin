@@ -192,6 +192,59 @@ test("temporary local CVS: local unversioned files follow ~/.cvsignore, CVSIGNOR
     await fs.rm(f.base, { recursive: true, force: true });
   }
 });
+// C locale 字符类同时核对独立预期与真实 CVS；同一实例逐次改规则，覆盖缓存失效。
+test("temporary local CVS: POSIX character classes and combinations follow C locale fnmatch", async () => {
+  const f = await fixture(), saved = { HOME: process.env.HOME, CVSIGNORE: process.env.CVSIGNORE };
+  try {
+    const home = path.join(f.base, "home"); await fs.mkdir(home); process.env.HOME = home; delete process.env.CVSIGNORE;
+    const chars = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(i + 32)).filter(char => char !== "/" && char !== "\\"), "é", "中"];
+    const names = chars.map(char => `probe-${char}.case`);
+    for (const name of names) await fs.writeFile(path.join(f.wc, name), "1\n");
+    const alpha = char => /[A-Za-z]/.test(char), digit = char => /[0-9]/.test(char);
+    const classes = {
+      alpha, digit, alnum: char => alpha(char) || digit(char), upper: char => /[A-Z]/.test(char), lower: char => /[a-z]/.test(char),
+      space: char => " \t\n\r\f\v".includes(char), blank: char => " \t".includes(char),
+      punct: char => char.charCodeAt(0) >= 33 && char.charCodeAt(0) <= 126 && !alpha(char) && !digit(char),
+      xdigit: char => /[0-9A-Fa-f]/.test(char), cntrl: char => char.charCodeAt(0) <= 31 || char.charCodeAt(0) === 127,
+      print: char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) <= 126,
+      graph: char => char.charCodeAt(0) >= 33 && char.charCodeAt(0) <= 126,
+    };
+    const cases = Object.entries(classes).map(([name, matches]) => [`[[:${name}:]]`, matches]);
+    cases.push(
+      ["[![:digit:]]", char => !digit(char)], ["[^[:alpha:]]", char => !alpha(char)],
+      ["[[:alpha:]_]", char => alpha(char) || char === "_"], ["[a-c[:digit:]]", char => /[a-c0-9]/.test(char)],
+      ["[[:upper:][:digit:]]", char => /[A-Z0-9]/.test(char)], ["[[:punct:]x]", char => classes.punct(char) || char === "x"],
+      ["[[:alpha:]\\]]", char => alpha(char) || char === "]"], ["[[:digit:]\\-]", char => digit(char) || char === "-"],
+      ["[][:digit:]]", char => digit(char) || char === "]"],
+      ["[[:unknown:]]", () => false], ["[![:unknown:]]", () => false],
+      ["[a[:unknown:]b]", char => char === "a"], ["[[:unknown:]a]", () => false],
+      ["[!a[:unknown:]b]", () => false], ["[[:alpha:][:unknown:]]", alpha],
+    );
+    const unknown = items => items.filter(item => item.state === "Unknown").map(item => item.newPath).sort();
+    for (const [bracket, matches] of cases) {
+      const pattern = `probe-${bracket}${bracket.startsWith("[!") || bracket.startsWith("[^") ? "*" : ""}.case`;
+      await fs.writeFile(path.join(f.wc, ".cvsignore"), `${pattern}\n`);
+      const expected = [".cvsignore", ...names.filter((_, index) => !matches(chars[index]))].sort();
+      const { stdout } = await promisify(execFile)(f.process.executable, ["-f", "-n", "-q", "update"], { cwd: f.wc, env: { ...process.env, LC_ALL: "C" } });
+      const actualCvs = stdout.split("\n").filter(line => line.startsWith("? ")).map(line => line.slice(2)).sort();
+      assert.deepEqual(actualCvs, expected, `${pattern}: CVS differs from the C locale expectation`);
+      assert.deepEqual(unknown(await f.cvs.localStatus()), expected, `${pattern}: local inventory differs from CVS`);
+      assert.deepEqual(unknown(await f.cvs.localStatus([".cvsignore", ...names])), expected, `${pattern}: per-file refresh differs from CVS`);
+      assert.deepEqual(unknown(await f.cvs.status()), expected, `${pattern}: network refresh differs from CVS`);
+    }
+    // C0 名字被路径合同拒绝；先由 cntrl/space/blank 过滤，再验证全量清单，不能调用单文件写入口。
+    for (const [name, codes] of [["cntrl", [...Array.from({ length: 31 }, (_, i) => i + 1), 127]], ["space", [9, 10, 11, 12, 13]], ["blank", [9]]]) {
+      const controls = codes.map(code => `control-${String.fromCharCode(code)}.case`);
+      for (const file of controls) await fs.writeFile(path.join(f.wc, file), "1\n");
+      await fs.writeFile(path.join(f.wc, ".cvsignore"), `control-[[:${name}:]].case\n`);
+      assert.ok((await f.cvs.localStatus()).every(item => !controls.includes(item.newPath)), name);
+      for (const file of controls) await fs.rm(path.join(f.wc, file));
+    }
+  } finally {
+    for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    await fs.rm(f.base, { recursive: true, force: true });
+  }
+});
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));
   for (const value of ["-r1.1", "1.1;touch x", "HEAD", ""]) assert.throws(() => revision(value));

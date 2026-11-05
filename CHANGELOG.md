@@ -1,5 +1,9 @@
 # Changelog / 更新日志
 
+## [0.6.20] - 2026-11-06
+
+- CVS 忽略模式支持 C locale（ASCII）的 12 个 POSIX 字符类（如 `[[:alpha:]]`、`[[:digit:]]`），可与普通字符、范围、取反和转义组合；本地未受版本控制清单、按文件刷新与 CVS 使用相同规则。未知类按本地 CVS 的 fnmatch 行为处理。
+
 ## [0.6.19] - 2026-11-05
 
 - CVS 未进行版本管理的文件遵守 `.cvsignore`：本地清单与保存后的单文件刷新按 CVS 客户端顺序叠加内置忽略表、`~/.cvsignore`、环境变量 `CVSIGNORE` 和各目录自己的 `.cvsignore`（只作用于该目录），单独的 `!` 清空此前规则。工程 `.cvsignore` 里写了 `.gradle` 时不再列出 `.gradle`，与 `cvs -n update` 报 `?` 的文件一致（`:local:` 与 pserver 都已对比）。服务器端的 `CVSROOT/cvsignore` 需要连网，本地清单不读：它只在刷新（查询服务器）的结果里生效，之后的本地刷新仍会列出这些文件。

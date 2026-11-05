@@ -22,6 +22,21 @@ const DEFAULT_IGNORE =
 // 规则文件路径 → 模式与已编译匹配器；mtime、ctime 或大小变化即重读。
 const ignoreFiles = new Map();
 let globalIgnoreCache;
+// POSIX 字符类固定使用 C locale 的 ASCII 范围。
+const POSIX_CLASSES = {
+  alpha: "A-Za-z",
+  digit: "0-9",
+  alnum: "A-Za-z0-9",
+  upper: "A-Z",
+  lower: "a-z",
+  space: "\\x09-\\x0d\\x20",
+  blank: "\\x09\\x20",
+  punct: "\\x21-\\x2f\\x3a-\\x40\\x5b-\\x60\\x7b-\\x7e",
+  xdigit: "0-9A-Fa-f",
+  cntrl: "\\x00-\\x1f\\x7f",
+  print: "\\x20-\\x7e",
+  graph: "\\x21-\\x7e",
+};
 // fnmatch(3) 无标志语义：* 与 ? 也匹配开头的点；方括号支持 ! 取反与范围；反斜杠转义下一个字符。
 function globSource(pattern) {
   const literal = (char) => char.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
@@ -36,8 +51,10 @@ function globSource(pattern) {
       let end = i + 1;
       if (pattern[end] === "!" || pattern[end] === "^") end++;
       if (pattern[end] === "]") end++;
-      while (end < pattern.length && pattern[end] !== "]")
-        end += pattern[end] === "\\" ? 2 : 1;
+      while (end < pattern.length && pattern[end] !== "]") {
+        const named = /^\[:[a-z]+:\]/.exec(pattern.slice(end));
+        end += named ? named[0].length : pattern[end] === "\\" ? 2 : 1;
+      }
       if (end >= pattern.length) {
         source += "\\[";
         continue;
@@ -48,13 +65,31 @@ function globSource(pattern) {
         body = "^";
         j++;
       }
-      for (; j < end; j++)
+      for (; j < end; j++) {
+        const named = /^\[:([a-z]+):\]/.exec(pattern.slice(j));
+        if (named) {
+          const chars = POSIX_CLASSES[named[1]];
+          // fnmatch 遇未知类停止尝试：此前已匹配的正向成员仍有效，取反类不匹配。
+          if (!Object.hasOwn(POSIX_CLASSES, named[1])) {
+            if (body.startsWith("^")) body = "";
+            break;
+          }
+          body += chars;
+          j += named[0].length - 1;
+          // 字符类不能充当范围端点；紧随它的 - 是普通成员。
+          if (pattern[j + 1] === "-") {
+            body += "\\-";
+            j++;
+          }
+          continue;
+        }
         body +=
           pattern[j] === "\\"
             ? literal(pattern[++j])
             : pattern[j] === "-"
               ? "-"
               : literal(pattern[j]);
+      }
       source += `[${body}]`;
       i = end;
     } else source += literal(char);

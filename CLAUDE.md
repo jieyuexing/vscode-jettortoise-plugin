@@ -243,10 +243,12 @@ M3 安装版 0.6.15 复测（ETECH 环节 7）留下六处：解决结果与本�
 
 M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n update` 不报它，本地更改的未受控列表却列出 `.gradle`。0.6.18 的本地判定只用内置表。
 
-- 规则：`src/cvs/core.mjs` 按 CVS 1.12 客户端（ignore.c 的 `ign_setup`）顺序叠加内置表 → `~/.cvsignore`（家目录先取 `HOME`）→ 环境变量 `CVSIGNORE` → 各目录自己的 `.cvsignore`；目录规则只作用于该目录下的名字，不继承到子目录。规则按空白切分；单独的 `!` 清空此前规则（仍保留 `CVS`），目录里的 `!` 只影响该目录。模式按无标志 `fnmatch`：`*`、`?` 也匹配开头的点，方括号支持 `!`／`^` 取反与范围，反斜杠转义；无效范围不匹配任何名字，POSIX 字符类（`[[:alpha:]]`）不支持。本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；未管理目录按其所在目录的规则判断。
+- 规则：`src/cvs/core.mjs` 按 CVS 1.12 客户端（ignore.c 的 `ign_setup`）顺序叠加内置表 → `~/.cvsignore`（家目录先取 `HOME`）→ 环境变量 `CVSIGNORE` → 各目录自己的 `.cvsignore`；目录规则只作用于该目录下的名字，不继承到子目录。规则按空白切分；单独的 `!` 清空此前规则（仍保留 `CVS`），目录里的 `!` 只影响该目录。模式按无标志 `fnmatch`：`*`、`?` 也匹配开头的点，方括号支持 `!`／`^` 取反与范围，反斜杠转义；无效范围不匹配任何名字。0.6.20 起支持 C locale（ASCII）的 POSIX 字符类：`alpha`、`digit`、`alnum`、`upper`、`lower`、`space`、`blank`、`punct`、`xdigit`、`cntrl`、`print`、`graph`，可与普通字符、范围、取反和转义组合（如 `[![:digit:]]*`、`[[:alpha:]_]`）。未知小写类不匹配，写在未知类之前的正向成员仍可匹配（`[a[:unknown:]b]` 只匹配 `a`）；取反未知类不匹配，按本机 CVS 1.12 的 fnmatch 实测。本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；未管理目录按其所在目录的规则判断。
 - pserver：客户端未忽略的名字再由服务器按它自己的表（内置表与 `CVSROOT/cvsignore`）判断，目录 `.cvsignore` 里的 `!` 清不掉服务器的内置表；只有 `~/.cvsignore` 或 `CVSIGNORE` 里的 `!` 让服务器也不忽略。因此 `:pserver:` 根在目录有 `.cvsignore` 且全局没有 `!` 时，末尾再并上内置表（vcs-sim pserver 实测）。
 - 不读服务器端 `CVSROOT/cvsignore`：pserver 下要连网，`:local:` 下为与 pserver 一致也不读。它只在网络刷新的结果（`?` 行）里生效，之后的本地刷新仍会列出这些文件。
 - 缓存：规则文件按路径缓存模式与编译后的匹配器，mtime、ctime 或大小变化即重读，删除即失效；`~/.cvsignore` 与 `CVSIGNORE` 每次清单读一次。清单只在目录列表里有 `.cvsignore` 时才读它，没有时直接用全局匹配器。读不到的规则文件按不存在处理（CVS 只警告后继续）。
 - 环境：`CvsProcess` 清除 `CVS*`／`RCS*` 环境变量时保留 `CVSIGNORE`，网络刷新与本地清单用同一套规则。
 
-回归：`scripts/cvs-real-test.mjs`（三层目录、`!`、`~/.cvsignore`、`CVSIGNORE`、改写与删除 `.cvsignore`，本地清单、按文件刷新、网络刷新都与同一时刻 `cvs -f -n -q update` 的 `?` 行逐项比较）、`scripts/cvs-nesting-check.mjs`（`:pserver:` 根目录 `!` 不清服务器内置表、全局 `!` 才清）。vcs-sim（`:local:` 与 pserver）上的逐场景对比与 6 万文件清单改前改后耗时写在本轮 RECORD。Windows CVSNT 的家目录、大小写与服务器端忽略语义未覆盖。
+回归：`scripts/cvs-real-test.mjs`（12 个 POSIX 字符类及组合、未知类与控制字符，三层目录、`!`、`~/.cvsignore`、`CVSIGNORE`、改写与删除 `.cvsignore`，本地清单、按文件刷新、网络刷新都与同一时刻 `cvs -f -n -q update` 的 `?` 行逐项比较）、`scripts/cvs-nesting-check.mjs`（`:pserver:` 根目录 `!` 不清服务器内置表、全局 `!` 才清）。vcs-sim（`:local:` 与 pserver）上的逐场景对比与 6 万文件清单改前改后耗时写在本轮 RECORD。Windows CVSNT 的家目录、大小写与服务器端忽略语义未覆盖。
+
+0.6.20 续作边界（用户 2026-11-06）：只在台式机本地开发与 vcs-sim 的 `:local:`／pserver 对照，候选分支 `desk/bd-cvsignore-class`；不连接公司系统，不改 `restart`，不发 Release。字符类固定为 ASCII；匹配器仍按 JavaScript UTF-16 单元匹配，未扩展为完整的 C locale UTF-8 字节匹配（例如无后续通配符的取反括号匹配非 ASCII 文件名时可能与 CVS 不同）。Windows CVSNT、安装版界面与公司环境待另验。

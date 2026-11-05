@@ -228,7 +228,7 @@ test("CVS session refresh distinguishes missing client from unavailable boundari
           exports.workspace = { isTrusted: true, getConfiguration: () => ({get: () => ${JSON.stringify(path.join(base, "missing-cvs"))}}) };
           exports.l10n = { t: text => text };
           exports.ProgressLocation = { Notification: 1 };
-          exports.window = { showWarningMessage: text => {globalThis.__cvsBoundaryWarnings.push(text);return Promise.resolve();}, withProgress: (_options, run) => run({}, {onCancellationRequested: () => ({dispose() {}})}) };
+          exports.window = { showWarningMessage: text => {globalThis.__cvsBoundaryWarnings.push(text);return Promise.resolve();}, withProgress: (_options, run) => run({report(){}}, {onCancellationRequested: () => ({dispose() {}})}) };
         ` }));
       } }],
     });
@@ -351,7 +351,7 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
       f.parent.commit(["same-root-child/ordinary.txt"], "forbidden"),
       { code: "NESTED_REPOSITORY" },
     );
-    await assert.rejects(f.parent.rollback("foreign-child/ordinary.txt"), {
+    await assert.rejects(f.parent.rollback(["foreign-child/ordinary.txt"]), {
       code: "NESTED_REPOSITORY",
     });
     const noBroadCommand = new CvsAdapter(f.wc, {
@@ -388,7 +388,7 @@ test("same-project CVS directories stay write boundaries for the parent", async 
     await adapter.update();
     assert.deepEqual(calls, [["-q", "update", "-l", "-P", "."]]);
     await assert.rejects(adapter.commit(["build/output.txt"], "forbidden"), { code: "NESTED_REPOSITORY" });
-    await assert.rejects(adapter.rollback("build/output.txt"), { code: "NESTED_REPOSITORY" });
+    await assert.rejects(adapter.rollback(["build/output.txt"]), { code: "NESTED_REPOSITORY" });
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
@@ -504,7 +504,7 @@ test("registered update preserves unregistered build and fetches known-directory
     assert.deepEqual(calls, [["-q", "update", "-l", "-P", ".", "./side", "./src", "./src/deep"]]);
     await check("product explicit update\n");
     assert.equal(await fs.readFile(path.join(f.wc, "src", "new.txt"), "utf8"), "new server file\n");
-    await assert.rejects(adapter.rollback("build/sentinel.txt"), { code: "NESTED_REPOSITORY" });
+    await assert.rejects(adapter.rollback(["build/sentinel.txt"]), { code: "NESTED_REPOSITORY" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 

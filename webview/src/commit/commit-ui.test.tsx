@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BranchTree } from "../panel/components/BranchTree";
 import { CommitContextMenu } from "../panel/components/CommitContextMenu";
 import { CvsHistory } from "../panel/components/CvsHistory";
+import { PushApp } from "../push/App";
 import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
 import { useCommitStore } from "../shared/store/commit-store";
@@ -1359,5 +1360,68 @@ describe("大批量回滚", () => {
       ([command]) => command === "openRollbackPanel",
     );
     expect((call?.[1] as { files: unknown[] }).files).toHaveLength(12000);
+  });
+});
+
+describe("修改上次提交后推送", () => {
+  const commit = {
+    hash: "c".repeat(40),
+    shortHash: "ccccccc",
+    parents: ["d".repeat(40)],
+    authorName: "dev",
+    authorEmail: "dev@example.invalid",
+    authorDate: "2026-11-05T10:00:00+08:00",
+    subject: "amended",
+    body: "",
+    refs: [],
+  };
+  const mount = (amended?: string) => {
+    const root = document.createElement("div");
+    root.id = "root";
+    root.dataset.branch = "main";
+    root.dataset.remote = "origin";
+    document.body.append(root);
+    mocks.request.mockImplementation(async (command: string) => {
+      if (command === "getAheadCommits") return { commits: [commit], amended };
+      if (command === "executePush") return { success: false, cancelled: true };
+      return [];
+    });
+    const view = render(<PushApp />, { container: root });
+    return { view, root };
+  };
+  afterEach(() => document.getElementById("root")?.remove());
+  it("远端是修改前的提交时主按钮为强制推送，交给宿主确认一次；取消后不报已推送", async () => {
+    const { view } = mount("e".repeat(40));
+    fireEvent.click(await view.findByRole("button", { name: "Force Push" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("executePush", {
+        branchName: "main",
+        remote: "origin",
+        targetBranch: "main",
+        force: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        (view.getByRole("button", { name: "Force Push" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(mocks.request).not.toHaveBeenCalledWith(
+      "showInfoNotification",
+      expect.anything(),
+    );
+    expect(mocks.request).not.toHaveBeenCalledWith("closePushPanel", undefined);
+  });
+  it("没有修改已推送的提交时仍是普通推送", async () => {
+    const { view } = mount();
+    await view.findAllByText("amended");
+    fireEvent.click(view.getByRole("button", { name: "Push" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith(
+        "executePush",
+        expect.objectContaining({ force: false }),
+      ),
+    );
   });
 });

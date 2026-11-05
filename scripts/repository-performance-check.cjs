@@ -35,7 +35,7 @@ const setup = async () => {
       onDidSaveTextDocument: events.save.event,
       createFileSystemWatcher: () => ({ onDidChange: events.files.event, onDidCreate: () => disposable(), onDidDelete: () => disposable(), dispose() {} }),
     },
-    window: { withProgress: (_options,run)=>run({}, {onCancellationRequested:()=>disposable()}), onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: events.focus.event, showWarningMessage: message => { warnings.push(message); return Promise.resolve(); } },
+    window: { withProgress: (_options,run)=>run({report(){}}, {onCancellationRequested:()=>disposable()}), onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: events.focus.event, showWarningMessage: message => { warnings.push(message); return Promise.resolve(); } },
   };
   global.__performanceVscode = vscode;
   const bundle = path.join(base, 'manager.cjs');

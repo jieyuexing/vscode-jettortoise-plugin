@@ -32,7 +32,11 @@ interface Adapter {
     options?: { maxBytes?: number },
   ): Promise<Buffer>;
   commit(names: string[], message: string, signal?: AbortSignal): Promise<void>;
-  rollback(name: string, signal?: AbortSignal): Promise<string>;
+  rollback(
+    names: string[],
+    signal?: AbortSignal,
+    progress?: (done: number, total: number) => void,
+  ): Promise<string[]>;
   add(names: string[], signal?: AbortSignal): Promise<void>;
   update(signal?: AbortSignal): Promise<string[]>;
 }
@@ -216,7 +220,11 @@ export class CvsSession {
   }
   async operate<T>(
     label: string,
-    action: (adapter: Adapter, signal: AbortSignal) => Promise<T>,
+    action: (
+      adapter: Adapter,
+      signal: AbortSignal,
+      progress: vscode.Progress<{ message?: string }>,
+    ) => Promise<T>,
     dirty = false,
     // 只读查询把进度放状态栏，写操作保留可取消的通知。
     location = vscode.ProgressLocation.Notification,
@@ -236,12 +244,12 @@ export class CvsSession {
             title: `JetTortoise: ${label}`,
             cancellable: true,
           },
-          async (_progress, token) => {
+          async (progress, token) => {
             const cancel = token.onCancellationRequested(() =>
               this.queue.cancel(),
             );
             try {
-              return await action(this.adapter, signal);
+              return await action(this.adapter, signal, progress);
             } finally {
               cancel.dispose();
             }
@@ -281,27 +289,25 @@ export class CvsSession {
       vscode.ProgressLocation.Window,
     );
   }
+  /** 先确认，再在可取消的通知进度里排队执行；返回的 done 在完成时结束，调用方不必等待。 */
   async rollback(paths: string[]) {
-    return this.operate(
+    const confirmed = await vscode.window.showWarningMessage(
+      vscode.l10n.t(
+        "Rollback {0} CVS file(s)? Local changes are replaced with the repository copy and kept as .#<file>.<revision> in the same directory; files with a newer repository revision are updated to it.",
+        paths.length,
+      ),
+      { modal: true },
+      vscode.l10n.t("Rollback"),
+    );
+    if (confirmed !== vscode.l10n.t("Rollback")) return undefined;
+    const done = this.operate(
       vscode.l10n.t("CVS Rollback"),
-      async (adapter, signal) => {
-        const confirmed = await vscode.window.showWarningMessage(
-          vscode.l10n.t(
-            "Rollback {0} CVS file(s)? A sibling backup will be kept.",
-            paths.length,
-          ),
-          { modal: true },
-          vscode.l10n.t("Rollback"),
+      async (adapter, signal, progress) => {
+        const backups = await adapter.rollback(paths, signal, (count, total) =>
+          progress.report({
+            message: vscode.l10n.t("{0} / {1} files", count, total),
+          }),
         );
-        if (confirmed !== vscode.l10n.t("Rollback")) return;
-        await this.guard();
-        if (await hasDirtyEditors(this.root))
-          throw new Error(
-            vscode.l10n.t("Save unsaved editors before rolling back."),
-          );
-        const backups = [];
-        for (const file of paths)
-          backups.push(await adapter.rollback(file, signal));
         // 备份名最多列三个，其余只写数量，避免上万个文件时通知过长。
         void vscode.window.showInformationMessage(
           backups.length > 3
@@ -318,6 +324,7 @@ export class CvsSession {
       },
       true,
     );
+    return { done };
   }
   private uri(file: string, revision: string) {
     const uri = vscode.Uri.from({

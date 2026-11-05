@@ -1,6 +1,5 @@
 // biome-ignore-all lint/suspicious/noControlCharactersInRegex: CVS protocol validation must reject C0 bytes.
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -14,6 +13,18 @@ import {
 } from "../repositories/boundaries.cjs";
 import { runNetwork } from "../repositories/network.cjs";
 
+// CVS 1.12 内置忽略表（ignore.c 的 ign_default），与 cvs -n update 不报 ? 的名字一致；不读 .cvsignore 等用户层规则。
+const IGNORED_NAME = new RegExp(
+  `^(?:${". .. core RCSLOG tags TAGS RCS SCCS .make.state .nse_depinfo #* .#* cvslog.* ,* CVS CVS.adm .del-* *.a *.olb *.o *.obj *.so *.Z *~ *.old *.elc *.ln *.bak *.BAK *.orig *.rej *.exe _$* *$"
+    .split(" ")
+    .map((pattern) =>
+      pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*"),
+    )
+    .join("|")})$`,
+);
+export function cvsIgnored(name) {
+  return IGNORED_NAME.test(name);
+}
 export class CvsError extends Error {
   constructor(code) {
     super(code);
@@ -377,7 +388,8 @@ export class CvsAdapter {
           .relative(this.root, directory)
           .split(path.sep)
           .join("/");
-        if (relative) unknown.push(relativeFile(relative) + "/");
+        if (relative && !cvsIgnored(path.basename(directory)))
+          unknown.push(relativeFile(relative) + "/");
         continue;
       }
       const root = cvsRoot(cvs.Root);
@@ -409,12 +421,8 @@ export class CvsAdapter {
         if (entry.isSymbolicLink()) fail("symlink");
       for (const entry of entries) {
         if (entry.isSymbolicLink()) fail("symlink");
-        // CVS 默认忽略 .#*：更新冲突留下的原文件备份不是未受版本控制的文件。
-        if (
-          entry.isFile() &&
-          !names.has(entry.name) &&
-          !entry.name.startsWith(".#")
-        )
+        // 按 CVS 内置忽略表跳过 .#*（更新冲突与回滚留下的备份）、*.o、*~ 等。
+        if (entry.isFile() && !names.has(entry.name) && !cvsIgnored(entry.name))
           unknown.push(relativeFile(prefix + entry.name));
       }
     }
@@ -465,7 +473,7 @@ export class CvsAdapter {
             .catch((error) => {
               if (error.code !== "ENOENT") throw error;
             });
-          if (stat?.isFile() && !path.basename(name).startsWith(".#"))
+          if (stat?.isFile() && !cvsIgnored(path.basename(name)))
             result.push({
               newPath: name,
               entryRevision: "",
@@ -798,44 +806,57 @@ export class CvsAdapter {
     for (const batch of this.batches(["commit", "-m"], args))
       await this.run(["commit", "-m", message, ...batch], signal);
   }
-  async rollback(name, signal) {
-    relativeFile(name);
-    await contained(this.root, name);
-    await assertOwnedPath(this.root, "cvs", name);
-    const file = await this.file(name);
-    revision(file.entryRevision);
-    const target = await contained(this.root, name, false),
-      before = await fs.stat(target),
-      original = await fs.readFile(target),
-      content = await this.content(name, file.entryRevision, signal);
-    if (signal?.aborted) fail("cancelled");
-    await assertOwnedPath(this.root, "cvs", name);
-    const backup = target + ".jettortoise-backup-" + randomUUID(),
-      temp = target + ".jettortoise-restore-" + randomUUID();
-    await fs.writeFile(backup, original, {
-      flag: "wx",
-      mode: before.mode & 0o777,
-    });
-    try {
-      await fs.writeFile(temp, content, {
-        flag: "wx",
-        mode: before.mode & 0o777,
-      });
-      await contained(this.root, name, false);
-      await assertOwnedPath(this.root, "cvs", name);
-      const now = await fs.stat(target);
-      if (
-        now.ino !== before.ino ||
-        now.mtimeMs !== before.mtimeMs ||
-        !original.equals(await fs.readFile(target))
-      )
-        fail("changed");
-      if (signal?.aborted) fail("cancelled");
-      await fs.rename(temp, target);
-    } finally {
-      await fs.rm(temp, { force: true });
+  /**
+   * 按 8000 字符分批 cvs update -C：本地修改由 CVS 改名为同目录的 .#<文件>.<修订>，再取资源库副本。
+   * 服务器已有新修订的文件同时更新到新修订（与 update -C 相同）。返回备份的相对路径。
+   */
+  async rollback(names, signal, progress) {
+    if (
+      !Array.isArray(names) ||
+      !names.length ||
+      new Set(names).size !== names.length
+    )
+      fail("path");
+    for (const name of names) relativeFile(name);
+    const boundaries = await boundariesForPaths(this.root, "cvs", names);
+    if (boundaries.length)
+      throw new NestedRepositoryError(
+        boundaries,
+        "NESTED_REPOSITORY",
+        this.root,
+      );
+    // 新增、已删除登记的文件没有可恢复的修订；全部校验通过才开始写。
+    const revisions = new Map(
+      (await this.inventory()).map((file) => [
+        file.newPath,
+        file.entryRevision,
+      ]),
+    );
+    for (const name of names) {
+      if (!revisions.has(name)) fail("path");
+      revision(revisions.get(name));
+      await contained(this.root, name);
     }
-    return path.basename(backup);
+    let done = 0;
+    for (const batch of this.batches(
+      ["-q", "update", "-C"],
+      names.map((name) => "./" + name),
+    )) {
+      if (signal?.aborted) fail("cancelled");
+      await this.run(["-q", "update", "-C", ...batch], signal);
+      done += batch.length;
+      progress?.(done, names.length);
+    }
+    const backups = [];
+    for (const name of names) {
+      const backup = path.posix.join(
+        path.posix.dirname(name),
+        `.#${path.posix.basename(name)}.${revisions.get(name)}`,
+      );
+      if (await fs.lstat(path.join(this.root, backup)).catch(() => undefined))
+        backups.push(backup);
+    }
+    return backups;
   }
 }
 export async function checkout(process, root, module, target, signal) {

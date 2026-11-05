@@ -104,7 +104,7 @@ async function main() {
       },
       window: {
         onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: () => disposable(),
-        withProgress: (_options, run) => run({}, { onCancellationRequested: () => disposable() }),
+        withProgress: (_options, run) => run({ report() {} }, { onCancellationRequested: () => disposable() }),
         showWarningMessage: async (message, ...labels) => { warnings.push(message); return labels.find((label) => typeof label === "string"); },
         showInformationMessage: async (message) => { infos.push(message); return undefined; }, showErrorMessage: async () => undefined, setStatusBarMessage: () => disposable(), activeTextEditor: undefined,
       },
@@ -250,14 +250,52 @@ async function main() {
     const bulkRollbackMs = Date.now() - started;
     assert.equal(git(bigRepo, ["status", "--porcelain"]), "");
     console.log(JSON.stringify({ benchmark: "managerBulk", files: 10001, bulkCommitMs, bulkRollbackMs }));
-    // 12. CVS 回滚完成通知最多列三个备份名，其余只写数量。
+    // 12. CVS 回滚：确认后面板请求立即返回，回滚在通知进度里完成；完成通知最多列三个备份名，其余只写数量。
     for (const name of rollbackNames) await fs.writeFile(path.join(wc, name), "changed\n");
     await manager.request("refreshRepositories");
-    await manager.request("rollbackFiles", { repositoryId: c.id, filePaths: rollbackNames });
-    const notice = infos.findLast((message) => message.startsWith("CVS rollback completed"));
-    assert.match(notice, /^CVS rollback completed\. Backups: r1\.txt\.jettortoise-backup-[^,]+, r2\.txt\.[^,]+, r3\.txt\.\S+ and 1 more$/);
+    const rollbackNotice = () => infos.findLast((message) => message.startsWith("CVS rollback completed"));
+    await manager.request("openRollbackPanel", { repositoryId: c.id, files: rollbackNames.map((name) => ({ path: name, status: "modified", staged: false })) });
+    assert.equal(rollbackNotice(), undefined, "rollback request waited for the whole rollback");
+    await until(rollbackNotice, "rollback did not complete in the background");
+    assert.match(rollbackNotice(), /^CVS rollback completed\. Backups: \.#r1\.txt\.1\.1\.1\.1, \.#r2\.txt\.1\.1\.1\.1, \.#r3\.txt\.1\.1\.1\.1 and 1 more$/);
     for (const name of rollbackNames) assert.equal(await fs.readFile(path.join(wc, name), "utf8"), "base\n");
-    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true, divergedUpdate: true, mergeCommitDefaultMessage: true, mergeCommitWithoutFiles: true, previewEncoding: true, bulkCommitRollback: true, rollbackNoticeBounded: true }));
+    await until(() => !snapshot().files.some((file) => file.path.startsWith("r") || file.path.startsWith(".#")), "rolled back files or .# backups still listed");
+    // 13. 修改已推送的上次提交后推送：推送面板得知须强制，强制推送与提交并推送都由宿主确认一次并写明被替换的提交。
+    git(divRepo, ["reset", "-q", "--hard", "origin/main"]);
+    await fs.writeFile(path.join(divRepo, "amend.txt"), "first\n");
+    git(divRepo, ["add", "amend.txt"]); git(divRepo, ["commit", "-q", "-m", "to amend"]); git(divRepo, ["push", "-q", "origin", "main"]);
+    const pushed = git(divRepo, ["rev-parse", "HEAD"]);
+    const remoteHead = () => git(divRemote, ["rev-parse", "main"]);
+    const pushParams = { repositoryId: div.id, branchName: "main", remote: "origin" };
+    assert.equal((await manager.request("getAheadCommits", pushParams)).amended, undefined, "pushed commit reported as amended");
+    await fs.writeFile(path.join(divRepo, "amend.txt"), "second\n");
+    await manager.request("refreshRepositories");
+    await manager.request("commitRepositories", { message: "amended", amend: true, files: [{ repositoryId: div.id, path: "amend.txt" }] });
+    assert.equal((await manager.request("getAheadCommits", pushParams)).amended, pushed, "amended pushed commit not detected");
+    warnings.length = 0;
+    await manager.request("executePush", { ...pushParams, targetBranch: "main", force: true });
+    assert.deepEqual(warnings, [`Force push "main" to "origin/main"? The amended commit replaces ${pushed.slice(0, 8)} on the remote; if the remote has changed since your last fetch, the push is refused.`]);
+    assert.equal(remoteHead(), git(divRepo, ["rev-parse", "HEAD"]));
+    // 旧入口 commitAndPush：修改已推送提交时同样只确认一次；取消则只保留本地提交，远端不变。
+    const confirmPush = vscode.window.showWarningMessage;
+    vscode.window.showWarningMessage = async (message) => { warnings.push(message); return undefined; };
+    warnings.length = 0;
+    const before = remoteHead();
+    await fs.writeFile(path.join(divRepo, "amend.txt"), "third\n");
+    assert.deepEqual(await manager.request("commitAndPush", { repositoryId: div.id, message: "amended again", amend: true, filePaths: ["amend.txt"] }), { success: false, cancelled: true });
+    assert.equal(warnings.length, 1, "amend push was not confirmed exactly once");
+    assert.match(warnings[0], new RegExp(`replaces ${before.slice(0, 8)} on the remote`));
+    assert.equal(remoteHead(), before, "declined force push still pushed");
+    assert.equal(git(divRepo, ["log", "-1", "--format=%s"]), "amended again");
+    vscode.window.showWarningMessage = confirmPush;
+    // 普通提交并推送不确认、不强制。
+    warnings.length = 0;
+    git(divRepo, ["push", "-q", "--force", "origin", "main"]);
+    await fs.writeFile(path.join(divRepo, "amend.txt"), "fourth\n");
+    await manager.request("commitAndPush", { repositoryId: div.id, message: "plain", filePaths: ["amend.txt"] });
+    assert.deepEqual(warnings, []);
+    assert.equal(remoteHead(), git(divRepo, ["rev-parse", "HEAD"]));
+    console.log(JSON.stringify({ revisionEncoding: true, openDocumentEncoding: true, updateConflictNotice: true, newCheckoutDiscovery: true, largeCommitHistoryDiff: true, divergedUpdate: true, mergeCommitDefaultMessage: true, mergeCommitWithoutFiles: true, previewEncoding: true, bulkCommitRollback: true, rollbackInBackground: true, rollbackNoticeBounded: true, amendForcePushConfirmed: true }));
   } finally {
     manager?.dispose();
     delete global.__vcsHostVscode;

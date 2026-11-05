@@ -71,6 +71,8 @@ export function PushApp() {
   const [pushing, setPushing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPushMenu, setShowPushMenu] = useState(false);
+  // 修改了已推送的上次提交：普通推送必被拒绝，主按钮改为强制推送。
+  const [amended, setAmended] = useState(false);
   const [pushRejected, setPushRejected] = useState<PushRejectedState>({
     show: false,
     branchName: "",
@@ -94,9 +96,10 @@ export function PushApp() {
         const result = (await bridge.request("getAheadCommits", {
           branchName,
           remote: targetRemote,
-        })) as { commits: Commit[] } | null;
+        })) as { commits: Commit[]; amended?: string } | null;
         const list = result?.commits ?? [];
         setCommits(list);
+        setAmended(Boolean(result?.amended));
         if (list.length > 0) {
           setSelectedHash(list[0].hash);
         }
@@ -125,6 +128,7 @@ export function PushApp() {
     load();
   }, [selectedHash]);
 
+  const forcePush = amended && targetBranch === branchName;
   const handlePush = useCallback(
     async (force = false) => {
       setPushing(true);
@@ -135,8 +139,13 @@ export function PushApp() {
           remote: targetRemote,
           targetBranch: targetBranch,
           force,
-        })) as { data?: { output?: string; isUpToDate?: boolean } };
+        })) as {
+          cancelled?: boolean;
+          data?: { output?: string; isUpToDate?: boolean };
+        };
         setPushing(false);
+        // 宿主确认被取消：什么都没推送，面板保持打开。
+        if (result?.cancelled) return;
         const isUpToDate = result?.data?.isUpToDate;
         const message = isUpToDate
           ? t("Everything is up to date")
@@ -431,10 +440,14 @@ export function PushApp() {
           <button
             type="button"
             className="push-btn push-btn-primary push-split-main"
-            onClick={() => handlePush(false)}
+            onClick={() => handlePush(forcePush)}
             disabled={pushing || commits.length === 0}
           >
-            {pushing ? t("Pushing...") : t("Push")}
+            {pushing
+              ? t("Pushing...")
+              : forcePush
+                ? t("Force Push")
+                : t("Push")}
           </button>
           <button
             type="button"

@@ -985,6 +985,36 @@ export class GitService {
   }
 
   /**
+   * 分支最近一次变动是修改上次提交，且远端跟踪分支正是修改前的那个提交：推送须强制，只替换它。
+   * 返回被替换的提交；其它情况（含没有 reflog）返回 undefined。
+   */
+  async amendedRemoteCommit(
+    branchName: string,
+    remote: string,
+    targetBranch = branchName,
+  ): Promise<string | undefined> {
+    const branch = `refs/heads/${safeGitRef(branchName, "Branch")}`;
+    const tracking = `refs/remotes/${safeRemoteName(remote)}/${safeGitRef(targetBranch, "Target branch")}`;
+    try {
+      const action = await this.execGit([
+        "reflog",
+        "-1",
+        "--format=%gs",
+        branch,
+      ]);
+      if (!action.startsWith("commit (amend)")) return undefined;
+      const [before, remoteHead] = (
+        await this.execGit(["rev-parse", `${branch}@{1}`, tracking])
+      )
+        .trim()
+        .split("\n");
+      return before === remoteHead ? before : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Get commits that are ahead of the remote tracking branch.
    * Returns commits in newest-first order.
    */
@@ -1562,16 +1592,6 @@ export class GitService {
       checked,
     );
     this.invalidateCache();
-  }
-
-  async commitAndPush(message: string, amend = false): Promise<void> {
-    await this.commit(message, amend);
-    // Push current branch
-    const branch = await this.getCurrentBranch();
-    if (branch) {
-      const force = amend;
-      await this.push(branch, force);
-    }
   }
 
   async getCurrentBranch(): Promise<string | null> {

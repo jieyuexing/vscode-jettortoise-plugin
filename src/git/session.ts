@@ -153,14 +153,36 @@ export function createGitRepositorySession(
         confirmLabel = vscode.l10n.t("Drop Commit");
         break;
       case "pushBranch":
-      case "executePush":
-        message = vscode.l10n.t(
-          'Force push "{0}" to "{1}"? Remote commits that are not in your branch will be overwritten.',
+      case "executePush": {
+        const remote =
+          typeof params.remote === "string" && params.remote
+            ? params.remote
+            : "origin";
+        const target =
+          typeof params.targetBranch === "string" && params.targetBranch
+            ? params.targetBranch
+            : branchName;
+        // 修改了已推送的上次提交：写明远端被替换的是修改前的那个提交。
+        const replaced = await gitService.amendedRemoteCommit(
           branchName,
-          `${typeof params.remote === "string" && params.remote ? params.remote : "origin"}/${typeof params.targetBranch === "string" && params.targetBranch ? params.targetBranch : branchName}`,
+          remote,
+          target,
         );
+        message = replaced
+          ? vscode.l10n.t(
+              'Force push "{0}" to "{1}"? The amended commit replaces {2} on the remote; if the remote has changed since your last fetch, the push is refused.',
+              branchName,
+              `${remote}/${target}`,
+              replaced.slice(0, 8),
+            )
+          : vscode.l10n.t(
+              'Force push "{0}" to "{1}"? Remote commits that are not in your branch will be overwritten.',
+              branchName,
+              `${remote}/${target}`,
+            );
         confirmLabel = vscode.l10n.t("Force Push");
         break;
+      }
       case "revertFileChanges":
         message = vscode.l10n.t(
           'Revert changes to "{0}" from this commit?',
@@ -868,7 +890,12 @@ export function createGitRepositorySession(
     const branchName = params.branchName as string;
     const remote = params.remote as string | undefined;
     const commits = await gitService.getAheadCommits(branchName, remote);
-    return { commits };
+    // 推送面板据此把主按钮换成强制推送（仍由宿主确认一次）。
+    const amended = await gitService.amendedRemoteCommit(
+      branchName,
+      remote ?? (await gitService.getDefaultRemote(branchName)),
+    );
+    return { commits, amended };
   });
 
   messageRouter.handle("executePush", async (params) => {
@@ -1202,8 +1229,27 @@ export function createGitRepositorySession(
     }
 
     return withProgress(messageRouter, async () => {
-      await gitService.commitAndPush(message, amend ?? false);
+      await gitService.commit(message, amend ?? false);
       messageRouter.broadcastEvent("commitStateChanged", {});
+      messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
+      const branch = await gitService.getCurrentBranch();
+      if (!branch) return { success: true };
+      const remote = await gitService.getDefaultRemote(branch);
+      // 只有修改了已推送的上次提交才强制推送，且与其它强制推送同一确认；拒绝则只保留本地提交。
+      const force =
+        amend === true &&
+        (await gitService.amendedRemoteCommit(branch, remote)) !== undefined;
+      if (
+        force &&
+        !(await confirmDestructiveAction("executePush", {
+          branchName: branch,
+          remote,
+          force: true,
+        }))
+      )
+        return { success: false, cancelled: true };
+      await ensureAvailable();
+      await gitService.push(branch, force, remote);
       messageRouter.broadcastEvent("gitStateChanged", { scope: "all" });
       return { success: true };
     });

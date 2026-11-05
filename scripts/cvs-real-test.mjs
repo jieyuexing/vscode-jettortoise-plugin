@@ -33,8 +33,10 @@ test("temporary local CVS: checkout, discovery, history, content, diff, commit, 
     const second = await checkout(f.process, f.root, "demo", path.join(f.base, "second")); const other = new CvsAdapter(second, f.process);
     await fs.writeFile(path.join(second, "other.txt"), "upstream change\n"); await other.commit(["other.txt"], "fixture update"); await f.cvs.update();
     assert.equal(await fs.readFile(path.join(f.wc, "other.txt"), "utf8"), "upstream change\n");
-    await fs.writeFile(path.join(f.wc, "中文 file.txt"), "discard me\n"); const backup = await f.cvs.rollback("中文 file.txt");
+    await fs.writeFile(path.join(f.wc, "中文 file.txt"), "discard me\n"); const [backup] = await f.cvs.rollback(["中文 file.txt"]);
+    assert.match(backup, /^\.#中文 file\.txt\.1\.\d+$/);
     assert.match(await fs.readFile(path.join(f.wc, "中文 file.txt"), "utf8"), /second line\n$/); assert.equal(await fs.readFile(path.join(f.wc, backup), "utf8"), "discard me\n");
+    await assert.rejects(f.cvs.rollback(["missing.txt"]), { code: "path" });
     await assert.rejects(f.cvs.content("中文 file.txt", "99.99"), { code: "revision" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
@@ -112,6 +114,38 @@ test("temporary local CVS: committing 2500 files runs in command-line batches", 
     const after = await new CvsAdapter(wc, f.process).status();
     assert.ok(after.every((item) => item.state === "Up-to-date"), "some files were not committed");
     assert.equal(after.length, files.length - 1);
+    // 回滚同样按 8000 字符分批 cvs update -C，不逐文件取修订；备份 .#<文件>.<修订> 不列为未受版本控制。
+    const kept = files.slice(1);
+    await Promise.all(kept.map((name) => fs.writeFile(path.join(wc, name), "v3\n")));
+    runs.length = 0;
+    const progress = [];
+    const rollbackStarted = Date.now();
+    const backups = await adapter.rollback(kept, undefined, (done, total) => progress.push([done, total]));
+    const updates = runs.filter((args) => args.includes("-C"));
+    console.log(JSON.stringify({ benchmark: "cvsBulkRollback", files: kept.length, batches: updates.length, milliseconds: Date.now() - rollbackStarted }));
+    assert.ok(updates.length > 1 && updates.length === runs.length, "rollback did not run as batched update -C only");
+    assert.ok(runs.every((args) => args.reduce((total, value) => total + 2 * value.length + 3, 0) < 8000), "a rollback batch exceeds 8000 characters");
+    assert.deepEqual(progress.at(-1), [kept.length, kept.length]);
+    assert.equal(progress.length, updates.length);
+    for (const name of [kept[0], kept.at(-1)]) assert.equal(await fs.readFile(path.join(wc, name), "utf8"), "v2\n");
+    assert.equal(backups.length, kept.length);
+    assert.equal(await fs.readFile(path.join(wc, backups[0]), "utf8"), "v3\n");
+    const local = await new CvsAdapter(wc, f.process).localStatus();
+    assert.ok(local.every((item) => item.state === "Up-to-date"), "rolled back files or backups still listed");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+// 未受版本控制按 CVS 内置忽略表：本地清单与 cvs -n update 的 ? 行一致。
+test("temporary local CVS: local unversioned files follow the built-in CVS ignore list like cvs -n update", async () => {
+  const f = await fixture();
+  try {
+    const ignored = ["core", "RCSLOG", "tags", "TAGS", ".make.state", ".nse_depinfo", "#x", ".#x", "cvslog.1", ",x", "CVS.adm", ".del-x", "x.a", "x.olb", "x.o", "x.obj", "x.so", "x.Z", "x~", "x.old", "x.elc", "x.ln", "x.bak", "x.BAK", "x.orig", "x.rej", "x.exe", "_$x", "x$"];
+    for (const name of [...ignored, "keep.txt", "x.class", "x.o.txt"]) await fs.writeFile(path.join(f.wc, name), "1\n");
+    for (const name of ["RCS", "SCCS", "kept-dir"]) { await fs.mkdir(path.join(f.wc, name)); await fs.writeFile(path.join(f.wc, name, "f"), "1\n"); }
+    const unknown = (items) => items.filter((item) => item.state === "Unknown").map((item) => item.newPath).sort();
+    const expected = ["keep.txt", "kept-dir/", "x.class", "x.o.txt"];
+    assert.deepEqual(unknown(await f.cvs.status()), expected, "fixture differs from cvs -n update");
+    assert.deepEqual(unknown(await f.cvs.localStatus()), expected, "local inventory lists CVS-ignored names");
+    assert.deepEqual(unknown(await f.cvs.localStatus(["x.o", "keep.txt"])), ["keep.txt"]);
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {

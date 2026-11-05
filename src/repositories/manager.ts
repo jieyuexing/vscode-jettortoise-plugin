@@ -819,12 +819,19 @@ export class RepositoryManager implements vscode.Disposable {
         command === "openRollbackPanel"
           ? (values.files as Array<{ path: string }>).map((file) => file.path)
           : this.paths(values.filePaths);
-      try {
-        await cvs.rollback(files);
-      } finally {
-        await this.refresh(entry, true);
-        this.written(entry);
-      }
+      // 确认后即返回：上万个文件的回滚在可取消的通知进度里执行，面板请求不等它完成。
+      const rollback = await cvs.rollback(files);
+      if (rollback)
+        void (async () => {
+          try {
+            await rollback.done;
+          } catch (error) {
+            void vscode.window.showErrorMessage(localizeError(error));
+          } finally {
+            await this.refresh(entry, true);
+            this.written(entry);
+          }
+        })();
       return { success: true };
     }
     if (command === "openFile") {

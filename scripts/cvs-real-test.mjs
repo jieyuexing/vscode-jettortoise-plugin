@@ -198,7 +198,8 @@ test("temporary local CVS: POSIX character classes and combinations follow C loc
   try {
     const home = path.join(f.base, "home"); await fs.mkdir(home); process.env.HOME = home; delete process.env.CVSIGNORE;
     const chars = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode(i + 32)).filter(char => char !== "/" && char !== "\\"), "é", "中"];
-    const names = chars.map(char => `probe-${char}.case`);
+    // 名字带码位，大小写不敏感的文件系统（macOS）上 a 与 A 不会落成同一个文件。
+    const names = chars.map(char => `probe-${char}-${char.codePointAt(0)}.case`);
     for (const name of names) await fs.writeFile(path.join(f.wc, name), "1\n");
     const alpha = char => /[A-Za-z]/.test(char), digit = char => /[0-9]/.test(char);
     const classes = {
@@ -214,15 +215,17 @@ test("temporary local CVS: POSIX character classes and combinations follow C loc
       ["[![:digit:]]", char => !digit(char)], ["[^[:alpha:]]", char => !alpha(char)],
       ["[[:alpha:]_]", char => alpha(char) || char === "_"], ["[a-c[:digit:]]", char => /[a-c0-9]/.test(char)],
       ["[[:upper:][:digit:]]", char => /[A-Z0-9]/.test(char)], ["[[:punct:]x]", char => classes.punct(char) || char === "x"],
-      ["[[:alpha:]\\]]", char => alpha(char) || char === "]"], ["[[:digit:]\\-]", char => digit(char) || char === "-"],
+      ["[[:digit:]\\-]", char => digit(char) || char === "-"],
       ["[][:digit:]]", char => digit(char) || char === "]"],
       ["[[:unknown:]]", () => false], ["[![:unknown:]]", () => false],
       ["[a[:unknown:]b]", char => char === "a"], ["[[:unknown:]a]", () => false],
       ["[!a[:unknown:]b]", () => false], ["[[:alpha:][:unknown:]]", alpha],
     );
+    // macOS 上 Homebrew CVS 1.12.13 对方括号里的 \] 与 Linux 不同（[A\]] 只忽略 ]），该例只在 Linux 与真实 CVS 对照。
+    if (process.platform !== "darwin") cases.push(["[[:alpha:]\\]]", char => alpha(char) || char === "]"]);
     const unknown = items => items.filter(item => item.state === "Unknown").map(item => item.newPath).sort();
     for (const [bracket, matches] of cases) {
-      const pattern = `probe-${bracket}${bracket.startsWith("[!") || bracket.startsWith("[^") ? "*" : ""}.case`;
+      const pattern = `probe-${bracket}${bracket.startsWith("[!") || bracket.startsWith("[^") ? "*" : "-*"}.case`;
       await fs.writeFile(path.join(f.wc, ".cvsignore"), `${pattern}\n`);
       const expected = [".cvsignore", ...names.filter((_, index) => !matches(chars[index]))].sort();
       const { stdout } = await promisify(execFile)(f.process.executable, ["-f", "-n", "-q", "update"], { cwd: f.wc, env: { ...process.env, LC_ALL: "C" } });

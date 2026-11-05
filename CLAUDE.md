@@ -251,4 +251,4 @@ M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n
 
 回归：`scripts/cvs-real-test.mjs`（12 个 POSIX 字符类及组合、未知类与控制字符，三层目录、`!`、`~/.cvsignore`、`CVSIGNORE`、改写与删除 `.cvsignore`，本地清单、按文件刷新、网络刷新都与同一时刻 `cvs -f -n -q update` 的 `?` 行逐项比较）、`scripts/cvs-nesting-check.mjs`（`:pserver:` 根目录 `!` 不清服务器内置表、全局 `!` 才清）。vcs-sim（`:local:` 与 pserver）上的逐场景对比与 6 万文件清单改前改后耗时写在本轮 RECORD。Windows CVSNT 的家目录、大小写与服务器端忽略语义未覆盖。
 
-0.6.20 续作边界（用户 2026-11-06）：只在台式机本地开发与 vcs-sim 的 `:local:`／pserver 对照，候选分支 `desk/bd-cvsignore-class`；不连接公司系统，不改 `restart`，不发 Release。字符类固定为 ASCII；匹配器仍按 JavaScript UTF-16 单元匹配，未扩展为完整的 C locale UTF-8 字节匹配（例如无后续通配符的取反括号匹配非 ASCII 文件名时可能与 CVS 不同）。Windows CVSNT、安装版界面与公司环境待另验。
+0.6.20 边界：字符类固定为 ASCII；匹配器仍按 JavaScript UTF-16 单元匹配，未扩展为完整的 C locale UTF-8 字节匹配（例如无后续通配符的取反括号匹配非 ASCII 文件名时可能与 CVS 不同）。方括号里的 `\]` 在 macOS Homebrew CVS 1.12.13 上与 Linux 不同（`[A\]]` 只忽略 `]`），插件按 Linux 行为，回归在 macOS 上跳过该例。Windows CVSNT 与安装版界面未验。

@@ -42,7 +42,7 @@
   "Create and checkout branch \"{0}\"?": "创建并检出分支“{0}”？",
   "Delete": "删除",
   "Delete \"{0}\"? This cannot be undone.": "要删除“{0}”吗？此操作无法撤销。",
-  "Delete branch \"{0}\"?": "要删除分支“{0}”吗？",
+  "Delete branch \"{0}\"? Only the branch name is removed; its commits stay in the branches it was merged into.": "要删除分支“{0}”吗？只删除分支名，它的提交仍保留在已合并的分支里。",
   "Delete shelf \"{0}\"? This cannot be undone.": "要删除搁置“{0}”吗？此操作无法撤销。",
   "Delete shelved changes \"{0}\"? This cannot be undone.": "要删除搁置的更改“{0}”吗？此操作无法撤销。",
   "Delete {0} files? This cannot be undone.": "要删除 {0} 个文件吗？此操作无法撤销。",

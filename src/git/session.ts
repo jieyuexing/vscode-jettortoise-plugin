@@ -120,7 +120,10 @@ export function createGitRepositorySession(
                   'Branch "{0}" is not fully merged. Force delete it? Its unmerged commits will be lost.',
                   branchName,
                 )
-              : vscode.l10n.t('Delete branch "{0}"?', branchName);
+              : vscode.l10n.t(
+                  'Delete branch "{0}"? Only the branch name is removed; its commits stay in the branches it was merged into.',
+                  branchName,
+                );
         confirmLabel =
           params.force === true
             ? vscode.l10n.t("Force Delete")

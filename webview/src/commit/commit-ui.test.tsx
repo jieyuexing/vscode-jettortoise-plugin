@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PanelApp } from "../panel/App";
 import { BranchTree } from "../panel/components/BranchTree";
 import { CommitContextMenu } from "../panel/components/CommitContextMenu";
 import { CvsHistory } from "../panel/components/CvsHistory";
@@ -112,6 +113,8 @@ beforeEach(() => {
   useRepositoryStore.setState({
     repositories,
     snapshots,
+    logRepositories: undefined,
+    visible: true,
     unsyncedCvsCount: 0,
     commitRepositoryId: "a",
     logRepositoryId: "a",
@@ -686,7 +689,7 @@ it("快照增量更新保留其它仓库、说明与勾选，通知不重新请�
   ).toBe(false);
 });
 
-it("CVS 暂停时历史不重新盘点，恢复只加载本地文件清单", async () => {
+it("CVS 暂停时历史不重新盘点，恢复后读清单并查询首个文件历史", async () => {
   useRepositoryStore.setState({
     snapshots: [{ repositoryId: "b", files: [], scanPaused: true }],
   });
@@ -703,31 +706,131 @@ it("CVS 暂停时历史不重新盘点，恢复只加载本地文件清单", asy
   await waitFor(() =>
     expect(view.getByRole("combobox").textContent).toContain("app.txt"),
   );
+  await waitFor(() =>
+    expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+      repositoryId: "b",
+      filePath: "app.txt",
+    }),
+  );
   expect(
-    mocks.request.mock.calls.every(([command]) => command === "getCvsFiles"),
+    mocks.request.mock.calls.every(([command]) =>
+      ["getCvsFiles", "getCvsHistory"].includes(command),
+    ),
   ).toBe(true);
 });
 
-it("CVS 历史挂载和编辑器跟随不联网，显式选文件与打开历史才查询", async () => {
+const historyCalls = () =>
+  mocks.request.mock.calls
+    .filter(([command]) => command === "getCvsHistory")
+    .map(([, params]) => (params as { filePath: string }).filePath);
+
+it("CVS 历史挂载按当前或首个文件查询，日志隐藏时等到可见再查", async () => {
+  mocks.request.mockImplementation(async (command) =>
+    command === "getCvsFiles"
+      ? ["app.txt", "other.txt"]
+      : command === "getCvsHistory"
+        ? [
+            {
+              revisionId: "1.2",
+              timestamp: "2026-11-10",
+              author: { name: "fixture" },
+              subject: "second",
+              body: "second",
+            },
+          ]
+        : [],
+  );
+  const view = render(<CvsHistory repositoryId="b" activeFile="other.txt" />);
+  await waitFor(() => expect(view.getByText("1.2")).toBeTruthy());
+  expect(historyCalls()).toEqual(["other.txt"]);
+  mocks.request.mockClear();
+  view.rerender(<CvsHistory repositoryId="b" />);
+  await waitFor(() => expect(historyCalls()).toEqual(["other.txt"]));
+  act(() => useRepositoryStore.setState({ visible: false }));
+  mocks.request.mockClear();
+  view.rerender(<CvsHistory repositoryId="b" activeFile="app.txt" />);
+  await waitFor(() =>
+    expect((view.getByRole("combobox") as HTMLSelectElement).value).toBe(
+      "app.txt",
+    ),
+  );
+  expect(historyCalls()).toEqual([]);
+  act(() => useRepositoryStore.setState({ visible: true }));
+  await waitFor(() => expect(historyCalls()).toEqual(["app.txt"]));
+  mocks.request.mockClear();
+  fireEvent.change(view.getByRole("combobox"), {
+    target: { value: "other.txt" },
+  });
+  await waitFor(() => expect(historyCalls()).toEqual(["other.txt"]));
+});
+
+it("显式打开历史只查询一次", async () => {
   mocks.request.mockImplementation(async (command) =>
     command === "getCvsFiles" ? ["app.txt", "other.txt"] : [],
   );
-  const view = render(<CvsHistory repositoryId="b" activeFile="app.txt" />);
-  await waitFor(() =>
-    expect(view.getByRole("combobox").textContent).toContain("other.txt"),
+  const view = render(
+    <CvsHistory repositoryId="b" activeFile="other.txt" requestId={3} />,
   );
-  expect(
-    mocks.request.mock.calls.some(([command]) => command === "getCvsHistory"),
-  ).toBe(false);
-  view.rerender(<CvsHistory repositoryId="b" activeFile="other.txt" />);
+  await waitFor(() => expect(historyCalls()).toEqual(["other.txt"]));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(historyCalls()).toEqual(["other.txt"]);
+  view.unmount();
+});
+
+it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async () => {
+  const unsynced = {
+    id: "c",
+    kind: "cvs" as const,
+    root: "/fixture/GOFCatsWeb",
+    name: "GOFCatsWeb",
+  };
+  useRepositoryStore.setState({
+    repositories: [repositories[0]],
+    logRepositories: [repositories[0], unsynced],
+    snapshots: [snapshots[0]],
+    logRepositoryId: "c",
+    unsyncedCvsCount: 1,
+  });
+  mocks.request.mockImplementation(
+    async (command: string, params: Record<string, unknown> = {}) => {
+      if (command === "getRepositories") return workspace();
+      if (command === "getCvsFiles") return ["WEB-INF/web.xml"];
+      if (command === "getCvsHistory")
+        return [
+          {
+            revisionId: "1.7",
+            timestamp: "2026-11-10",
+            author: { name: "fixture" },
+            subject: `history of ${params.filePath}`,
+            body: "",
+          },
+        ];
+      return [];
+    },
+  );
+  const view = render(<PanelApp />);
+  const repository = view.getByLabelText("Repository") as HTMLSelectElement;
+  expect([...repository.options].map((option) => option.value)).toEqual([
+    "a",
+    "c",
+  ]);
+  expect(repository.value).toBe("c");
+  await waitFor(() =>
+    expect(view.getByText("history of WEB-INF/web.xml")).toBeTruthy(),
+  );
+  expect(view.queryByText("No available repository.")).toBeNull();
+});
+
+it("CVS 显式选文件与打开历史查询所选文件", async () => {
+  mocks.request.mockImplementation(async (command) =>
+    command === "getCvsFiles" ? ["app.txt", "other.txt"] : [],
+  );
+  const view = render(<CvsHistory repositoryId="b" activeFile="other.txt" />);
   await waitFor(() =>
     expect((view.getByRole("combobox") as HTMLSelectElement).value).toBe(
       "other.txt",
     ),
   );
-  expect(
-    mocks.request.mock.calls.some(([command]) => command === "getCvsHistory"),
-  ).toBe(false);
   fireEvent.change(view.getByRole("combobox"), {
     target: { value: "app.txt" },
   });

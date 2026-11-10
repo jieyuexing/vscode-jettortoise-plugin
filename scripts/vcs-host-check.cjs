@@ -77,6 +77,10 @@ async function main() {
       git(divRepo, ["add", file]); git(divRepo, ["commit", "-q", "-m", "local"]);
     };
 
+    // 会话使用记录 argv 的 cvs 包装，用来证明未同步仓查看历史时不运行 cvs -n update。
+    const argvLog = path.join(base, "cvs-argv.jsonl"), cvsShim = path.join(base, "cvs-argv-shim");
+    await fs.writeFile(cvsShim, `#!${process.execPath}\nconst fs=require("node:fs"),cp=require("node:child_process");const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(argvLog)},JSON.stringify(args)+"\\n");const r=cp.spawnSync(${JSON.stringify(process.env.JETTORTOISE_TEST_CVS || "cvs")},args,{stdio:"inherit"});process.exit(r.status??1);\n`, { mode: 0o755 });
+    const argvCalls = async () => (await fs.readFile(argvLog, "utf8").catch(() => "")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const watchers = [], warnings = [], infos = [], commands = [], sent = [];
     const decodes = [];
     const vscode = {
@@ -86,7 +90,7 @@ async function main() {
       l10n: { t: (message, ...args) => message.replace(/\{(\d+)\}/g, (_, index) => args[index] ?? "") },
       workspace: {
         isTrusted: true, workspaceFolders: [{ uri: Uri.file(root) }], textDocuments: [],
-        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? process.env.JETTORTOISE_TEST_CVS || "cvs" : fallback) }),
+        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? cvsShim : fallback) }),
         onDidChangeWorkspaceFolders: () => disposable(), onDidGrantWorkspaceTrust: () => disposable(), onDidSaveTextDocument: () => disposable(),
         createFileSystemWatcher: (pattern) => {
           const created = new Emitter();
@@ -129,9 +133,34 @@ async function main() {
     manager = new RepositoryManager({ extensionUri: Uri.file(process.cwd()) });
     manager.connect({ postMessage: (message) => { sent.push(message); return Promise.resolve(true); }, onDidReceiveMessage: () => disposable() });
     await manager.scan();
+
+    // 0. 未同步的 CVS 也列入日志：文件清单只读 Entries，查看文件历史与修订差异才运行 cvs log／update -p，
+    //    不运行 cvs -n update，也不进入本地更改。
+    const unsynced = manager.state().logRepositories.find((item) => item.root === wc);
+    assert.ok(unsynced, "unsynced CVS repository missing from the log");
+    assert.ok(!manager.repositories.some((item) => item.root === wc), "unsynced CVS repository entered local changes");
+    await manager.request("selectRepository", { repositoryId: unsynced.id, surface: "log" });
+    assert.deepEqual(await manager.request("getCvsFiles", { repositoryId: unsynced.id }), ["legacy.txt", "r1.txt", "r2.txt", "r3.txt", "r4.txt", "same.txt"]);
+    assert.deepEqual(await argvCalls(), [], "listing CVS files ran a CVS command");
+    const unsyncedHistory = await manager.request("getCvsHistory", { repositoryId: unsynced.id, filePath: "same.txt" });
+    assert.deepEqual(unsyncedHistory.map((item) => item.revisionId).sort(), ["1.1", "1.1.1.1"]);
+    await manager.request("diffCvsRevision", { repositoryId: unsynced.id, filePath: "same.txt", revision: "1.1.1.1" });
+    const unsyncedDiff = commands.findLast((args) => args[0] === "vscode.diff");
+    assert.deepEqual([unsyncedDiff[1].query, unsyncedDiff[2].query], ["ref=1.1", "ref=1.1.1.1"]);
+    for (const side of [unsyncedDiff[1], unsyncedDiff[2]])
+      assert.equal(Buffer.from(await manager.readFile(side)).toString("utf8"), "base\n", `revision ${side.query} unreadable`);
+    const viewing = await argvCalls();
+    assert.ok(viewing.length > 0 && viewing.every((args) => args[0] === "-f" && (args[1] === "log" || (args[1] === "update" && args[2] === "-p"))), `unexpected CVS commands: ${JSON.stringify(viewing)}`);
+    assert.ok(!viewing.some((args) => args.includes("-n")), "viewing history ran cvs -n update");
+    assert.equal(manager.state().snapshots.some((item) => item.repositoryId === unsynced.id), false, "history published a local-changes snapshot");
+    assert.equal(manager.state().unsyncedCvsCount, 1);
+    console.log(JSON.stringify({ unsyncedLogArgv: viewing }));
+
     await manager.execute("jettortoise.synchronizeRepository", Uri.file(wc));
     const a = manager.repositories.find((item) => item.root === repo), c = manager.repositories.find((item) => item.root === wc);
     assert.ok(a && c);
+    // 对照：同步后才出现 cvs -n update，证明上面的 argv 记录能捉到它。
+    await until(async () => (await argvCalls()).some((args) => args.includes("-n") && args.includes("update")), "synchronization did not run cvs -n update");
 
     // 1. 修订内容按工作文件的 IDE 编码解码、按修订 URI 的编码写回，左右两侧同为正确日文。
     const gitRevision = Uri.from({ scheme: "jettortoise", authority: a.id, path: "/legacy.txt", query: "ref=HEAD" });

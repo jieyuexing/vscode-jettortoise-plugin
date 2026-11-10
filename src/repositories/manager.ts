@@ -28,6 +28,12 @@ import { hasDirtyEditors, revisionContent } from "./editor-documents";
 import { repositoryPath, validateRepositoryRequest } from "./requests";
 
 type GitSession = ReturnType<typeof createGitRepositorySession>;
+// 日志面板的只读历史请求，未同步 CVS 也可用。
+const LOG_COMMANDS = new Set([
+  "getCvsFiles",
+  "getCvsHistory",
+  "diffCvsRevision",
+]);
 interface Entry {
   info: RepositoryInfo;
   git?: GitSession;
@@ -114,9 +120,16 @@ export class RepositoryManager implements vscode.Disposable {
       .map((entry) => entry.info)
       .sort(compareRepositories);
   }
+  // 日志列出全部已发现仓库：未同步 CVS 只查文件历史，不进入本地更改、扫描或刷新。
+  get logRepositories() {
+    return [...this.entries.values()]
+      .map((entry) => entry.info)
+      .sort(compareRepositories);
+  }
   state() {
     return {
       repositories: this.repositories,
+      logRepositories: this.logRepositories,
       snapshots: [...this.entries.values()]
         .filter((entry) => this.listed(entry))
         .map((entry) => entry.snapshot),
@@ -226,10 +239,11 @@ export class RepositoryManager implements vscode.Disposable {
       }
     }
   }
-  private selected(id?: unknown) {
+  // log 为真时只服务日志的只读查询，允许未同步 CVS；其余请求仍要求已同步。
+  private selected(id?: unknown, log = false) {
     const selected = typeof id === "string" ? id : this.logId;
     const entry = selected ? this.entries.get(selected) : undefined;
-    if (!entry || !this.listed(entry))
+    if (!entry || (!log && !this.listed(entry)))
       throw new Error(vscode.l10n.t("Select an available repository."));
     return entry;
   }
@@ -328,11 +342,8 @@ export class RepositoryManager implements vscode.Disposable {
       "jettortoise.cvsSyncRoots",
       [...this.syncRoots].map((root) => vscode.Uri.file(root).path),
     );
-    if (
-      !this.logId ||
-      !this.repositories.some((repo) => repo.id === this.logId)
-    )
-      this.logId = this.repositories[0]?.id;
+    if (!this.logId || !this.entries.has(this.logId))
+      this.logId = this.logRepositories[0]?.id;
     if (this.commitId && !this.entries.has(this.commitId))
       this.commitId = undefined;
     await this.follow(vscode.window.activeTextEditor?.document.uri);
@@ -420,7 +431,7 @@ export class RepositoryManager implements vscode.Disposable {
       entry.disposables.push(watcher);
     }
     // 首仓可用即选中，不能让日志等待整个工作区的发现遍历结束。
-    if (this.listed(entry) && !this.logId) this.logId = id;
+    this.logId ??= id;
     this.publish();
     void this.refresh(entry, false);
     return id;
@@ -547,7 +558,7 @@ export class RepositoryManager implements vscode.Disposable {
   private async follow(uri?: vscode.Uri) {
     try {
       const entry = await this.owner(uri);
-      if (!entry || !uri || !this.listed(entry)) return;
+      if (!entry || !uri) return;
       await this.guard(entry);
       this.logId = entry.info.id;
       this.historyRequest = undefined;
@@ -702,13 +713,12 @@ export class RepositoryManager implements vscode.Disposable {
       this.remove(entry.info.id);
       this.add("cvs", root);
       if (this.commitId === entry.info.id) this.commitId = undefined;
-      if (this.logId === entry.info.id) this.logId = this.repositories[0]?.id;
       this.historyRequest = undefined;
       this.publish();
       return this.metadata();
     }
     if (command === "selectRepository") {
-      const entry = this.selected(repositoryId);
+      const entry = this.selected(repositoryId, values.surface !== "commit");
       await this.guard(entry);
       if (values.surface === "commit") this.commitId = entry.info.id;
       else this.logId = entry.info.id;
@@ -725,6 +735,7 @@ export class RepositoryManager implements vscode.Disposable {
       return this.commit(values, repositoryId as string | undefined);
     const entry = this.selected(
       repositoryId ?? (command === "updateProject" ? this.commitId : undefined),
+      LOG_COMMANDS.has(command),
     );
     await this.guard(entry);
     if (command === "updateProject") {
@@ -803,15 +814,8 @@ export class RepositoryManager implements vscode.Disposable {
         repositoryPath(values.filePath),
         String(values.revision),
       );
-    if (command === "getCvsFiles") {
-      if (!cvs.scanAvailable) return [];
-      return await cvs.operate(
-        vscode.l10n.t("CVS files"),
-        () => cvs.fileNames(),
-        false,
-        vscode.ProgressLocation.Window,
-      );
-    }
+    if (command === "getCvsFiles")
+      return cvs.scanAvailable ? cvs.fileNames() : [];
     if (command === "showDiffForWorkingFile")
       return cvs.diff(repositoryPath(values.filePath));
     if (command === "rollbackFiles" || command === "openRollbackPanel") {
@@ -1046,7 +1050,11 @@ export class RepositoryManager implements vscode.Disposable {
     return files;
   }
   async readFile(uri: vscode.Uri) {
-    const entry = this.selected(uri.authority);
+    // CVS 修订内容只在本会话显式差异签发后可读，未同步仓的历史差异同样适用。
+    const entry = this.selected(
+      uri.authority,
+      this.entries.get(uri.authority)?.info.kind === "cvs",
+    );
     await this.guard(entry);
     const content = await (entry.git
       ? entry.git.readFile(uri)
@@ -1104,7 +1112,10 @@ export class RepositoryManager implements vscode.Disposable {
               ? this.commitId
               : undefined,
           );
-      if (!entry || !this.listed(entry))
+      const history =
+        command === "jettortoise.openHistory" ||
+        command === "jettortoise.showFileHistory";
+      if (!entry || (!history && !this.listed(entry)))
         throw new Error(vscode.l10n.t("Select an available repository."));
       await this.guard(entry);
       if (command === "jettortoise.updateProject")

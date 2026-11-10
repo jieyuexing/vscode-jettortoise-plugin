@@ -150,7 +150,8 @@ test('超大 CVS 启动不盘点，首次同步超限发暂停首快照且不联
     entry.info.syncedAt=Date.now();
     const concurrent=await Promise.allSettled([entry.cvs.refresh(),fx.manager.request('getCvsFiles',{repositoryId:entry.info.id})]);
     assert.equal(concurrent[1].status,'fulfilled','history mount exposed the same inventory limit as an operation error');
-    assert.deepEqual(concurrent[1].value,[]);
+    assert.ok(Array.isArray(concurrent[1].value));
+    assert.deepEqual(await fx.manager.request('getCvsFiles',{repositoryId:entry.info.id}),[],'paused repository still listed files');
     await fx.manager.execute('jettortoise.synchronizeRepository',Uri.file(root));await fx.settle();
     assert.equal(fx.warnings.length,0);assert.equal((await fx.read()).length,0);
     assert.ok(sent.some(msg=>msg.event==='repositorySnapshot'&&msg.data.repositoryId===entry.info.id&&msg.data.scanPaused));
@@ -256,7 +257,7 @@ test('文件图标只读取已安装主题并选择浅深色资源，拒绝主�
 });
 
 
-test('按需同步：打开只列 Git，未同步 CVS 不读本地状态、不调用 CVS', async () => {
+test('按需同步：本地更改只列 Git，未同步 CVS 不读本地状态、不调用 CVS', async () => {
   const fx = await setup();
   try {
     const cp = require('node:child_process');
@@ -268,12 +269,53 @@ test('按需同步：打开只列 Git，未同步 CVS 不读本地状态、不�
     assert.equal(fx.manager.state().unsyncedCvsCount, 6);
     assert.equal(fx.manager.state().snapshots.length, 1);
     assert.equal(fx.localReads.length,0,'opening read unsynced CVS local status');
-    await assert.rejects(fx.manager.execute('jettortoise.openHistory',Uri.file(path.join(fx.base,'wc-0'))),/available repository/);
     for (const entry of fx.manager.entries.values()) if(entry.cvs) assert.deepEqual(entry.cvs.files, []);
     assert.equal((await fx.read()).length, 0);
     await fx.manager.request('refreshRepositories'); await fx.settle();
     assert.equal((await fx.read()).length, 0, 'global refresh loaded an unsynced CVS repository');
     assert.equal(fx.localReads.length,0);
+  } finally { fx.manager.dispose(); await fs.rm(fx.base, {recursive:true,force:true}); }
+});
+
+test('日志列出未同步 CVS：文件清单只读 Entries，提交面与扫描仍拒绝', async () => {
+  const fx = await setup();
+  try {
+    const cp = require('node:child_process');
+    const git = path.join(fx.base, 'git'); await fs.mkdir(git);
+    cp.execFileSync('git', ['init', '-b', 'main'], {cwd:git, stdio:'ignore'});
+    const root = path.join(fx.base, 'wc-0');
+    await fs.mkdir(path.join(root, 'sub/CVS'), {recursive:true});
+    await fs.writeFile(path.join(root, 'CVS/Entries'), '/app.txt/1.1/Thu Jan  1 00:00:00 1970//\n/gone.txt/1.3/Thu Jan  1 00:00:00 1970//\nD/sub////\n');
+    await fs.writeFile(path.join(root, 'CVS/Entries.Log'), 'A /added.txt/0/dummy timestamp//\nR /gone.txt/1.3/Thu Jan  1 00:00:00 1970//\n');
+    await fs.writeFile(path.join(root, 'sub/CVS/Root'), ':local:/nonexistent/cvsroot\n');
+    await fs.writeFile(path.join(root, 'sub/CVS/Repository'), 'module-0/sub\n');
+    await fs.writeFile(path.join(root, 'sub/CVS/Entries'), '/deep.txt/1.2/Thu Jan  1 00:00:00 1970//\n');
+    await fs.writeFile(path.join(root, 'unversioned.txt'), 'local only\n');
+    await fx.manager.scan(); await fx.settle();
+    const state = fx.manager.state();
+    assert.deepEqual(state.repositories.map(r=>r.kind), ['git'], 'unsynced CVS leaked into local changes');
+    assert.equal(state.logRepositories.length, 7, 'log must list every discovered repository');
+    assert.ok(state.logRepositories.some(r=>r.root===root));
+    assert.ok(state.logRepositoryId, 'log has no default repository');
+    assert.equal(state.unsyncedCvsCount, 6);
+    const entry = [...fx.manager.entries.values()].find(e=>e.info.root===root);
+    await fx.manager.request('selectRepository', {repositoryId:entry.info.id, surface:'log'});
+    assert.equal(fx.manager.state().logRepositoryId, entry.info.id);
+    assert.deepEqual(await fx.manager.request('getCvsFiles', {repositoryId:entry.info.id}), ['added.txt','app.txt','sub/deep.txt']);
+    assert.equal(fx.localReads.length, 0, 'file list scanned local changes');
+    assert.equal((await fx.read()).length, 0, 'file list contacted CVS');
+    assert.deepEqual(entry.cvs.files, []);
+    assert.equal(fx.manager.state().snapshots.length, 1, 'file list published an unsynced snapshot');
+    await assert.rejects(fx.manager.request('selectRepository', {repositoryId:entry.info.id, surface:'commit'}), /available repository/);
+    for (const command of ['scanRepository', 'updateProject', 'getWorkingFilePreview', 'rollbackFiles'])
+      await assert.rejects(fx.manager.request(command, command === 'getWorkingFilePreview' ? {repositoryId:entry.info.id, filePath:'app.txt'} : command === 'rollbackFiles' ? {repositoryId:entry.info.id, filePaths:['app.txt']} : {repositoryId:entry.info.id}), /available repository/, command);
+    await assert.rejects(fx.manager.execute('jettortoise.openCommitPanel', Uri.file(root)), /available repository/);
+    await fx.manager.execute('jettortoise.openHistory', Uri.file(root));
+    assert.equal(fx.manager.state().logRepositoryId, entry.info.id);
+    assert.equal(fx.manager.state().historyRequest.repositoryId, entry.info.id);
+    await fx.manager.request('refreshRepositories'); await fx.settle();
+    assert.equal(fx.localReads.length, 0); assert.equal((await fx.read()).length, 0, 'refresh loaded an unsynced CVS repository');
+    assert.equal(fx.manager.state().unsyncedCvsCount, 6, 'viewing history counted as synchronization');
   } finally { fx.manager.dispose(); await fs.rm(fx.base, {recursive:true,force:true}); }
 });
 
@@ -304,6 +346,7 @@ test('按需同步：同步先读本地再排队一次 update，移除与重扫�
     assert.equal((await fx.read()).filter(call=>call.phase==='start').length,1,'file watcher contacted CVS');
     await fx.manager.request('removeSynchronizedRepository',{repositoryId:entry.info.id});
     assert.equal(fx.manager.state().repositories.length,0);assert.equal(fx.manager.state().unsyncedCvsCount,6);
+    assert.equal(fx.manager.state().logRepositoryId,entry.info.id,'removing synchronization moved the log away');
     await fx.manager.scan();fx.events.focus.fire({focused:true});await fx.settle();
     assert.equal(fx.manager.state().repositories.length,0);
     assert.equal((await fx.read()).filter(call=>call.phase==='start').length,1);

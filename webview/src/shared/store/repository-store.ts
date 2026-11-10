@@ -9,6 +9,8 @@ import {
 } from "../models/changes";
 export interface WorkspaceState {
   repositories: RepositoryInfo[];
+  /** 日志下拉：全部已发现仓库，含未同步的 CVS。 */
+  logRepositories?: RepositoryInfo[];
   snapshots: RepositorySnapshot[];
   unsyncedCvsCount?: number;
   logRepositoryId?: string;
@@ -18,6 +20,8 @@ export interface WorkspaceState {
 }
 interface RepositoryStore extends WorkspaceState {
   ready: boolean;
+  /** 宿主视图是否可见；隐藏时日志不自动查询 CVS 历史。 */
+  visible: boolean;
   load: () => Promise<void>;
   apply: (state: WorkspaceState) => void;
   select: (id: string, surface: "commit" | "log") => Promise<void>;
@@ -28,7 +32,11 @@ function bind(state: WorkspaceState) {
     mode === "commit"
       ? (state.commitRepositoryId ?? state.logRepositoryId)
       : state.logRepositoryId;
-  const repository = state.repositories.find((item) => item.id === id);
+  const repository = (
+    mode === "commit"
+      ? state.repositories
+      : (state.logRepositories ?? state.repositories)
+  ).find((item) => item.id === id);
   setBridgeRepository(id, repository?.kind);
 }
 // 首次绘制直接使用宿主 HTML 中的无文件摘要，完整状态仍走原消息通道。
@@ -48,6 +56,7 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   unsyncedCvsCount: 0,
   ...initialWorkspace,
   ready: !!initialWorkspace,
+  visible: true,
   apply(state) {
     bind(state);
     set({
@@ -71,6 +80,10 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   },
 }));
 bridge.onEvent((event, data) => {
+  if (event === "viewVisibility")
+    useRepositoryStore.setState({
+      visible: (data as { visible?: boolean } | null)?.visible !== false,
+    });
   if (event === "repositoriesChanged")
     useRepositoryStore.getState().apply(data as WorkspaceState);
   if (event === "repositoryList") {

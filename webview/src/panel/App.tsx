@@ -318,7 +318,8 @@ function CloseIcon() {
 
 export function PanelApp() {
   const {
-    repositories,
+    repositories: commitRepositories,
+    logRepositories,
     logRepositoryId,
     activeFile,
     historyRequest,
@@ -326,6 +327,7 @@ export function PanelApp() {
     load,
     select,
   } = useRepositoryStore();
+  const repositories = logRepositories ?? commitRepositories;
   const repository = repositories.find((item) => item.id === logRepositoryId);
   useEffect(() => {
     void load();

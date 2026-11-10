@@ -203,7 +203,8 @@ async function main(){
   try{
     require(activationBundle).activate({extensionUri:Uri.file(process.cwd()),subscriptions:activationSubscriptions});
     const restoredRead=textProvider.provideTextDocumentContent(baseUri);await discoveryReady;releaseDiscovery();
-    await assert.rejects(restoredRead,/Select an available repository/);
+    // 未同步的 CVS 也列入日志，恢复的修订页仍须本会话显式差异签发后才读取，不连服务器。
+    await assert.rejects(restoredRead,/Open the file diff or history again/);
     const restoredManagerForDiff=registeredViews[0].manager;
     assert.ok(restoredManagerForDiff.repositories.every(repo=>repo.kind==='git'),'new window retained CVS synchronization');
     await restoredManagerForDiff.execute('jettortoise.synchronizeRepository',Uri.file(wc));
@@ -219,7 +220,8 @@ async function main(){
     vscode.env.language='zh-cn';
     for(const provider of registeredViews){
       const visibility=new Emitter(),disposed=new Emitter();
-      const view={visible:false,webview:{asWebviewUri:uri=>uri,cspSource:'fixture:',postMessage:async()=>true,onDidReceiveMessage:()=>disposable()},onDidChangeVisibility:visibility.event,onDidDispose:disposed.event};
+      const posted=[];
+      const view={visible:false,webview:{asWebviewUri:uri=>uri,cspSource:'fixture:',postMessage:async msg=>{posted.push(msg);return true},onDidReceiveMessage:()=>disposable()},onDidChangeVisibility:visibility.event,onDidDispose:disposed.event};
       try{
         provider.resolveWebviewView(view);
         assert.match(view.webview.html,/data-mode="(?:commit|panel)"/);
@@ -233,6 +235,8 @@ async function main(){
         const before=commands.length;
         for(const visible of [true,false,true,false]){view.visible=visible;visibility.fire();await Promise.resolve()}
         assert.deepEqual(commands.slice(before),[],'Webview 可见性变化不能聚焦日志或关闭底栏');
+        // 日志 webview 隐藏时保留上下文，靠可见性事件决定是否自动查询 CVS 历史。
+        if(view.webview.html.includes('data-mode="panel"'))assert.deepEqual(posted.filter(msg=>msg.event==='viewVisibility').map(msg=>msg.data.visible),[true,false,true,false]);
       }finally{disposed.fire();visibility.dispose();disposed.dispose()}
     }
 

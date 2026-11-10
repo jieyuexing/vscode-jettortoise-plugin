@@ -585,6 +585,20 @@ export class CvsAdapter {
     files.sort((a, b) => a.newPath.localeCompare(b.newPath));
     return { files, unknown };
   }
+  // 日志的文件清单：沿 Entries 的 D/ 记录走已登记目录，只读 Entries/Entries.Log，不 lstat 文件、不执行 CVS。
+  async entryNames() {
+    this.root = await fs.realpath(this.root);
+    const names = [];
+    for (const directory of await registeredCvsDirectories(this.root)) {
+      const prefix = directory === "." ? "" : `${directory.slice(2)}/`;
+      for (const record of await this.entriesAt(
+        path.join(this.root, directory),
+      ))
+        if (record.startsWith("/"))
+          names.push(relativeFile(prefix + record.split("/")[1]));
+    }
+    return names.sort((a, b) => a.localeCompare(b));
+  }
   remote() {
     return this.repositoryRoot?.startsWith(":pserver:") ?? false;
   }

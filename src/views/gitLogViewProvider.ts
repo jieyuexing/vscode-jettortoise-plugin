@@ -18,6 +18,18 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider {
       "panel",
     );
     const connection = this.manager.connect(view.webview);
-    view.onDidDispose(() => connection.dispose());
+    // 日志隐藏时保留上下文，告知可见性，CVS 历史只在用户看得到时查询。
+    const visibility = view.onDidChangeVisibility(
+      () =>
+        void view.webview.postMessage({
+          type: "event",
+          event: "viewVisibility",
+          data: { visible: view.visible },
+        }),
+    );
+    view.onDidDispose(() => {
+      visibility.dispose();
+      connection.dispose();
+    });
   }
 }

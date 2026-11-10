@@ -18,7 +18,6 @@
   "CVS cancelled. Refresh to check whether files were partly changed.": "CVS 操作已取消。请刷新以检查是否有文件已部分更改。",
   "CVS could not complete the operation ({0}).": "CVS 无法完成操作（{0}）。",
   "CVS failed. Check repository access and working copy state, then refresh.": "CVS 操作失败。请检查仓库访问权限和工作副本状态，然后刷新。",
-  "CVS files": "CVS 文件",
   "CVS operation failed.": "CVS 操作失败。",
   "CVS revision": "CVS 修订",
   "CVS rollback completed. Backups: {0}": "CVS 回滚完成。备份：{0}",

@@ -22,6 +22,7 @@ export interface CvsRevision {
 }
 interface Adapter {
   localStatus(names?: string[]): Promise<CvsFile[]>;
+  entryNames(): Promise<string[]>;
   status(signal?: AbortSignal, local?: CvsFile[]): Promise<CvsFile[]>;
   file(name: string): Promise<CvsFile>;
   log(name: string, signal?: AbortSignal): Promise<CvsRevision[]>;
@@ -136,14 +137,15 @@ export class CvsSession {
     this.scanStopped = false;
     await this.refresh();
   }
+  // 只读 Entries，不盘点工作区、不改本地快照，未同步仓也可用；目录数超限时返回空清单。
   async fileNames(): Promise<string[]> {
-    // 日志挂载也走同一条本地队列，避免与首次同步并行重复盘点。
-    await this.refresh();
-    if (this.scanStopped) return [];
-    if (this.error) throw new Error(this.error);
-    return this.files
-      .filter((file) => file.entryRevision)
-      .map((file) => file.newPath);
+    await this.guard();
+    try {
+      return await this.adapter.entryNames();
+    } catch (error) {
+      if (isScanLimit(error)) return [];
+      throw new Error(cvsErrorText(error));
+    }
   }
   async refresh(paths?: string[], network = false): Promise<void> {
     const job = async () => {

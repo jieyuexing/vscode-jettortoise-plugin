@@ -15,7 +15,10 @@ import { FileTree } from "../shared/components/FileTree";
 import { initializeI18n } from "../shared/i18n";
 import { useCommitStore } from "../shared/store/commit-store";
 import { usePanelStore } from "../shared/store/panel-store";
-import { useRepositoryStore } from "../shared/store/repository-store";
+import {
+  commitTarget,
+  useRepositoryStore,
+} from "../shared/store/repository-store";
 import { CommitApp } from "./App";
 import { ChangeTree } from "./components/ChangeTree";
 
@@ -819,6 +822,18 @@ it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async ()
     expect(view.getByText("history of WEB-INF/web.xml")).toBeTruthy(),
   );
   expect(view.queryByText("No available repository.")).toBeNull();
+});
+
+it("日志选中未同步 CVS 时，提交面回落到第一个可用仓库", () => {
+  const base = { repositories: [repositories[0]], snapshots: [] };
+  expect(commitTarget({ ...base, logRepositoryId: "c" })).toBe("a");
+  expect(commitTarget({ ...base, logRepositoryId: "a" })).toBe("a");
+  expect(
+    commitTarget({ ...base, logRepositoryId: "c", commitRepositoryId: "x" }),
+  ).toBe("x");
+  expect(
+    commitTarget({ repositories: [], snapshots: [], logRepositoryId: "c" }),
+  ).toBeUndefined();
 });
 
 it("CVS 显式选文件与打开历史查询所选文件", async () => {

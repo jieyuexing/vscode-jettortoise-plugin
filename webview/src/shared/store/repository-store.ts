@@ -26,12 +26,18 @@ interface RepositoryStore extends WorkspaceState {
   apply: (state: WorkspaceState) => void;
   select: (id: string, surface: "commit" | "log") => Promise<void>;
 }
+/** 提交面所用仓库：明确选择优先，其次日志所选的可用仓库，日志选中未同步 CVS 时取第一个可用仓库。 */
+export function commitTarget(state: WorkspaceState) {
+  return (
+    state.commitRepositoryId ??
+    (state.repositories.some((item) => item.id === state.logRepositoryId)
+      ? state.logRepositoryId
+      : state.repositories[0]?.id)
+  );
+}
 function bind(state: WorkspaceState) {
   const mode = document.getElementById("root")?.dataset.mode;
-  const id =
-    mode === "commit"
-      ? (state.commitRepositoryId ?? state.logRepositoryId)
-      : state.logRepositoryId;
+  const id = mode === "commit" ? commitTarget(state) : state.logRepositoryId;
   const repository = (
     mode === "commit"
       ? state.repositories
@@ -56,7 +62,7 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   unsyncedCvsCount: 0,
   ...initialWorkspace,
   ready: !!initialWorkspace,
-  visible: true,
+  visible: document.getElementById("root")?.dataset.visible !== "false",
   apply(state) {
     bind(state);
     set({

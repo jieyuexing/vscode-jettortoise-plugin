@@ -259,8 +259,9 @@ M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n
 
 - 仓库列表分两份：`repositories`（Git 与已同步 CVS）只供本地更改、快照、扫描、刷新与写操作；`logRepositories`（全部已发现仓库）只供日志下拉。`unsyncedCvsCount`、未同步提示、按需同步和移除同步的含义不变，查看历史不算同步。
 - 日志默认仓：首个登记的仓库，扫描结束仍无有效选择时取 `logRepositories` 第一项；当前编辑器文件所在仓库优先（含未同步 CVS）。移除同步不改日志选择。
+- 提交面没有明确选仓时沿用日志所选仓；日志选中未同步 CVS 时，宿主 `commitFallback()` 与 webview `commitTarget()` 都改用 `repositories` 第一项，提交面请求、Update Project 与命令面板 Git 命令不会落到未同步仓。
 - 未同步 CVS 只放行日志的只读入口：`selectRepository`（surface 为 log）、`getCvsFiles`、`getCvsHistory`、`diffCvsRevision`、CVS 修订 URI 的 `readFile`（仍要求本会话显式差异签发），以及 `openHistory`／`showFileHistory`。`scanRepository`、`updateProject`、`openCommitPanel`、提交、回滚、预览等仍报“请选择可用的仓库”。
 - 文件清单 `CvsAdapter.entryNames()` 沿 Entries 的 `D/` 记录走已登记目录（`registeredCvsDirectories`，与 update 的目录集合相同，子仓边界不进入），只读 Entries/Entries.Log 的文件行，不 lstat 文件、不执行 CVS、不改会话快照。目录超过 10000 个时返回空清单；文件数不设上限（上万个文件时下拉选项多，渲染较慢）。
-- CvsHistory 挂载或当前编辑器文件变化后，文件清单选中当前文件，否则保留原选择，否则首个文件，并查询其历史。日志 webview 隐藏时保留上下文，宿主 `onDidChangeVisibility` 发 `viewVisibility` 事件；隐藏期间只记下待查文件，显示后再查。显式打开历史只查一次。
+- CvsHistory 挂载或当前编辑器文件变化后，文件清单选中当前文件，否则保留原选择，否则首个文件，并查询其历史。日志 webview 隐藏时保留上下文，可见性初值写进 HTML 的 `data-visible`，之后由宿主 `onDidChangeVisibility` 发 `viewVisibility` 事件；隐藏期间只记下待查文件，显示后再查。显式打开历史只查一次。
 
-回归：`scripts/repository-performance-check.cjs`「日志列出未同步 CVS」（假 cvs 记录调用，清单不调 CVS、不读本地状态，提交面请求拒绝）、`scripts/vcs-host-check.cjs` 第 0 节（真实 `:local:` CVS，未同步下取清单、修订列表与两侧修订内容；argv 包装记录只有 `log` 与 `update -p`，同步后出现 `-n update` 作对照）、`scripts/restart-host-check.cjs`（日志视图可见性事件）、`commit-ui.test.tsx`（日志下拉含未同步仓并显示历史、隐藏时等待、显式打开只查一次）。真实窗口、Windows CVSNT 与公司 CVS 未验。
+回归：`scripts/repository-performance-check.cjs`「日志列出未同步 CVS」（假 cvs 记录调用，清单不调 CVS、不读本地状态，提交面请求拒绝未同步仓并回落到 Git）、`scripts/vcs-host-check.cjs` 第 0 节（真实 `:local:` CVS，未同步下取清单、修订列表与两侧修订内容；argv 包装记录只有 `log` 与 `update -p`，同步后出现 `-n update` 作对照）、`scripts/restart-host-check.cjs`（日志视图可见性初值与事件）、`commit-ui.test.tsx`（日志下拉含未同步仓并显示历史、隐藏时等待、显式打开只查一次、提交面回落）。真实窗口、Windows CVSNT 与公司 CVS 未验。

@@ -236,6 +236,7 @@ async function main(){
         for(const visible of [true,false,true,false]){view.visible=visible;visibility.fire();await Promise.resolve()}
         assert.deepEqual(commands.slice(before),[],'Webview 可见性变化不能聚焦日志或关闭底栏');
         // 日志 webview 隐藏时保留上下文，靠可见性事件决定是否自动查询 CVS 历史。
+        if(view.webview.html.includes('data-mode="panel"'))assert.match(view.webview.html,/data-visible="false"/,'日志在隐藏状态下 resolve 时未写入可见性初值');
         if(view.webview.html.includes('data-mode="panel"'))assert.deepEqual(posted.filter(msg=>msg.event==='viewVisibility').map(msg=>msg.data.visible),[true,false,true,false]);
       }finally{disposed.fire();visibility.dispose();disposed.dispose()}
     }

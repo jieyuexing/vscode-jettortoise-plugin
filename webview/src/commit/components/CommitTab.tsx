@@ -11,7 +11,10 @@ import {
   mergingRepository,
   useCommitStore,
 } from "../../shared/store/commit-store";
-import { useRepositoryStore } from "../../shared/store/repository-store";
+import {
+  commitTarget,
+  useRepositoryStore,
+} from "../../shared/store/repository-store";
 import { ChangeTree, changeAction } from "./ChangeTree";
 import { CommitMessageArea } from "./CommitMessageArea";
 import { DiffPreview } from "./DiffPreview";
@@ -20,13 +23,8 @@ import { ShelfTab } from "./ShelfTab";
 import { Toolbar } from "./Toolbar";
 
 export function CommitTab() {
-  const {
-    repositories,
-    commitRepositoryId,
-    logRepositoryId,
-    select,
-    unsyncedCvsCount = 0,
-  } = useRepositoryStore();
+  const workspace = useRepositoryStore();
+  const { repositories, select, unsyncedCvsCount = 0 } = workspace;
   const state = useCommitStore();
   const merging = useRepositoryStore(mergingRepository) !== undefined;
   const container = useRef<HTMLDivElement>(null);
@@ -37,7 +35,7 @@ export function CommitTab() {
   const selectSequence = useRef(0);
   const wide = width >= 760;
   const hasGit = repositories.some((repo) => repo.kind === "git");
-  const currentId = commitRepositoryId ?? logRepositoryId;
+  const currentId = commitTarget(workspace);
   const current = repositories.find((repo) => repo.id === currentId);
   const file = state.changes.find((file) => fileKey(file) === previewKey);
   const files = state.changes.filter(

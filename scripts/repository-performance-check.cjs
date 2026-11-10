@@ -313,6 +313,9 @@ test('日志列出未同步 CVS：文件清单只读 Entries，提交面与扫�
     await fx.manager.execute('jettortoise.openHistory', Uri.file(root));
     assert.equal(fx.manager.state().logRepositoryId, entry.info.id);
     assert.equal(fx.manager.state().historyRequest.repositoryId, entry.info.id);
+    // 日志选中未同步 CVS、提交面没有明确选仓时，提交面请求仍落到可用仓库（此处为 Git），不被拒绝。
+    assert.equal(fx.manager.state().commitRepositoryId, undefined);
+    assert.deepEqual(await fx.manager.request('getMergeState'), {isMerging:false}, 'commit fallback followed the unsynced log selection');
     await fx.manager.request('refreshRepositories'); await fx.settle();
     assert.equal(fx.localReads.length, 0); assert.equal((await fx.read()).length, 0, 'refresh loaded an unsynced CVS repository');
     assert.equal(fx.manager.state().unsyncedCvsCount, 6, 'viewing history counted as synchronization');

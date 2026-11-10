@@ -241,11 +241,19 @@ export class RepositoryManager implements vscode.Disposable {
   }
   // log 为真时只服务日志的只读查询，允许未同步 CVS；其余请求仍要求已同步。
   private selected(id?: unknown, log = false) {
-    const selected = typeof id === "string" ? id : this.logId;
+    const selected =
+      typeof id === "string" ? id : log ? this.logId : this.commitFallback();
     const entry = selected ? this.entries.get(selected) : undefined;
     if (!entry || (!log && !this.listed(entry)))
       throw new Error(vscode.l10n.t("Select an available repository."));
     return entry;
+  }
+  // 提交面没有明确选仓时沿用日志所选仓；日志选中未同步 CVS 时改用第一个可用仓库。
+  private commitFallback() {
+    const entry = this.logId ? this.entries.get(this.logId) : undefined;
+    return entry && this.listed(entry)
+      ? entry.info.id
+      : this.repositories[0]?.id;
   }
   private cvs(entry: Entry) {
     if (!entry.cvs)
@@ -1104,17 +1112,12 @@ export class RepositoryManager implements vscode.Disposable {
       const uri =
         (args[0] as vscode.Uri | undefined) ??
         vscode.window.activeTextEditor?.document.uri;
-      const entry = uri
-        ? await this.owner(uri)
-        : this.selected(
-            command === "jettortoise.openCommitPanel" ||
-              command === "jettortoise.updateProject"
-              ? this.commitId
-              : undefined,
-          );
       const history =
         command === "jettortoise.openHistory" ||
         command === "jettortoise.showFileHistory";
+      const entry = uri
+        ? await this.owner(uri)
+        : this.selected(history ? undefined : this.commitId, history);
       if (!entry || (!history && !this.listed(entry)))
         throw new Error(vscode.l10n.t("Select an available repository."));
       await this.guard(entry);

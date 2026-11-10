@@ -124,23 +124,54 @@ function fileChange(item) {
   };
 }
 
+// 导入同时产生主干 1.1 与厂商分支 1.1.1.1（同作者同时刻）：折成一个主干修订，说明取导入时写的那条，
+// commitid 沿用（没有 commitid 的服务器上两者说明不同，否则会被拆成两个提交）。
+function foldImports(revisions) {
+  const trunk = new Map(
+    revisions
+      .filter((item) => item.revision === "1.1")
+      .map((item) => [item.path, item]),
+  );
+  const imported = new Map();
+  const rest = revisions.filter((item) => {
+    const twin = item.revision === "1.1.1.1" && trunk.get(item.path);
+    if (!twin || twin.author !== item.author || twin.time !== item.time)
+      return true;
+    imported.set(twin, item);
+    return false;
+  });
+  return rest.map((item) => {
+    const vendor = imported.get(item);
+    return vendor
+      ? {
+          ...item,
+          message: vendor.message,
+          commitId: item.commitId ?? vendor.commitId,
+        }
+      : item;
+  });
+}
+
 /**
  * 把文件修订合成提交，按时间倒序。
  * - 有 commitid：同 commitid 一个提交；
  * - 没有：按时间升序，同作者同说明、与组内最近一个修订相差不超过 windowSeconds、且该文件尚未在组内，就并入，否则另起一组；
- * - 同一提交里一个文件只出一行：导入产生的 1.1 与厂商分支 1.1.1.1 取主干修订，说明取导入时写的那条；
+ * - 同一提交里一个文件只出一行：导入产生的 1.1 与厂商分支 1.1.1.1 折成主干修订（见 foldImports）；
  * - 分支上新增文件时主干留下的 dead 1.1 只是占位，不算删除。
  */
 export function groupCommits(revisions, windowSeconds = COMMIT_WINDOW_SECONDS) {
   const windowMs = windowSeconds * 1000;
-  const ordered = revisions
-    .filter((item) => !(item.state === "dead" && item.revision === "1.1"))
-    .sort(
-      (a, b) =>
-        a.time - b.time ||
-        compareText(a.path, b.path) ||
-        compareRevisions(a.revision, b.revision),
-    );
+  // 重复的 path@revision 不能让“同一文件第二次出现”把一个提交拆开。
+  const ordered = foldImports(
+    uniqueRevisions(revisions).filter(
+      (item) => !(item.state === "dead" && item.revision === "1.1"),
+    ),
+  ).sort(
+    (a, b) =>
+      a.time - b.time ||
+      compareText(a.path, b.path) ||
+      compareRevisions(a.revision, b.revision),
+  );
   const byCommitId = new Map(),
     open = new Map(),
     groups = [];
@@ -167,15 +198,7 @@ export function groupCommits(revisions, windowSeconds = COMMIT_WINDOW_SECONDS) {
       else open.set(key, group);
     }
     group.last = Math.max(group.last, item.time);
-    const existing = group.files.get(item.path);
-    if (existing) {
-      const [trunk, branch] =
-        existing.revision.split(".").length <= item.revision.split(".").length
-          ? [existing, item]
-          : [item, existing];
-      group.files.set(item.path, trunk);
-      group.message = branch.message;
-    } else group.files.set(item.path, item);
+    if (!group.files.has(item.path)) group.files.set(item.path, item);
   }
   return groups
     .map((group) => ({
@@ -206,15 +229,20 @@ export function logRangeArgs({ from, to } = {}) {
   return [];
 }
 
-/** 合并两次取到的修订；相邻范围含两端，同一文件修订只留一条。 */
-export function mergeRevisions(existing, incoming) {
+/** 每个 path@revision 只留第一条：服务器可能重复输出同一个文件修订，相邻范围的两端也会重叠。 */
+export function uniqueRevisions(revisions) {
   const seen = new Set(),
-    merged = [];
-  for (const item of [...existing, ...incoming]) {
+    unique = [];
+  for (const item of revisions) {
     const key = `${item.path}\0${item.revision}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push(item);
+    unique.push(item);
   }
-  return merged;
+  return unique;
+}
+
+/** 合并两次取到的修订；相邻范围含两端，同一文件修订只留一条。 */
+export function mergeRevisions(existing, incoming) {
+  return uniqueRevisions([...existing, ...incoming]);
 }

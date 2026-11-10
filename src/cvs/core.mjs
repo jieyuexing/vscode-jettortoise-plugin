@@ -13,7 +13,7 @@ import {
   repositoryTree,
 } from "../repositories/boundaries.cjs";
 import { runNetwork } from "../repositories/network.cjs";
-import { logRangeArgs, parseRepositoryLog } from "./log.mjs";
+import { logRangeArgs, parseRepositoryLog, uniqueRevisions } from "./log.mjs";
 
 // CVS 1.12 内置忽略表（ignore.c 的 ign_default）。
 const DEFAULT_IGNORE =
@@ -512,6 +512,8 @@ export class CvsAdapter {
     this.process = process;
     this.cleanSizes = new Map();
     this.remoteStates = new Map();
+    // 服务器是否对目录参数忽略 log -l（见 repositoryLog）。
+    this.logIgnoresLocal = false;
   }
   async inventory() {
     const { files } = await this.localInventory();
@@ -862,33 +864,70 @@ export class CvsAdapter {
     await this.entriesAt(path.dirname(path.join(this.root, name)));
   }
   /**
-   * 整个仓库的文件修订（只读 cvs log，不运行 update）：沿已登记目录用 -l 逐批取，
-   * 与 update、文件清单同一目录集合，不进入嵌套或异 Root 的检出。
+   * 整个仓库的文件修订（只读 cvs log，不运行 update），每个 path@revision 一条。
+   * 默认沿已登记目录用 -l 逐批取（与 update、文件清单同一目录集合，不进入嵌套或异 Root 的检出）。
+   * 有的服务器对目录参数忽略 -l，每个目录参数都递归，深层文件被每个祖先目录各输出一次：
+   * 输出里出现重复 path@revision 即说明如此，此时丢弃这次结果，改为在仓库根做一次递归 log
+   * （无 -l、无目录参数），再只保留已登记目录里的文件；该判断记在适配器上，之后的范围直接用递归形式。
    * from／to 为毫秒时间戳，限定 -d 日期范围（含两端）。
    */
   async repositoryLog({ from, to } = {}, signal) {
     this.root = await fs.realpath(this.root);
     const directories = await registeredCvsDirectories(this.root);
-    const flags = ["log", "-l", "-N", "-S", ...logRangeArgs({ from, to })];
-    const revisions = [];
-    for (const batch of this.batches(flags, directories)) {
-      if (signal?.aborted) fail("cancelled");
-      // 全部历史可能很大：放宽输出与时间上限，只取 stdout（stderr 的 Logging 行会混进说明）。
-      const output = await this.run([...flags, ...batch], signal, [0], {
-        stdoutOnly: true,
-        timeoutMs: 300000,
-        maxBytes: 128 * 1024 * 1024,
-      });
-      for (const item of parseRepositoryLog(output.stdout)) {
-        try {
-          relativeFile(item.path);
-        } catch {
-          continue;
-        }
-        revisions.push(item);
+    const range = logRangeArgs({ from, to });
+    // 全部历史可能很大：放宽输出与时间上限，只取 stdout（stderr 的 Logging 行会混进说明）。
+    const options = {
+      stdoutOnly: true,
+      timeoutMs: 300000,
+      maxBytes: 128 * 1024 * 1024,
+    };
+    // 文件名要过 relativeFile；不合法的丢弃。
+    const valid = (item) => {
+      try {
+        relativeFile(item.path);
+        return true;
+      } catch {
+        return false;
       }
+    };
+    if (!this.logIgnoresLocal) {
+      const flags = ["log", "-l", "-N", "-S", ...range];
+      const found = new Map();
+      let repeated = false;
+      for (const batch of this.batches(flags, directories)) {
+        if (signal?.aborted) fail("cancelled");
+        const output = await this.run(
+          [...flags, ...batch],
+          signal,
+          [0],
+          options,
+        );
+        for (const item of parseRepositoryLog(output.stdout).filter(valid)) {
+          const key = `${item.path}\0${item.revision}`;
+          if (found.has(key)) repeated = true;
+          else found.set(key, item);
+        }
+      }
+      if (!repeated) return [...found.values()];
+      this.logIgnoresLocal = true;
     }
-    return revisions;
+    if (signal?.aborted) fail("cancelled");
+    const registered = new Set(
+      directories.map((directory) =>
+        directory === "." ? "." : directory.slice(2),
+      ),
+    );
+    const output = await this.run(
+      ["log", "-N", "-S", ...range],
+      signal,
+      [0],
+      options,
+    );
+    return uniqueRevisions(
+      parseRepositoryLog(output.stdout).filter(
+        (item) => valid(item) && registered.has(path.posix.dirname(item.path)),
+      ),
+    );
   }
   async log(name, signal) {
     await this.revisionFile(name);

@@ -9,6 +9,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { build } = require("esbuild");
+const { writeShim } = require("./cvs-shims.cjs");
 
 const git = (cwd, args) => cp.execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const disposable = () => ({ dispose() {} });
@@ -80,6 +81,7 @@ async function main() {
     // 会话使用记录 argv 的 cvs 包装，用来证明未同步仓查看历史时不运行 cvs -n update。
     const argvLog = path.join(base, "cvs-argv.jsonl"), cvsShim = path.join(base, "cvs-argv-shim");
     await fs.writeFile(cvsShim, `#!${process.execPath}\nconst fs=require("node:fs"),cp=require("node:child_process");const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(argvLog)},JSON.stringify(args)+"\\n");const r=cp.spawnSync(${JSON.stringify(process.env.JETTORTOISE_TEST_CVS || "cvs")},args,{stdio:"inherit"});process.exit(r.status??1);\n`, { mode: 0o755 });
+    let cvsPathUnderTest = cvsShim;
     const argvCalls = async () => (await fs.readFile(argvLog, "utf8").catch(() => "")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const watchers = [], warnings = [], infos = [], commands = [], sent = [];
     const decodes = [], editorListeners = [];
@@ -90,7 +92,7 @@ async function main() {
       l10n: { t: (message, ...args) => message.replace(/\{(\d+)\}/g, (_, index) => args[index] ?? "") },
       workspace: {
         isTrusted: true, workspaceFolders: [{ uri: Uri.file(root) }], textDocuments: [],
-        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? cvsShim : fallback) }),
+        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? cvsPathUnderTest : fallback) }),
         onDidChangeWorkspaceFolders: () => disposable(), onDidGrantWorkspaceTrust: () => disposable(), onDidSaveTextDocument: () => disposable(),
         createFileSystemWatcher: (pattern) => {
           const created = new Emitter();
@@ -226,6 +228,58 @@ async function main() {
 
     manager = new RepositoryManager({ extensionUri: Uri.file(process.cwd()) });
     manager.connect({ postMessage: (message) => { sent.push(message); return Promise.resolve(true); }, onDidReceiveMessage: () => disposable() });
+    // 00b. 服务器对目录参数忽略 -l（每个目录参数都被递归，深层文件重复）：日志仍是每个 path@revision 一次，
+    //      提交不被拆开；从输出发现后改为仓库根的一次递归 log（无 -l、无目录参数），之后的范围直接用它。
+    {
+      const base2 = path.join(base, "log-case-deep"), repo2 = path.join(base2, "repository"), root2 = path.join(base2, "workspace"), seed2 = path.join(base2, "seed");
+      await fs.mkdir(repo2, { recursive: true }); await fs.mkdir(root2);
+      const levels = ["l1", "l1/l2", "l1/l2/l3"], files2 = ["root.txt", ...levels.map((dir) => `${dir}/f.txt`)];
+      for (const dir of levels) await fs.mkdir(path.join(seed2, dir), { recursive: true });
+      for (const name of files2) await fs.writeFile(path.join(seed2, name), "v1\n");
+      const cvsRoot2 = `:local:${repo2}`;
+      await cvs.run(["-d", cvsRoot2, "init"], base2);
+      await cvs.run(["-d", cvsRoot2, "import", "-m", "sample import", "deepmod", "vendor", "start"], seed2);
+      const wc2 = await core.checkout(cvs, cvsRoot2, "deepmod", path.join(root2, "wc"));
+      const peerWc = await core.checkout(cvs, cvsRoot2, "deepmod", path.join(base2, "colleague"));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      for (const name of files2) await fs.writeFile(path.join(peerWc, name), "v2\n");
+      await new core.CvsAdapter(peerWc, cvs).commit(files2, "colleague: touch every depth");
+
+      const recursing = await writeShim(path.join(base2, "recursing-cvs"), { real: process.env.JETTORTOISE_TEST_CVS || "cvs", argvLog, recursing: true, stripCommitId: true });
+      cvsPathUnderTest = recursing;
+      vscode.workspace.workspaceFolders = [{ uri: Uri.file(root2) }];
+      const { RepositoryManager: DeepManager } = require(bundle);
+      const deepManager = new DeepManager({ extensionUri: Uri.file(process.cwd()) });
+      deepManager.connect({ postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => disposable() });
+      await deepManager.scan();
+      const deepRepository = deepManager.state().logRepositories.find((item) => item.root === wc2);
+      assert.ok(deepRepository, "deep CVS repository missing from the log");
+      await deepManager.request("selectRepository", { repositoryId: deepRepository.id, surface: "log" });
+      await fs.writeFile(argvLog, "");
+      const deepLog = await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 90 });
+      assert.deepEqual(deepLog.commits.map((commit) => [commit.subject, commit.fileCount]), [["colleague: touch every depth", files2.length], ["sample import", files2.length]]);
+      const touched = await deepManager.request("getCvsCommit", { repositoryId: deepRepository.id, commitId: deepLog.commits[0].id });
+      assert.deepEqual(touched.map((file) => file.path), [...files2].sort((a, b) => a.localeCompare(b)));
+      const deepCalls = await argvCalls();
+      assert.equal(deepCalls.length, 2, `expected the directory attempt and the recursive fallback: ${JSON.stringify(deepCalls)}`);
+      assert.deepEqual(deepCalls[0].slice(0, 6), ["-f", "log", "-l", "-N", "-S", "-d"]);
+      assert.ok(deepCalls[0].length > 8, "the first attempt passes the registered directories");
+      assert.deepEqual([deepCalls[1].slice(0, 5), deepCalls[1].length], [["-f", "log", "-N", "-S", "-d"], 6]);
+      // 记住该服务器：更早的范围直接用递归形式；已覆盖的范围不连服务器。
+      await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 180 });
+      await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 90 });
+      const deepAll = await argvCalls();
+      assert.equal(deepAll.length, 3);
+      assert.deepEqual(deepAll[2].slice(0, 5), ["-f", "log", "-N", "-S", "-d"]);
+      assert.ok(!deepAll.some((args) => args[1] !== "log" || args.includes("-n")), `unexpected CVS commands: ${JSON.stringify(deepAll)}`);
+      assert.equal(deepManager.state().snapshots.length, 0);
+      console.log(JSON.stringify({ deepRepositoryLogArgv: deepAll.map((args) => args.slice(0, args.indexOf("-d") + 1).concat(args.length > 8 ? ["<registered directories…>"] : [])) }));
+      deepManager.dispose();
+      cvsPathUnderTest = cvsShim;
+      vscode.workspace.workspaceFolders = [{ uri: Uri.file(root) }];
+      await fs.writeFile(argvLog, "");
+    }
+
     await manager.scan();
 
     // 0. 未同步的 CVS 也列入日志：文件清单只读 Entries，查看文件历史与修订差异才运行 cvs log／update -p，

@@ -6,9 +6,11 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CvsAdapter, CvsProcess, SerialQueue, checkout, cvsRoot, findWorkingCopy, relativeFile, revision } from "../src/cvs/core.mjs";
+import { createRequire } from "node:module";
 import { groupCommits } from "../src/cvs/log.mjs";
 import { validateMessage } from "../src/cvs/protocol.mjs";
 
+const { writeShim } = createRequire(import.meta.url)("./cvs-shims.cjs");
 async function fixture() {
   const base = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), "jettortoise-cvs-")));
   const repository = path.join(base, "repo"), seed = path.join(base, "seed"), wc = path.join(base, "working copy 中文");
@@ -304,6 +306,66 @@ test("temporary local CVS: repository log of an unsynchronized working copy grou
     // 路径仍须在本工作副本的已登记目录内。
     await assert.rejects(adapter.log("no-such-dir/x.txt"));
     await assert.rejects(adapter.log("../escape.txt"), { code: "path" });
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+test("temporary local CVS: a server that ignores -l on directory arguments repeats files; the log still lists each path@revision once", async () => {
+  const f = await fixture();
+  try {
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer")), other = new CvsAdapter(peer, f.process);
+    const pause = () => new Promise(done => setTimeout(done, 1100));
+    // 多层目录，每层一个文件；一次提交改动所有深度的文件。
+    const levels = ["l1", "l1/l2", "l1/l2/l3", "l1/l2/l3/l4"];
+    for (const dir of levels) { await fs.mkdir(path.join(peer, dir), { recursive: true }); await other.add([dir]); }
+    const files = ["root.txt", ...levels.map(dir => `${dir}/f.txt`)];
+    for (const name of files) await fs.writeFile(path.join(peer, name), "v1\n");
+    await other.add(files); await other.commit(files, "peer: deep v1");
+    await f.process.run(["update", "-d", "-P"], f.wc);
+    await pause();
+    for (const name of files) await fs.writeFile(path.join(peer, name), "v2\n");
+    await other.commit(files, "peer: touch every depth");
+
+    const real = process.env.JETTORTOISE_TEST_CVS || "/opt/homebrew/bin/cvs";
+    const open = async (recursing) => {
+      const shim = await writeShim(path.join(f.base, recursing ? "recursing-cvs" : "plain-cvs"), { real, recursing, stripCommitId: true });
+      const cvsProcess = new CvsProcess(shim), runs = [];
+      // 根上的递归 log 也可能带回未登记目录里的文件（本机客户端按 Entries 走，不会；别的客户端或服务器会）：追加一段合成输出。
+      const unregistered = "RCS file: /cvsroot/demo/extra/f.txt,v\nWorking file: extra/f.txt\nhead: 1.2\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: 1;\tselected revisions: 1\ndescription:\n----------------------------\nrevision 1.2\ndate: 2026-11-10 07:00:00 +0000;  author: dev-a;  state: Exp;\nunregistered\n=============================================================================\n";
+      return { runs, adapter: new CvsAdapter(f.wc, { executable: shim, run: async (...args) => {
+        runs.push(args[0]);
+        const result = await cvsProcess.run(...args);
+        return recursing && !args[0].includes("-l") ? { ...result, stdout: Buffer.concat([result.stdout, Buffer.from(`\n${unregistered}`)]) } : result;
+      } }) };
+    };
+    const summary = (revisions) => {
+      const commits = groupCommits(revisions);
+      return { unique: new Set(revisions.map(item => `${item.path}@${item.revision}`)).size, commits };
+    };
+
+    // 对照：-l 有效的服务器，每个修订一次，一个命令。
+    const plain = await open(false);
+    const expected = summary(await plain.adapter.repositoryLog({}));
+    assert.equal(plain.runs.length, 1, "a server honoring -l needs one command");
+    assert.equal(expected.commits.find(commit => commit.message === "peer: touch every depth").files.length, files.length);
+
+    // 每个目录参数都被递归：同一路径修订重复；结果必须仍是每个 path@revision 一次，提交不被拆开。
+    const recursing = await open(true);
+    const revisions = await recursing.adapter.repositoryLog({});
+    assert.equal(revisions.length, expected.unique, `repeated revisions leaked: ${revisions.length} for ${expected.unique} unique`);
+    const result = summary(revisions);
+    assert.deepEqual(result.commits.map(commit => [commit.message, commit.files.length]), expected.commits.map(commit => [commit.message, commit.files.length]));
+    // 从输出发现 -l 不被遵守后，改为在仓库根做一次递归 log，再按已登记目录过滤。
+    assert.equal(revisions.some(item => item.path.startsWith("extra/")), false, "an unregistered directory leaked into the log");
+    assert.equal(recursing.runs.length, 2, JSON.stringify(recursing.runs));
+    assert.deepEqual(recursing.runs[0].slice(0, 4), ["log", "-l", "-N", "-S"]);
+    assert.ok(recursing.runs[0].length > 5, "the first attempt passes the registered directories");
+    assert.deepEqual(recursing.runs[1], ["log", "-N", "-S"]);
+    // 记住该服务器的行为：之后（含带 -d 的范围）直接用递归形式，不再先试目录参数。
+    const since = await recursing.adapter.repositoryLog({ from: Date.now() - 86400000 });
+    assert.equal(summary(since).commits.length, expected.commits.length);
+    assert.equal(recursing.runs.length, 3);
+    assert.deepEqual(recursing.runs[2].slice(0, 4), ["log", "-N", "-S", "-d"]);
+    assert.equal(recursing.runs[2].length, 5);
+    assert.ok(recursing.runs.every(args => args[0] === "log"));
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {

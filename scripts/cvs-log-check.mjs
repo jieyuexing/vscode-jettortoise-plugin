@@ -11,6 +11,7 @@ import {
   mergeRevisions,
   parseRepositoryLog,
   previousRevision,
+  uniqueRevisions,
 } from "../src/cvs/log.mjs";
 
 const DASH = "-".repeat(28);
@@ -177,6 +178,20 @@ test("groupCommits: an import (1.1 and 1.1.1.1 share the commitid) is one added 
   assert.deepEqual(commit.files.map((file) => [file.path, file.revision, file.kind]), [["a.txt", "1.1", "added"], ["b.txt", "1.1", "added"]]);
 });
 
+test("groupCommits: an import on a server without commitid is still one commit with the import message", () => {
+  const [commit, ...rest] = groupCommits([
+    rev("a.txt", "1.1", "2026-10-20T08:00:00Z", { message: "Initial revision" }),
+    rev("a.txt", "1.1.1.1", "2026-10-20T08:00:00Z", { message: "import sample project" }),
+    rev("b.txt", "1.1", "2026-10-20T08:00:00Z", { message: "Initial revision" }),
+    rev("b.txt", "1.1.1.1", "2026-10-20T08:00:00Z", { message: "import sample project" }),
+  ]);
+  assert.equal(rest.length, 0);
+  assert.equal(commit.message, "import sample project");
+  assert.deepEqual(commit.files.map((file) => [file.path, file.revision, file.kind]), [["a.txt", "1.1", "added"], ["b.txt", "1.1", "added"]]);
+  // 不同作者或不同时刻的 1.1.1.1 不是孪生：两条各自成行。
+  assert.equal(groupCommits([rev("a.txt", "1.1", "2026-10-20T08:00:00Z"), rev("a.txt", "1.1.1.1", "2026-10-20T09:00:00Z")]).length, 2);
+});
+
 test("groupCommits: the dead 1.1 left by cvs add on a branch is not a deletion", () => {
   const commits = groupCommits([
     rev("branch-only.txt", "1.1", "2026-10-28T08:00:00Z", { state: "dead", message: "file branch-only.txt was initially added on branch feature." }),
@@ -205,4 +220,26 @@ test("logRangeArgs builds the cvs log -d range in UTC; mergeRevisions drops dupl
   assert.deepEqual(logRangeArgs({ from: Date.UTC(2026, 4, 14, 3, 0, 0), to: Date.UTC(2026, 7, 12, 3, 0, 0) }), ["-d", "2026-05-14 03:00:00 +0000<=2026-08-12 03:00:00 +0000"]);
   const a = rev("x", "1.2", "2026-08-12T03:00:00Z"), b = rev("x", "1.1", "2026-08-12T02:59:00Z");
   assert.deepEqual(mergeRevisions([a], [a, b]).map((item) => item.revision), ["1.2", "1.1"]);
+});
+
+test("uniqueRevisions keeps one entry per path@revision; parseRepositoryLog reports what the server sent", () => {
+  const block = fileBlock("src/A.java", [{ rev: "1.2", date: "2026-10-28 17:02:03 +0900", message: "edit" }]);
+  // 服务器把同一个文件重复输出多次（深层文件被每个祖先目录参数各取一次）。
+  const repeated = parseRepositoryLog(output(block, block, block));
+  assert.equal(repeated.length, 3);
+  assert.deepEqual(uniqueRevisions(repeated).map((item) => `${item.path}@${item.revision}`), ["src/A.java@1.2"]);
+  assert.deepEqual(uniqueRevisions([]), []);
+});
+
+test("groupCommits: one commit of six files over eight seconds is one row, with or without repeated output", () => {
+  const at = (seconds) => new Date(Date.parse("2026-11-09T07:01:51Z") + seconds * 1000).toISOString();
+  const message = "sample change";
+  const six = ["a/b/c/d/E1.java", "a/b/c/d/E2.java", "a/b/c/d/E3.java", "a/b/c/d/E4.java", "a/b/c/d/E5.java", "a/b/c/d/E6.java"].map((path, index) => rev(path, "1.9", at(index === 5 ? 8 : index), { message }));
+  const others = [rev("x/Other1.java", "1.4", at(-3600), { message: "other one", author: "dev-b" }), rev("x/Other2.java", "2.1", at(-7200), { message: "other two" })];
+  const plain = groupCommits([...six, ...others]);
+  assert.deepEqual(plain.map((commit) => commit.files.length), [6, 1, 1]);
+  assert.equal(plain[0].message, message);
+  // 每个文件被重复 11 次（目录层数）：仍然只有一个提交、六个文件。
+  const repeated = groupCommits([...Array.from({ length: 11 }, () => six).flat(), ...others]);
+  assert.deepEqual(repeated.map((commit) => commit.files.length), [6, 1, 1]);
 });

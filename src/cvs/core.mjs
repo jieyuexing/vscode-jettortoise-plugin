@@ -898,8 +898,12 @@ export class CvsAdapter {
   }
   async content(name, rev, signal, options = {}) {
     revision(rev);
-    if (!(await this.log(name, signal)).some((item) => item.revisionId === rev))
-      fail("revision");
+    const item = (await this.log(name, signal)).find(
+      (entry) => entry.revisionId === rev,
+    );
+    if (!item) fail("revision");
+    // dead 修订（文件在该修订被删除）没有内容，不依赖服务器对 update -p 的退出码与输出。
+    if (item.state === "dead") return Buffer.alloc(0);
     return (
       await this.run(["update", "-p", "-r", rev, "./" + name], signal, [0], {
         stdoutOnly: true,

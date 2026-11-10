@@ -31,6 +31,9 @@ function formatTime(time: number): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+// 目录与文件名分开：窄栏里目录部分先省略，文件名保持可见。
+const directoryOf = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
+const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 function revisionChange(file: LogFile): string {
   if (file.kind === "added") return t("New {0}", file.revision);
   if (file.kind === "deleted") return t("Deleted {0}", file.revision);
@@ -309,7 +312,14 @@ export function CvsRepositoryLog({
                         });
                       }}
                     >
-                      <span>{file.path}</span>
+                      <span className="cvs-log-path">
+                        <span className="cvs-log-dir">
+                          {directoryOf(file.path)}
+                        </span>
+                        <span className="cvs-log-name">
+                          {nameOf(file.path)}
+                        </span>
+                      </span>
                       <span className="cvs-log-revision">
                         {revisionChange(file)}
                       </span>

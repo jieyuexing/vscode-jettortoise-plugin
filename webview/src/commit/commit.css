@@ -517,11 +517,19 @@ input:focus-visible {
 .cvs-log-file:hover {
   background: var(--vscode-list-hoverBackground);
 }
-.cvs-log-file > span:first-child {
+.cvs-log-path {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+.cvs-log-dir {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.cvs-log-name {
+  flex: none;
 }
 .cvs-log-revision {
   flex: none;

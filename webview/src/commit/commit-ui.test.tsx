@@ -906,15 +906,20 @@ describe("CVS 仓库级日志", () => {
     // 默认选中最新一行，详情标题、作者与文件数。
     await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
     expect(view.getByText("New 1.1")).toBeTruthy();
+    // 目录与文件名分开渲染，窄栏里目录先省略、文件名保持可见。
+    expect(
+      view.getByTitle("src/SearchForm.java").querySelector(".cvs-log-name")
+        ?.textContent,
+    ).toBe("SearchForm.java");
     expect(view.getByText("Deleted 1.4")).toBeTruthy();
-    expect(view.getByText("src/SearchForm.java")).toBeTruthy();
-    fireEvent.click(view.getByText("src/Search.java"));
+    expect(view.getByTitle("src/SearchForm.java")).toBeTruthy();
+    fireEvent.click(view.getByTitle("src/Search.java"));
     expect(mocks.request).toHaveBeenCalledWith("diffCvsRevision", {
       repositoryId: "c",
       filePath: "src/Search.java",
       revision: "1.8",
     });
-    fireEvent.click(view.getByText("src/Old.java"));
+    fireEvent.click(view.getByTitle("src/Old.java"));
     expect(mocks.request).toHaveBeenCalledWith("diffCvsRevision", {
       repositoryId: "c",
       filePath: "src/Old.java",
@@ -1076,7 +1081,7 @@ describe("CVS 仓库级日志", () => {
     const view = render(<PanelApp />);
     await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
     mocks.request.mockClear();
-    fireEvent.contextMenu(view.getByText("src/SearchForm.java"));
+    fireEvent.contextMenu(view.getByTitle("src/SearchForm.java"));
     fireEvent.click(view.getByText("Show history of this file"));
     await waitFor(() =>
       expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
@@ -1084,6 +1089,90 @@ describe("CVS 仓库级日志", () => {
         filePath: "src/SearchForm.java",
       }),
     );
+  });
+
+  it("对 Git 文件显示历史不改变 CVS 的默认模式", async () => {
+    // Git 仓库的显式显示历史（带文件）已经发生，随后日志选中 CVS 仓库。
+    act(() =>
+      useRepositoryStore.setState({
+        activeFile: "app.txt",
+        historyRequest: { repositoryId: "a", sequence: 1 },
+      }),
+    );
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    const pressed = (name: string) =>
+      view.getByRole("button", { name }).getAttribute("aria-pressed");
+    expect(pressed("Whole repository")).toBe("true");
+    // 用户切到当前文件后，又来一个 Git 请求，同样不改 CVS 的模式。
+    fireEvent.click(view.getByRole("button", { name: "Current file" }));
+    act(() =>
+      useRepositoryStore.setState({
+        historyRequest: { repositoryId: "a", sequence: 2 },
+      }),
+    );
+    expect(pressed("Current file")).toBe("true");
+  });
+
+  it("右键选的文件只对当次有效：手动切换模式或切换仓库后不再带入", async () => {
+    const other = {
+      id: "d",
+      kind: "cvs" as const,
+      root: "/fixture/OtherWeb",
+      name: "OtherWeb",
+    };
+    act(() =>
+      useRepositoryStore.setState({
+        logRepositories: [repositories[0], logRepository, other],
+      }),
+    );
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
+    fireEvent.contextMenu(view.getByTitle("src/SearchForm.java"));
+    fireEvent.click(view.getByText("Show history of this file"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/SearchForm.java",
+      }),
+    );
+    // 手动回到整个仓库再回来：回到当前文件的默认选择。
+    fireEvent.click(view.getByRole("button", { name: "Whole repository" }));
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "Current file" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/Search.java",
+      }),
+    );
+    expect(
+      mocks.request.mock.calls.some(
+        ([, params]) =>
+          (params as { filePath?: string })?.filePath === "src/SearchForm.java",
+      ),
+    ).toBe(false);
+    // 切换到另一个 CVS 仓库：旧文件不带过去。
+    fireEvent.click(view.getByRole("button", { name: "Whole repository" }));
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    fireEvent.contextMenu(view.getByTitle("src/SearchForm.java"));
+    fireEvent.click(view.getByText("Show history of this file"));
+    await waitFor(() => expect(view.getByText("Current file")).toBeTruthy());
+    mocks.request.mockClear();
+    act(() => useRepositoryStore.setState({ logRepositoryId: "d" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "d",
+        filePath: "src/Search.java",
+      }),
+    );
+    expect(
+      mocks.request.mock.calls.some(
+        ([, params]) =>
+          (params as { filePath?: string })?.filePath === "src/SearchForm.java",
+      ),
+    ).toBe(false);
   });
 
   it("失败时在面板内显示原因，范围不变", async () => {

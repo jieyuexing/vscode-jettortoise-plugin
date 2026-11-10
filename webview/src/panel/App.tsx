@@ -334,21 +334,43 @@ export function PanelApp() {
   const repositories = logRepositories ?? commitRepositories;
   const repository = repositories.find((item) => item.id === logRepositoryId);
   // CVS 日志：整个仓库（默认）或当前文件；范围按 90 天一档，0 为全部。
-  const [mode, setMode] = useState<"repo" | "file">(
-    historyRequest && activeFile ? "file" : "repo",
+  const [mode, setMode] = useState<"repo" | "file">(() =>
+    activeFile &&
+    repositories.some(
+      (item) => item.id === historyRequest?.repositoryId && item.kind === "cvs",
+    )
+      ? "file"
+      : "repo",
   );
   const [days, setDays] = useState(LOG_PERIOD_DAYS);
   const [refreshToken, setRefreshToken] = useState(0);
-  const [pickedFile, setPickedFile] = useState<string>();
+  // 从日志文件行右键进入「当前文件」时先选中的文件（仅对该仓库有效）。
+  const [picked, setPicked] = useState<{
+    repositoryId: string;
+    file: string;
+  }>();
   const handledRequest = useRef(historyRequest?.sequence ?? 0);
   useEffect(() => {
-    // 显式显示历史：带文件（项目树右键）切到当前文件，工程级留在整个仓库；编辑器切换不改模式。
+    // 显式显示历史：对 CVS 仓库，带文件（项目树右键）切到当前文件，工程级留在整个仓库；
+    // Git 仓库的请求与编辑器切换都不改模式。
     if (!historyRequest || historyRequest.sequence === handledRequest.current)
       return;
     handledRequest.current = historyRequest.sequence;
-    setPickedFile(undefined);
+    if (
+      !repositories.some(
+        (item) =>
+          item.id === historyRequest.repositoryId && item.kind === "cvs",
+      )
+    )
+      return;
+    setPicked(undefined);
     setMode(activeFile ? "file" : "repo");
-  }, [historyRequest, activeFile]);
+  }, [historyRequest, activeFile, repositories]);
+  useEffect(() => {
+    setPicked((current) =>
+      current?.repositoryId === logRepositoryId ? current : undefined,
+    );
+  }, [logRepositoryId]);
   const cvsLog = repository?.kind === "cvs" && mode === "repo";
   useEffect(() => {
     void load();
@@ -410,7 +432,10 @@ export function PanelApp() {
               { value: "repo", label: t("Whole repository") },
               { value: "file", label: t("Current file") },
             ]}
-            onChange={setMode}
+            onChange={(value) => {
+              setPicked(undefined);
+              setMode(value);
+            }}
           />
         )}
         {cvsLog && (
@@ -459,7 +484,7 @@ export function PanelApp() {
             refreshToken={refreshToken}
             onLoadEarlier={() => setDays((value) => value + LOG_PERIOD_DAYS)}
             onShowFileHistory={(file) => {
-              setPickedFile(file);
+              setPicked({ repositoryId: repository.id, file });
               setMode("file");
             }}
           />
@@ -468,7 +493,9 @@ export function PanelApp() {
             key={repository.id}
             repositoryId={repository.id}
             activeFile={activeFile}
-            initialFile={pickedFile}
+            initialFile={
+              picked?.repositoryId === repository.id ? picked.file : undefined
+            }
             requestId={
               historyRequest?.repositoryId === repository.id
                 ? historyRequest?.sequence

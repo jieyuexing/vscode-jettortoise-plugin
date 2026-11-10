@@ -297,7 +297,9 @@ test("temporary local CVS: repository log of an unsynchronized working copy grou
     assert.ok((await adapter.log("fresh.txt")).some(item => item.revisionId === "1.1"));
     assert.equal((await adapter.content("fresh.txt", "1.1")).toString(), "fresh\n");
     assert.equal((await adapter.log("gone.txt")).find(item => item.revisionId === "1.2").state, "dead");
+    const updatesBefore = runs.filter(args => args[0] === "update").length;
     assert.equal((await adapter.content("gone.txt", "1.2")).length, 0);
+    assert.equal(runs.filter(args => args[0] === "update").length, updatesBefore, "a dead revision must not be fetched with update -p");
     assert.equal((await adapter.content("gone.txt", "1.1")).toString(), "gone\n");
     // 路径仍须在本工作副本的已登记目录内。
     await assert.rejects(adapter.log("no-such-dir/x.txt"));

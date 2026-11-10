@@ -49,11 +49,31 @@ export function parseLogDate(text) {
 }
 
 /**
- * 解析 `cvs log` 的多文件输出（Buffer 或已解码的字符串），返回文件修订：
+ * `cvs rlog` 输出里的 RCS 文件换算成相对工作副本根的路径：去掉服务器上的 Root 路径与模块前缀、
+ * 已删除文件所在的 Attic/ 和末尾的 ,v。路径不在该模块下时返回 undefined。
+ * Root 路径与服务器真实路径不一致时（例如 CVSNT 的虚拟路径），退而按模块前缀 /<repository>/ 截取。
+ */
+export function rlogPath(rcsFile, rootPath, repository) {
+  const file = rcsFile.trim().replace(/,v$/, "");
+  const prefix = `${rootPath}/${repository}/`;
+  let relative;
+  if (rootPath && file.startsWith(prefix)) relative = file.slice(prefix.length);
+  else {
+    const marker = `/${repository}/`;
+    const index = file.indexOf(marker);
+    if (index < 0) return undefined;
+    relative = file.slice(index + marker.length);
+  }
+  return relative.replace(/(^|\/)Attic\/(?=[^/]+$)/, "$1");
+}
+
+/**
+ * 解析 `cvs rlog` 的多文件输出（Buffer 或已解码的字符串），返回文件修订：
  * `{ path, revision, time(ms), author, state, commitId, message }`。
+ * toPath 把 RCS file 行换算成相对工作副本根的路径（见 rlogPath），返回 undefined 的文件被忽略。
  * 没有选中修订的文件块（未加 -S）不产生记录。
  */
-export function parseRepositoryLog(input) {
+export function parseRepositoryLog(input, toPath) {
   const decoded = typeof input === "string";
   const text = decoded ? input : input.toString("latin1");
   const decode = decoded ? (value) => value : decodeBytes;
@@ -63,9 +83,9 @@ export function parseRepositoryLog(input) {
   const revisions = [];
   starts.forEach((start, index) => {
     const block = text.slice(start, starts[index + 1] ?? text.length);
-    const working = block.match(/^Working file: ([^\r\n]*)/m)?.[1];
-    if (working === undefined) return;
-    const path = decode(working).replace(/^\.\//, "");
+    const rcs = block.match(/^RCS file: ([^\r\n]*)/)?.[1];
+    const path = rcs === undefined ? undefined : toPath(decode(rcs));
+    if (path === undefined) return;
     // 第一段是文件头；其后每段以 revision 行开头。
     for (const chunk of block.split(/^-{28}\r?\n(?=revision \S+)/m).slice(1)) {
       const match = chunk.match(
@@ -100,7 +120,7 @@ export function previousRevision(revision) {
   return parts.length > 2 ? parts.slice(0, -2).join(".") : undefined;
 }
 
-function compareRevisions(a, b) {
+export function compareRevisions(a, b) {
   const left = a.split(".").map(Number),
     right = b.split(".").map(Number);
   for (let index = 0; index < Math.min(left.length, right.length); index++)
@@ -215,7 +235,8 @@ export function groupCommits(revisions, windowSeconds = COMMIT_WINDOW_SECONDS) {
     .sort((a, b) => b.time - a.time || compareText(a.id, b.id));
 }
 
-function logDate(time) {
+/** 毫秒时间戳的统一显示：`2026-11-10 04:08:39 +0000`。 */
+export function logDate(time) {
   const iso = new Date(time).toISOString();
   return `${iso.slice(0, 10)} ${iso.slice(11, 19)} +0000`;
 }

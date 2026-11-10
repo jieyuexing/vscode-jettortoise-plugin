@@ -20,5 +20,6 @@
   "cmd.updateProject": "Update Project",
   "cmd.openCommitPanel": "Commit...",
   "cmd.openHistory": "Show History",
-  "cmd.synchronizeRepository": "Synchronize with Repository"
+  "cmd.synchronizeRepository": "Synchronize with Repository",
+  "cmd.clearCvsLogCache": "Clear CVS Log Cache"
 }

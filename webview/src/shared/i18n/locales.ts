@@ -326,6 +326,11 @@ export const en = {
   "No commits in this range.": "No commits in this range.",
   "Show history of this file": "Show history of this file",
   "Whole repository": "Whole repository",
+  "Cached at {0}": "Cached at {0}",
+  "Not local": "Not local",
+  "Not in the working copy. Update the project first.":
+    "Not in the working copy. Update the project first.",
+  "Compare with Working Copy": "Compare with Working Copy",
 } as const;
 
 export const zhCn: Partial<Record<keyof typeof en, string>> = {
@@ -642,4 +647,9 @@ export const zhCn: Partial<Record<keyof typeof en, string>> = {
   "No commits in this range.": "此范围内没有提交。",
   "Show history of this file": "显示该文件历史",
   "Whole repository": "整个仓库",
+  "Cached at {0}": "缓存于 {0}",
+  "Not local": "本地没有",
+  "Not in the working copy. Update the project first.":
+    "工作副本里没有这个文件，请先更新项目。",
+  "Compare with Working Copy": "与工作副本比较",
 };

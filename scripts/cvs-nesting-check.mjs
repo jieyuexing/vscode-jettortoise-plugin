@@ -392,6 +392,8 @@ test("independent CVS and Git children are excluded and block parent-wide mutati
 });
 
 // 同项目未登记目录仍保护路径操作，-l 整树更新不访问它。
+// update 的本地目录批次；服务器端查新目录的 rlog -R 单独断言。
+const updates = (calls) => calls.filter(args => !args.includes("rlog"));
 test("same-project CVS directories stay write boundaries for the parent", async () => {
   const base = await fs.mkdtemp(path.join(tmpdir(), "cvs-same-project-"));
   try {
@@ -409,7 +411,8 @@ test("same-project CVS directories stay write boundaries for the parent", async 
     assert.deepEqual(files.map((file) => file.newPath), ["tracked.txt"]);
     assert.ok(unknown.every((name) => !name.startsWith("build/")), "same-project directory files became parent unversioned files");
     await adapter.update();
-    assert.deepEqual(calls, [["-q", "update", "-l", "-P", "."]]);
+    assert.deepEqual(updates(calls), [["-q", "update", "-l", "-P", "."]]);
+    assert.equal(calls.filter(args => args.includes("rlog")).length, 1, "new directories are looked up on the server with one rlog -R");
     await assert.rejects(adapter.commit(["build/output.txt"], "forbidden"), { code: "NESTED_REPOSITORY" });
     await assert.rejects(adapter.rollback(["build/output.txt"]), { code: "NESTED_REPOSITORY" });
   } finally { await fs.rm(base, { recursive: true, force: true }); }
@@ -506,12 +509,13 @@ test("registered update preserves unregistered build and fetches known-directory
       await fs.writeFile(path.join(peer, "build", "sentinel.txt"), text);
       await f.process.run(["commit", "-m", text.trim()], peer);
     };
-    const check = async text => {
+    const check = async (text, created = false) => {
       for (const name of ["src", "src/deep", "side"])
         assert.equal(await fs.readFile(path.join(f.wc, name, "kept.txt"), "utf8"), text);
       assert.equal(await fs.readFile(path.join(buildDir, "sentinel.txt"), "utf8"), "protected build edit\n");
       assert.deepEqual(await fs.readFile(path.join(buildDir, "CVS", "Entries")), before);
-      await assert.rejects(fs.access(path.join(f.wc, "server-new")), { code: "ENOENT" });
+      // -l 的更新不创建服务器上的新目录；更新项目会（见下）。
+      if (!created) await assert.rejects(fs.access(path.join(f.wc, "server-new")), { code: "ENOENT" });
     };
     await changePeer("raw explicit update\n");
     const raw = await f.process.run(["-q", "update", "-l", "-P", ".", "./src", "./src/deep", "./side"], f.wc);
@@ -524,8 +528,10 @@ test("registered update preserves unregistered build and fetches known-directory
     const calls = [];
     const adapter = new CvsAdapter(f.wc, { run: (...args) => { calls.push(args[0]); return f.process.run(...args); } });
     await adapter.update();
-    assert.deepEqual(calls, [["-q", "update", "-l", "-P", ".", "./side", "./src", "./src/deep"]]);
-    await check("product explicit update\n");
+    assert.deepEqual(updates(calls), [["-q", "update", "-l", "-P", ".", "./side", "./src", "./src/deep"], ["-q", "update", "-d", "-P", "server-new"]]);
+    // 服务器上新建的目录取下来；本地已有的未登记同项目检出 build（本地修改、元数据）原样不动。
+    await check("product explicit update\n", true);
+    assert.equal(await fs.readFile(path.join(f.wc, "server-new", "sentinel.txt"), "utf8"), "server base\n");
     assert.equal(await fs.readFile(path.join(f.wc, "src", "new.txt"), "utf8"), "new server file\n");
     await assert.rejects(adapter.rollback(["build/sentinel.txt"]), { code: "NESTED_REPOSITORY" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
@@ -567,7 +573,7 @@ test("registered update applies Entries.Log A and R and ignores missing director
     await fs.writeFile(path.join(f.wc, "CVS", "Entries.Log"), "A D/included////\nR D/excluded////\n");
     const calls = [];
     await new CvsAdapter(f.wc, {run: (...args) => { calls.push(args[0]); return f.process.run(...args); }}).update();
-    assert.deepEqual(calls, [["-q", "update", "-l", "-P", ".", "./included"]]);
+    assert.deepEqual(updates(calls), [["-q", "update", "-l", "-P", ".", "./included"]]);
     assert.equal(await fs.readFile(path.join(f.wc, "included", "kept.txt"), "utf8"), "server change\n");
     assert.equal(await fs.readFile(path.join(f.wc, "excluded", "kept.txt"), "utf8"), "base\n");
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
@@ -589,15 +595,17 @@ test("registered update batches real CVS commands within 8000 characters under o
     let activeSignal, queuedRan = false;
     const adapter = new CvsAdapter(f.wc, { run: async (args, cwd, signal, ...rest) => {
       assert.equal(signal, activeSignal); assert.equal(queuedRan, false);
-      assert.deepEqual(args.slice(0, 4), ["-q", "update", "-l", "-P"]);
       assert.ok([cvsExecutable, "-f", ...args].map(arg => JSON.stringify(arg)).join(" ").length <= 8000);
-      calls.push(args); return f.process.run(args, cwd, signal, ...rest);
+      calls.push(args);
+      // 本地目录批次只用 update -l -P；服务器端查新目录的 rlog -R 不属于这些批次。
+      if (!args.includes("rlog")) assert.deepEqual(args.slice(0, 4), ["-q", "update", "-l", "-P"]);
+      return f.process.run(args, cwd, signal, ...rest);
     }});
     const update = queue.run(signal => { activeSignal = signal; return adapter.update(signal); });
     const after = queue.run(() => { queuedRan = true; });
     await update; await after;
-    assert.ok(calls.length > 1);
-    assert.deepEqual(calls.flatMap(args => args.slice(4)), [".", ...names.map(name => `./${name}`)]);
+    assert.ok(updates(calls).length > 1);
+    assert.deepEqual(updates(calls).flatMap(args => args.slice(4)), [".", ...names.map(name => `./${name}`)]);
     for (const name of names) assert.equal(await fs.readFile(path.join(f.wc, name, "file.txt"), "utf8"), "server batch\n");
     console.log("fix3 real batches", calls.map(args => ({directories: args.length - 4, characters: [cvsExecutable, "-f", ...args].map(arg => JSON.stringify(arg)).join(" ").length})));
     let cancelledCalls = 0;

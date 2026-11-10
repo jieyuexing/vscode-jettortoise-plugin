@@ -22,10 +22,23 @@ interface LogFile {
   revision: string;
   previous?: string;
   kind: "added" | "modified" | "deleted";
+  /** 本地工作副本里有这个文件（缺省按有处理）。 */
+  local?: boolean;
+}
+interface LogResult {
+  commits: LogCommit[];
+  cachedAt?: number;
+  fromCache?: boolean;
+  error?: string;
 }
 const ROW_HEIGHT = 20;
 const OVERSCAN = 6;
 
+function formatClock(time: number): string {
+  const date = new Date(time);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 function formatTime(time: number): string {
   const date = new Date(time);
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -97,7 +110,8 @@ export function CvsRepositoryLog({
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string>();
   const [files, setFiles] = useState<LogFile[]>([]);
-  const [menu, setMenu] = useState<{ file: string; x: number; y: number }>();
+  const [cachedAt, setCachedAt] = useState<number>();
+  const [menu, setMenu] = useState<{ file: LogFile; x: number; y: number }>();
   const generation = useRef(0);
   const filesGeneration = useRef(0);
   const selectedRef = useRef<string | undefined>(undefined);
@@ -128,31 +142,43 @@ export function CvsRepositoryLog({
     [repositoryId],
   );
 
+  // 打开、切换范围时先显示缓存（不连服务器），再向宿主取增量；刷新直接取增量。
   useEffect(() => {
     if (!visible) return;
     const refresh = refreshToken !== seenRefresh.current;
     seenRefresh.current = refreshToken;
     const current = ++generation.current;
+    const show = (result: LogResult) => {
+      setCommits(result.commits);
+      setCachedAt(result.fromCache ? result.cachedAt : undefined);
+      setError(result.error ?? "");
+      setLoaded(true);
+      choose(
+        result.commits.some((commit) => commit.id === selectedRef.current)
+          ? selectedRef.current
+          : result.commits[0]?.id,
+      );
+    };
     setLoading(true);
     setError("");
-    void bridge
-      .request(
+    void (async () => {
+      if (!refresh) {
+        const cached = (await bridge.request("getCvsLog", {
+          repositoryId,
+          days,
+          cached: true,
+        })) as LogResult;
+        if (current !== generation.current) return;
+        if (cached.cachedAt !== undefined) show(cached);
+      }
+      const result = (await bridge.request(
         "getCvsLog",
         refresh
           ? { repositoryId, days, refresh: true }
           : { repositoryId, days },
-      )
-      .then((result) => {
-        if (current !== generation.current) return;
-        const next = (result as { commits: LogCommit[] }).commits;
-        setCommits(next);
-        setLoaded(true);
-        choose(
-          next.some((commit) => commit.id === selectedRef.current)
-            ? selectedRef.current
-            : next[0]?.id,
-        );
-      })
+      )) as LogResult;
+      if (current === generation.current) show(result);
+    })()
       .catch((failure) => {
         if (current === generation.current) setError(String(failure));
       })
@@ -211,6 +237,11 @@ export function CvsRepositoryLog({
         {error && (
           <div className="repository-error" role="alert">
             {error}
+          </div>
+        )}
+        {cachedAt !== undefined && (
+          <div className="cvs-log-cached" role="status">
+            {t("Cached at {0}", formatClock(cachedAt))}
           </div>
         )}
         {loaded && !loading && !error && commits.length === 0 && (
@@ -306,7 +337,7 @@ export function CvsRepositoryLog({
                       onContextMenu={(event) => {
                         event.preventDefault();
                         setMenu({
-                          file: file.path,
+                          file,
                           x: event.clientX,
                           y: event.clientY,
                         });
@@ -320,6 +351,16 @@ export function CvsRepositoryLog({
                           {nameOf(file.path)}
                         </span>
                       </span>
+                      {file.local === false && (
+                        <span
+                          className="cvs-log-missing"
+                          title={t(
+                            "Not in the working copy. Update the project first.",
+                          )}
+                        >
+                          {t("Not local")}
+                        </span>
+                      )}
                       <span className="cvs-log-revision">
                         {revisionChange(file)}
                       </span>
@@ -340,13 +381,55 @@ export function CvsRepositoryLog({
           className="cvs-log-menu"
           style={{ left: menu.x, top: menu.y }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => onShowFileHistory(menu.file)}
-          >
-            {t("Show history of this file")}
-          </button>
+          {[
+            {
+              label: t("Open File"),
+              local: true,
+              run: () =>
+                bridge.request("openFile", {
+                  repositoryId,
+                  filePath: menu.file.path,
+                }),
+            },
+            {
+              label: t("Compare with Working Copy"),
+              local: true,
+              run: () =>
+                bridge.request("compareCvsWorkingFile", {
+                  repositoryId,
+                  filePath: menu.file.path,
+                  revision: menu.file.revision,
+                }),
+            },
+            {
+              label: t("Show history of this file"),
+              local: false,
+              run: () => onShowFileHistory(menu.file.path),
+            },
+          ].map((item) => {
+            // 需要本地文件的项在“本地没有”时置灰，并提示先更新。
+            const disabled = item.local && menu.file.local === false;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                disabled={disabled}
+                title={
+                  disabled
+                    ? t("Not in the working copy. Update the project first.")
+                    : undefined
+                }
+                onClick={() =>
+                  void Promise.resolve(item.run()).catch((failure) =>
+                    setError(String(failure)),
+                  )
+                }
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

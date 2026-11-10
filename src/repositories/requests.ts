@@ -16,10 +16,11 @@ const fields: Record<string, readonly string[]> = {
   addUnversioned: ["filePaths"],
   getCvsFiles: [],
   getWorkingFilePreview: ["filePath", "staged"],
-  getCvsHistory: ["filePath"],
-  getCvsLog: ["days", "refresh"],
+  getCvsHistory: ["filePath", "refresh"],
+  getCvsLog: ["days", "refresh", "cached"],
   getCvsCommit: ["commitId"],
   diffCvsRevision: ["filePath", "revision"],
+  compareCvsWorkingFile: ["filePath", "revision"],
 };
 /** 新入口只接受固定字段与登记 ID；普通 Git 命令继续使用原会话的合同。 */
 export function validateRepositoryRequest(
@@ -42,7 +43,7 @@ export function validateRepositoryRequest(
   for (const key of required)
     if (
       params[key] === undefined &&
-      !["amend", "staged", "refresh"].includes(key)
+      !["amend", "staged", "refresh", "cached"].includes(key)
     )
       throw new Error(`Missing request field: ${key}`);
   if (
@@ -68,9 +69,16 @@ export function validateRepositoryRequest(
     (!Number.isInteger(params.days) ||
       (params.days as number) < 0 ||
       (params.days as number) > 36500 ||
-      (params.refresh !== undefined && typeof params.refresh !== "boolean"))
+      (params.refresh !== undefined && typeof params.refresh !== "boolean") ||
+      (params.cached !== undefined && typeof params.cached !== "boolean"))
   )
     throw new Error("Invalid log range.");
+  if (
+    command === "getCvsHistory" &&
+    params.refresh !== undefined &&
+    typeof params.refresh !== "boolean"
+  )
+    throw new Error("Invalid refresh flag.");
   if (
     command === "getCvsCommit" &&
     (typeof params.commitId !== "string" ||
@@ -80,7 +88,7 @@ export function validateRepositoryRequest(
   )
     throw new Error("Invalid commit.");
   if (
-    command === "diffCvsRevision" &&
+    (command === "diffCvsRevision" || command === "compareCvsWorkingFile") &&
     (typeof params.revision !== "string" ||
       !/^[1-9]\d*(?:\.\d+)+$/.test(params.revision))
   )

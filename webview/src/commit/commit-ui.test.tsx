@@ -885,7 +885,14 @@ it("日志下拉列出未同步的 CVS 仓库，默认显示仓库级提交列�
     repositoryId: "c",
     days: 90,
   });
+  // 先只读缓存（不连服务器），再取增量，然后取所选提交的文件。
+  expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+    repositoryId: "c",
+    days: 90,
+    cached: true,
+  });
   expect(logCalls().map(([command]) => command)).toEqual([
+    "getCvsLog",
     "getCvsLog",
     "getCvsCommit",
   ]);
@@ -997,7 +1004,10 @@ describe("CVS 仓库级日志", () => {
     act(() => useRepositoryStore.setState({ visible: true }));
     await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
     expect(
-      logCalls().filter(([command]) => command === "getCvsLog"),
+      logCalls().filter(
+        ([command, params]) =>
+          command === "getCvsLog" && !(params as { cached?: boolean }).cached,
+      ),
     ).toHaveLength(1);
   });
 
@@ -1173,6 +1183,140 @@ describe("CVS 仓库级日志", () => {
           (params as { filePath?: string })?.filePath === "src/SearchForm.java",
       ),
     ).toBe(false);
+  });
+
+  it("先显示缓存并标明时间，再显示增量结果；增量失败时保留列表并报告原因", async () => {
+    let finish: (value: unknown) => void = () => {};
+    const cachedAt = new Date(2026, 10, 10, 9, 5).getTime();
+    mocks.request.mockImplementation(
+      async (command: string, params: Record<string, unknown> = {}) => {
+        if (command === "getRepositories") return workspace();
+        if (command === "getCvsCommit")
+          return commitFiles[params.commitId as string];
+        if (command === "getCvsLog" && params.cached)
+          return { commits: logCommits, days: 90, cachedAt, fromCache: true };
+        if (command === "getCvsLog")
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        return [];
+      },
+    );
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    expect(view.getByText("Cached at 09:05")).toBeTruthy();
+    act(() =>
+      finish({ commits: logCommits, days: 90, cachedAt, fromCache: false }),
+    );
+    await waitFor(() => expect(view.queryByText("Cached at 09:05")).toBeNull());
+    // 刷新直接取增量，不再先读缓存；增量失败时保留已显示的列表。
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+        repositoryId: "c",
+        days: 90,
+        refresh: true,
+      }),
+    );
+    expect(
+      mocks.request.mock.calls.some(
+        ([, params]) => (params as { cached?: boolean })?.cached,
+      ),
+    ).toBe(false);
+    act(() =>
+      finish({
+        commits: logCommits,
+        days: 90,
+        cachedAt,
+        fromCache: true,
+        error: "CVS failed.",
+      }),
+    );
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain("CVS failed."),
+    );
+    expect(view.getByText("fix the report")).toBeTruthy();
+    expect(view.getByText("Cached at 09:05")).toBeTruthy();
+  });
+
+  it("本地没有的文件带标记；右键菜单：打开文件、与工作副本比较在本地没有时置灰并提示先更新", async () => {
+    commitFiles.k2 = [
+      {
+        path: "src/Here.java",
+        revision: "1.8",
+        previous: "1.7",
+        kind: "modified",
+        local: true,
+      },
+      { path: "lib/New.java", revision: "1.1", kind: "added", local: false },
+    ];
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByTitle("lib/New.java")).toBeTruthy());
+    expect(view.getAllByText("Not local")).toHaveLength(1);
+    expect(view.getByTitle("src/Here.java").textContent).not.toContain(
+      "Not local",
+    );
+    const menuItem = (name: string) =>
+      view.getByRole("menuitem", { name }) as HTMLButtonElement;
+    // 本地有：三项都可用，请求带仓库、路径、修订。
+    fireEvent.contextMenu(view.getByTitle("src/Here.java"));
+    expect(
+      [
+        "Open File",
+        "Compare with Working Copy",
+        "Show history of this file",
+      ].map((name) => menuItem(name).disabled),
+    ).toEqual([false, false, false]);
+    expect(
+      view.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "Open File",
+      "Compare with Working Copy",
+      "Show history of this file",
+    ]);
+    mocks.request.mockClear();
+    fireEvent.click(menuItem("Open File"));
+    expect(mocks.request).toHaveBeenCalledWith("openFile", {
+      repositoryId: "c",
+      filePath: "src/Here.java",
+    });
+    fireEvent.contextMenu(view.getByTitle("src/Here.java"));
+    fireEvent.click(menuItem("Compare with Working Copy"));
+    expect(mocks.request).toHaveBeenCalledWith("compareCvsWorkingFile", {
+      repositoryId: "c",
+      filePath: "src/Here.java",
+      revision: "1.8",
+    });
+    // 本地没有：前两项置灰并提示，不发请求；显示历史仍可用。
+    fireEvent.contextMenu(view.getByTitle("lib/New.java"));
+    expect(menuItem("Open File").disabled).toBe(true);
+    expect(menuItem("Compare with Working Copy").disabled).toBe(true);
+    expect(menuItem("Open File").title).toBe(
+      "Not in the working copy. Update the project first.",
+    );
+    expect(menuItem("Show history of this file").disabled).toBe(false);
+    mocks.request.mockClear();
+    fireEvent.click(menuItem("Open File"));
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
+
+  it("当前文件模式的刷新按钮强制向服务器重取该文件的历史", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    fireEvent.click(view.getByRole("button", { name: "Current file" }));
+    await waitFor(() =>
+      expect(view.getByText("history of src/Search.java")).toBeTruthy(),
+    );
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "Refresh File History" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/Search.java",
+        refresh: true,
+      }),
+    );
   });
 
   it("失败时在面板内显示原因，范围不变", async () => {

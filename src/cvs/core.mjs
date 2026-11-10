@@ -13,7 +13,15 @@ import {
   repositoryTree,
 } from "../repositories/boundaries.cjs";
 import { runNetwork } from "../repositories/network.cjs";
-import { logRangeArgs, parseRepositoryLog, uniqueRevisions } from "./log.mjs";
+import { rootPath } from "./cache.mjs";
+import {
+  logDate,
+  logRangeArgs,
+  parseLogDate,
+  parseRepositoryLog,
+  rlogPath,
+  uniqueRevisions,
+} from "./log.mjs";
 
 // CVS 1.12 内置忽略表（ignore.c 的 ign_default）。
 const DEFAULT_IGNORE =
@@ -227,8 +235,8 @@ export async function noSymlinks(target, allowMissing = false) {
     try {
       if ((await fs.lstat(current)).isSymbolicLink()) fail("symlink");
     } catch (error) {
-      if (allowMissing && error.code === "ENOENT" && current === absolute)
-        return absolute;
+      // 缺的目录之下什么都不存在，也就没有符号链接可查。
+      if (allowMissing && error.code === "ENOENT") return absolute;
       throw error;
     }
   }
@@ -512,8 +520,8 @@ export class CvsAdapter {
     this.process = process;
     this.cleanSizes = new Map();
     this.remoteStates = new Map();
-    // 服务器是否对目录参数忽略 log -l（见 repositoryLog）。
-    this.logIgnoresLocal = false;
+    // 修订内容缓存（由会话设置）：{ read(path, revision), write(path, revision, bytes) }，修订不可变。
+    this.contentCache = undefined;
   }
   async inventory() {
     const { files } = await this.localInventory();
@@ -854,103 +862,150 @@ export class CvsAdapter {
     }
   }
   /**
-   * 修订查询的路径门：所在目录须是本工作副本已登记的 CVS 目录，文件本身可以不在 Entries
-   * （同事新增、已被删除的文件在仓库日志里照样出现）。
+   * 修订查询的路径门：路径在本工作副本内、没有符号链接、不属于嵌套的另一个检出。
+   * 文件和所在目录可以不在本地（同事新建的目录、已被删除的文件）：修订一律向服务器端取。
    */
   async revisionFile(name) {
     relativeFile(name);
     await contained(this.root, name);
     await assertOwnedPath(this.root, "cvs", name);
-    await this.entriesAt(path.dirname(path.join(this.root, name)));
   }
   /**
-   * 整个仓库的文件修订（只读 cvs log，不运行 update），每个 path@revision 一条。
-   * 默认沿已登记目录用 -l 逐批取（与 update、文件清单同一目录集合，不进入嵌套或异 Root 的检出）。
-   * 有的服务器对目录参数忽略 -l，每个目录参数都递归，深层文件被每个祖先目录各输出一次：
-   * 输出里出现重复 path@revision 即说明如此，此时丢弃这次结果，改为在仓库根做一次递归 log
-   * （无 -l、无目录参数），再只保留已登记目录里的文件；该判断记在适配器上，之后的范围直接用递归形式。
+   * 服务器端读取所需的工作副本信息：CVS/Root（已校验）、相对 CVSROOT 的模块路径（CVS/Repository）、
+   * 粘性分支标签。调用 cvs 时用 -d <Root> 明确指定，不依赖当前目录。
+   */
+  async identity() {
+    this.root = await fs.realpath(this.root);
+    const admin = path.join(this.root, "CVS");
+    const read = async (name, optional = false) => {
+      const file = path.join(admin, name);
+      await noSymlinks(file, optional);
+      try {
+        return (await fs.readFile(file, "utf8")).trim();
+      } catch (error) {
+        if (optional && error.code === "ENOENT") return "";
+        throw error;
+      }
+    };
+    const root = cvsRoot(await read("Root"));
+    let repository = (await read("Repository")).replace(/\/+$/, "");
+    const base = rootPath(root);
+    if (base && repository.startsWith(`${base}/`))
+      repository = repository.slice(base.length + 1);
+    relativeFile(repository);
+    const tag = await read("Tag", true);
+    const branch = /^T([A-Za-z][\w-]*)$/.exec(tag)?.[1] ?? "";
+    return { root, repository, tag, branch, workingCopy: this.root };
+  }
+  /** 服务器端命令：cvs -d <Root> rlog|checkout …，不依赖本地目录。 */
+  async server(identity, args, signal, options = {}) {
+    return this.run(["-d", identity.root, ...args], signal, [0], options);
+  }
+  /**
+   * 整个模块的文件修订（服务器端 cvs rlog，只读），每个 path@revision 一条：一条命令覆盖整个模块，
+   * 包括本地没有的目录和已删除（Attic）的文件，路径换算成相对工作副本根。粘性分支标签用 -r。
    * from／to 为毫秒时间戳，限定 -d 日期范围（含两端）。
    */
   async repositoryLog({ from, to } = {}, signal) {
-    this.root = await fs.realpath(this.root);
-    const directories = await registeredCvsDirectories(this.root);
-    const range = logRangeArgs({ from, to });
-    // 全部历史可能很大：放宽输出与时间上限，只取 stdout（stderr 的 Logging 行会混进说明）。
-    const options = {
-      stdoutOnly: true,
-      timeoutMs: 300000,
-      maxBytes: 128 * 1024 * 1024,
-    };
-    // 文件名要过 relativeFile；不合法的丢弃。
-    const valid = (item) => {
-      try {
-        relativeFile(item.path);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    if (!this.logIgnoresLocal) {
-      const flags = ["log", "-l", "-N", "-S", ...range];
-      const found = new Map();
-      let repeated = false;
-      for (const batch of this.batches(flags, directories)) {
-        if (signal?.aborted) fail("cancelled");
-        const output = await this.run(
-          [...flags, ...batch],
-          signal,
-          [0],
-          options,
-        );
-        for (const item of parseRepositoryLog(output.stdout).filter(valid)) {
-          const key = `${item.path}\0${item.revision}`;
-          if (found.has(key)) repeated = true;
-          else found.set(key, item);
-        }
-        // 结果反正要丢弃，不必取完剩下的批次。
-        if (repeated) break;
-      }
-      if (!repeated) return [...found.values()];
-      this.logIgnoresLocal = true;
-    }
-    if (signal?.aborted) fail("cancelled");
-    const registered = new Set(
-      directories.map((directory) =>
-        directory === "." ? "." : directory.slice(2),
-      ),
-    );
-    const output = await this.run(
-      ["log", "-N", "-S", ...range],
+    const id = await this.identity();
+    const output = await this.server(
+      id,
+      [
+        "rlog",
+        "-N",
+        "-S",
+        ...logRangeArgs({ from, to }),
+        ...(id.branch ? [`-r${id.branch}`] : []),
+        id.repository,
+      ],
       signal,
-      [0],
-      options,
+      // 全部历史可能很大：放宽输出与时间上限，只取 stdout（stderr 的 Logging 行会混进说明）。
+      { stdoutOnly: true, timeoutMs: 300000, maxBytes: 128 * 1024 * 1024 },
     );
+    const base = rootPath(id.root);
     return uniqueRevisions(
-      parseRepositoryLog(output.stdout).filter(
-        (item) => valid(item) && registered.has(path.posix.dirname(item.path)),
-      ),
+      parseRepositoryLog(output.stdout, (rcs) =>
+        rlogPath(rcs, base, id.repository),
+      ).filter((item) => {
+        try {
+          relativeFile(item.path);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
     );
   }
+  /** 单个文件的全部修订（服务器端 rlog），文件不必在本地 Entries 或本地目录里。 */
   async log(name, signal) {
     await this.revisionFile(name);
-    return parseLog(
-      (await this.run(["log", "./" + name], signal)).stdout.toString("utf8"),
+    const id = await this.identity();
+    const output = await this.server(
+      id,
+      ["rlog", `${id.repository}/${name}`],
+      signal,
+      { stdoutOnly: true },
     );
+    return parseLog(output.stdout.toString("utf8")).map((item) => ({
+      ...item,
+      timestamp: Number.isNaN(parseLogDate(item.timestamp))
+        ? item.timestamp
+        : logDate(parseLogDate(item.timestamp)),
+    }));
   }
+  /**
+   * 修订内容：先看落盘缓存；dead 修订（文件在该修订被删除）为空内容；其余用服务器端
+   * cvs checkout -p -r <rev> <模块>/<路径> 读取，不依赖本地目录。revisions 为已知的该文件历史（可省略）。
+   */
   async content(name, rev, signal, options = {}) {
     revision(rev);
-    const item = (await this.log(name, signal)).find(
-      (entry) => entry.revisionId === rev,
-    );
+    await this.revisionFile(name);
+    const cached = await this.contentCache?.read(name, rev);
+    if (cached) return cached;
+    const item = (
+      options.revisions
+        ? await options.revisions()
+        : await this.log(name, signal)
+    ).find((entry) => entry.revisionId === rev);
     if (!item) fail("revision");
-    // dead 修订（文件在该修订被删除）没有内容，不依赖服务器对 update -p 的退出码与输出。
     if (item.state === "dead") return Buffer.alloc(0);
-    return (
-      await this.run(["update", "-p", "-r", rev, "./" + name], signal, [0], {
-        stdoutOnly: true,
-        maxBytes: options.maxBytes,
-      })
+    const id = await this.identity();
+    const bytes = (
+      await this.server(
+        id,
+        ["checkout", "-p", "-r", rev, `${id.repository}/${name}`],
+        signal,
+        { stdoutOnly: true, maxBytes: options.maxBytes },
+      )
     ).stdout;
+    await this.contentCache?.write(name, rev, bytes);
+    return bytes;
+  }
+  /** names 中本地工作副本里有的文件（所在目录已登记且 Entries 里有该文件）。 */
+  async localFiles(names) {
+    const present = new Set(),
+      directories = new Map();
+    for (const name of names) {
+      const directory = path.posix.dirname(name);
+      if (!directories.has(directory))
+        directories.set(
+          directory,
+          await this.entriesAt(
+            path.join(this.root, directory === "." ? "" : directory),
+          ).then(
+            (records) =>
+              new Set(
+                records
+                  .filter((line) => line.startsWith("/"))
+                  .map((line) => line.split("/")[1]),
+              ),
+            () => new Set(),
+          ),
+        );
+      if (directories.get(directory).has(path.posix.basename(name)))
+        present.add(name);
+    }
+    return present;
   }
   async diff(name, signal) {
     await this.file(name);
@@ -980,9 +1035,78 @@ export class CvsAdapter {
       ))
         if (state.state === "Needs Merge") conflicts.add(name);
     }
+    // -l 不会创建服务器上新建的目录：另外找出它们，逐个用 -d 取下整棵新子树。
+    const created = await this.newDirectories(directories, signal);
+    const createFlags = ["-q", "update", "-d", "-P"];
+    for (const args of this.batches(createFlags, created)) {
+      if (signal?.aborted) fail("cancelled");
+      await this.run([...createFlags, ...args], signal);
+    }
     // 更新已取得的传入不再沿用旧网络结果；随后的网络刷新重新确认。
     this.remoteStates = new Map();
     return [...conflicts];
+  }
+  /**
+   * 服务器上新建、本地还没有的目录（相对工作副本根的 ./路径）：服务器端 rlog -R 列出模块里全部 RCS 文件，
+   * 取有未删除文件的目录，只保留“父目录已登记、自己没登记、本地磁盘上也不存在”的最上层目录。
+   * 本地已有同名目录（未登记的目录、嵌套的异 Root 检出、符号链接）一律不碰，保持只在已登记目录内动手的边界；
+   * 新目录下面的整棵子树本来就不存在于本地，由 update -d 一次取下。
+   */
+  async newDirectories(registeredDirectories, signal) {
+    const id = await this.identity();
+    const output = await this.server(
+      id,
+      [
+        "rlog",
+        "-R",
+        "-S",
+        ...(id.branch ? [`-r${id.branch}`] : []),
+        id.repository,
+      ],
+      signal,
+      { stdoutOnly: true, timeoutMs: 300000, maxBytes: 128 * 1024 * 1024 },
+    );
+    const base = rootPath(id.root);
+    const serverDirectories = new Set();
+    for (const line of output.stdout.toString("utf8").split(/\r?\n/)) {
+      // 只有 Attic 里的文件说明该目录已被删光。
+      if (!line.startsWith("/") || /\/Attic\/[^/]+,v$/.test(line.trim()))
+        continue;
+      const file = rlogPath(line, base, id.repository);
+      if (file === undefined) continue;
+      for (
+        let directory = path.posix.dirname(file);
+        directory !== ".";
+        directory = path.posix.dirname(directory)
+      )
+        serverDirectories.add(directory);
+    }
+    const registered = new Set(
+      registeredDirectories.map((directory) =>
+        directory === "." ? "." : directory.slice(2),
+      ),
+    );
+    const created = [];
+    for (const directory of [...serverDirectories].sort()) {
+      if (
+        registered.has(directory) ||
+        !registered.has(path.posix.dirname(directory))
+      )
+        continue;
+      try {
+        relativeFile(directory);
+      } catch {
+        continue;
+      }
+      const stat = await fs
+        .lstat(path.join(this.root, directory))
+        .catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      // 不加 ./ 前缀（CVS 会把 ./n1 登记成 D/./n1，之后的目录登记读不了）；以 - 开头的名字会被当成选项，跳过。
+      if (!stat && !directory.startsWith("-")) created.push(directory);
+    }
+    return created;
   }
   /** 按命令行长度分批：含可执行路径、-f、空格、引号及终止符，按 Windows 转义上界保守计长，每批不超过 8000 字符。 */
   batches(flags, items) {

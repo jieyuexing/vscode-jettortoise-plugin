@@ -6,11 +6,9 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CvsAdapter, CvsProcess, SerialQueue, checkout, cvsRoot, findWorkingCopy, relativeFile, revision } from "../src/cvs/core.mjs";
-import { createRequire } from "node:module";
 import { groupCommits } from "../src/cvs/log.mjs";
 import { validateMessage } from "../src/cvs/protocol.mjs";
 
-const { writeShim } = createRequire(import.meta.url)("./cvs-shims.cjs");
 async function fixture() {
   const base = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), "jettortoise-cvs-")));
   const repository = path.join(base, "repo"), seed = path.join(base, "seed"), wc = path.join(base, "working copy 中文");
@@ -251,7 +249,13 @@ test("temporary local CVS: POSIX character classes and combinations follow C loc
     await fs.rm(f.base, { recursive: true, force: true });
   }
 });
-test("temporary local CVS: repository log of an unsynchronized working copy groups a colleague's commits and reads files outside Entries", async () => {
+// 服务器端 rlog／checkout -p 与 update 的命令：只记录，用来断言没有别的命令。
+function recorded(f, wc = f.wc) {
+  const runs = [];
+  return { runs, adapter: new CvsAdapter(wc, { executable: f.process.executable, run: (...args) => { runs.push(args[0]); return f.process.run(...args); } }) };
+}
+const serverCommand = args => args[2];
+test("temporary local CVS: repository log of an unsynchronized working copy covers new directories, Attic files and MS932, and reads revisions from the server", async () => {
   const f = await fixture();
   try {
     const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer")), other = new CvsAdapter(peer, f.process);
@@ -263,114 +267,134 @@ test("temporary local CVS: repository log of an unsynchronized working copy grou
     await fs.writeFile(path.join(peer, "fresh.txt"), "fresh\n"); await other.add(["fresh.txt"]);
     await other.commit(["中文 file.txt", "other.txt", "fresh.txt"], "peer: three files");
     await pause();
-    // 提交二：新增后删除一个文件，本地工作副本从未见过它。
+    // 提交二：新增后删除一个文件（进入服务器的 Attic），本地工作副本从未见过它。
     await fs.writeFile(path.join(peer, "gone.txt"), "gone\n"); await other.add(["gone.txt"]); await other.commit(["gone.txt"], "peer: add gone");
     await pause();
     await fs.rm(path.join(peer, "gone.txt")); await other.commit(["gone.txt"], "peer: remove gone");
     await pause();
-    // 提交三：说明为 MS932 字节。
+    // 提交三：新建多层目录，本地没有这些目录，也不在 CVS/Entries 里。
+    const created = ["newdir/top.txt", "newdir/sub/deep/n.txt"];
+    await fs.mkdir(path.join(peer, "newdir/sub/deep"), { recursive: true });
+    await other.add(["newdir", "newdir/sub", "newdir/sub/deep"]);
+    for (const name of created) await fs.writeFile(path.join(peer, name), `${name}\n`);
+    await other.add(created); await other.commit(created, "peer: new directories");
+    await pause();
+    // 提交四：说明为 MS932 字节。
     await fs.writeFile(path.join(peer, "中文 file.txt"), "edited twice\n");
     const message = path.join(f.base, "message.txt"); await fs.writeFile(message, Buffer.from("93fa967b8cea82cc90e096be", "hex"));
     await f.process.run(["commit", "-F", message, "中文 file.txt"], peer);
 
-    const runs = [];
-    const adapter = new CvsAdapter(f.wc, { executable: f.process.executable, run: (...args) => { runs.push(args[0]); return f.process.run(...args); } });
-    // 本地工作副本没有更新：Entries 里没有 fresh.txt 与 gone.txt。
+    const { runs, adapter } = recorded(f);
+    // 本地工作副本没有更新：没有 newdir，Entries 里没有 fresh.txt 与 gone.txt。
+    await assert.rejects(fs.access(path.join(f.wc, "newdir")));
     const revisions = await adapter.repositoryLog({});
-    assert.deepEqual(runs, [["log", "-l", "-N", "-S", "."]], "repository log must run exactly one cvs log and nothing else");
+    assert.equal(runs.length, 1, "repository log is one server command");
+    assert.deepEqual([runs[0][0], runs[0][1].startsWith(":local:"), ...runs[0].slice(2)], ["-d", true, "rlog", "-N", "-S", "demo"]);
     const commits = groupCommits(revisions), by = (text) => commits.find(commit => commit.message === text);
-    assert.deepEqual(commits.map(commit => commit.message), ["日本語の説明", "peer: remove gone", "peer: add gone", "peer: three files", "initial"]);
+    assert.deepEqual(commits.map(commit => commit.message), ["日本語の説明", "peer: new directories", "peer: remove gone", "peer: add gone", "peer: three files", "initial"]);
+    assert.deepEqual(by("peer: new directories").files.map(file => `${file.path} ${file.kind} ${file.revision}`), ["newdir/sub/deep/n.txt added 1.1", "newdir/top.txt added 1.1"]);
     assert.deepEqual(by("peer: three files").files.map(file => `${file.path} ${file.previous ?? "-"}>${file.revision} ${file.kind}`), ["fresh.txt ->1.1 added", "other.txt 1.1>1.2 modified", "中文 file.txt 1.1>1.2 modified"]);
+    // 已删除（Attic）的文件：路径还原，dead 修订显示为删除。
     assert.deepEqual(by("peer: remove gone").files.map(file => `${file.path} ${file.previous}>${file.revision} ${file.kind}`), ["gone.txt 1.1>1.2 deleted"]);
     assert.deepEqual(by("initial").files.map(file => `${file.path} ${file.revision} ${file.kind}`), ["other.txt 1.1 added", "中文 file.txt 1.1 added"]);
     assert.equal(by("日本語の説明").files[0].revision, "1.3");
 
-    // -d：只取最近两次提交；上界与下界相接的窗口合并后得到完整列表。
+    // 本地有没有：新建目录和新增文件本地没有，已有文件有。
+    assert.deepEqual([...await adapter.localFiles(["newdir/top.txt", "fresh.txt", "other.txt", "中文 file.txt"])].sort(), ["other.txt", "中文 file.txt"].sort());
+
+    // -d：只取最近几次提交；上界与下界相接的窗口合并后得到完整列表。
     const removed = revisions.filter(item => item.message === "peer: remove gone")[0].time;
     const since = await adapter.repositoryLog({ from: removed });
-    assert.deepEqual(groupCommits(since).map(commit => commit.message), ["日本語の説明", "peer: remove gone"]);
-    assert.deepEqual(runs.at(-1).slice(0, 5), ["log", "-l", "-N", "-S", "-d"]);
-    assert.match(runs.at(-1)[5], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
+    assert.deepEqual(groupCommits(since).map(commit => commit.message), ["日本語の説明", "peer: new directories", "peer: remove gone"]);
+    assert.deepEqual(runs.at(-1).slice(2, 5), ["rlog", "-N", "-S"]);
+    assert.equal(runs.at(-1)[5], "-d");
+    assert.match(runs.at(-1)[6], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
     const older = await adapter.repositoryLog({ to: removed - 1000 });
     assert.deepEqual(groupCommits(older).map(commit => commit.message), ["peer: add gone", "peer: three files", "initial"]);
-    assert.equal(runs.every(args => args[0] === "log"), true);
 
-    // 差异所需的文件历史与修订内容：不在 Entries 的新增文件、已删除文件（dead 修订为空内容）。
+    // 单文件历史与修订内容：不在本地的文件、本地没有目录的文件、已删除（Attic）的文件，都向服务器取。
     assert.ok((await adapter.log("fresh.txt")).some(item => item.revisionId === "1.1"));
     assert.equal((await adapter.content("fresh.txt", "1.1")).toString(), "fresh\n");
+    assert.equal((await adapter.content("newdir/sub/deep/n.txt", "1.1")).toString(), "newdir/sub/deep/n.txt\n");
     assert.equal((await adapter.log("gone.txt")).find(item => item.revisionId === "1.2").state, "dead");
-    const updatesBefore = runs.filter(args => args[0] === "update").length;
+    const before = runs.length;
     assert.equal((await adapter.content("gone.txt", "1.2")).length, 0);
-    assert.equal(runs.filter(args => args[0] === "update").length, updatesBefore, "a dead revision must not be fetched with update -p");
+    assert.equal(runs.slice(before).some(args => args[2] === "checkout"), false, "a dead revision is empty without fetching content");
     assert.equal((await adapter.content("gone.txt", "1.1")).toString(), "gone\n");
-    // 路径仍须在本工作副本的已登记目录内。
-    await assert.rejects(adapter.log("no-such-dir/x.txt"));
+    // 只有 rlog 与 checkout -p：没有 update，没有 -n，没有 log。
+    assert.ok(runs.every(args => ["rlog", "checkout"].includes(args[2])), JSON.stringify(runs.map(args => args[2])));
+    assert.ok(runs.filter(args => args[2] === "checkout").every(args => args[3] === "-p" && args[4] === "-r"));
+    assert.ok(!runs.some(args => args.includes("-n") || args.includes("update")));
+    // 路径仍须在本工作副本内。
     await assert.rejects(adapter.log("../escape.txt"), { code: "path" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
-test("temporary local CVS: a server that ignores -l on directory arguments repeats files; the log still lists each path@revision once", async () => {
+test("temporary local CVS: a working copy on a branch logs that branch with -r", async () => {
+  const f = await fixture();
+  try {
+    await f.process.run(["tag", "-b", "BR1"], f.wc);
+    await f.process.run(["update", "-r", "BR1"], f.wc);
+    assert.equal((await fs.readFile(path.join(f.wc, "CVS", "Tag"), "utf8")).trim(), "TBR1");
+    const onBranch = await checkout(f.process, f.root, "demo", path.join(f.base, "branch-peer"));
+    await f.process.run(["update", "-r", "BR1"], onBranch);
+    await fs.writeFile(path.join(onBranch, "other.txt"), "branch edit\n");
+    await new CvsAdapter(onBranch, f.process).commit(["other.txt"], "on branch");
+    const trunk = await checkout(f.process, f.root, "demo", path.join(f.base, "trunk-peer"));
+    await fs.writeFile(path.join(trunk, "other.txt"), "trunk edit\n");
+    await new CvsAdapter(trunk, f.process).commit(["other.txt"], "on trunk");
+    const { runs, adapter } = recorded(f);
+    const revisions = await adapter.repositoryLog({});
+    assert.deepEqual(revisions.map(item => `${item.path}@${item.revision} ${item.message}`), ["other.txt@1.1.1.1.2.1 on branch"]);
+    assert.ok(runs[0].includes("-rBR1"), JSON.stringify(runs[0]));
+    // 单文件历史不受分支限制，仍是全部修订。
+    assert.ok((await adapter.log("other.txt")).length >= 3);
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
+test("temporary local CVS: update fetches directories the server created, without entering local directories that are not registered", async () => {
   const f = await fixture();
   try {
     const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer")), other = new CvsAdapter(peer, f.process);
-    const pause = () => new Promise(done => setTimeout(done, 1100));
-    // 多层目录，每层一个文件；一次提交改动所有深度的文件。
-    const levels = ["l1", "l1/l2", "l1/l2/l3", "l1/l2/l3/l4"];
-    for (const dir of levels) { await fs.mkdir(path.join(peer, dir), { recursive: true }); await other.add([dir]); }
-    const files = ["root.txt", ...levels.map(dir => `${dir}/f.txt`)];
-    for (const name of files) await fs.writeFile(path.join(peer, name), "v1\n");
-    await other.add(files); await other.commit(files, "peer: deep v1");
-    await f.process.run(["update", "-d", "-P"], f.wc);
-    await pause();
-    for (const name of files) await fs.writeFile(path.join(peer, name), "v2\n");
-    await other.commit(files, "peer: touch every depth");
+    // 本地：一个未登记的普通目录与一个异 Root 的检出，名字与服务器上即将新建的目录相同。
+    const foreignRoot = path.join(f.base, "foreign-repo"), foreignSeed = path.join(f.base, "foreign-seed");
+    await fs.mkdir(foreignRoot); await fs.mkdir(foreignSeed);
+    await f.process.run(["-d", `:local:${foreignRoot}`, "init"], f.base);
+    await fs.writeFile(path.join(foreignSeed, "o.txt"), "foreign\n");
+    await f.process.run(["-d", `:local:${foreignRoot}`, "import", "-m", "foreign", "fmod", "v", "s"], foreignSeed);
+    await checkout(f.process, `:local:${foreignRoot}`, "fmod", path.join(f.wc, "clash-foreign"));
+    await fs.mkdir(path.join(f.wc, "clash-plain")); await fs.writeFile(path.join(f.wc, "clash-plain", "local.txt"), "mine\n");
+    for (const name of ["clash-foreign/dropped.txt"]) void name;
+    // 同事：新建多层目录并提交；另有与本地两个目录同名的新目录。
+    const files = ["n1/top.txt", "n1/n2/mid.txt", "n1/n2/n3/deep.txt", "clash-foreign/s.txt", "clash-plain/s.txt"];
+    for (const dir of ["n1", "n1/n2", "n1/n2/n3", "clash-foreign", "clash-plain"]) await fs.mkdir(path.join(peer, dir), { recursive: true });
+    await other.add(["n1", "n1/n2", "n1/n2/n3", "clash-foreign", "clash-plain"]);
+    for (const name of files) await fs.writeFile(path.join(peer, name), `${name}\n`);
+    await other.add(files); await other.commit(files, "peer: new directories");
+    // 本地已修改的文件更新后不能被覆盖。
+    await fs.writeFile(path.join(f.wc, "other.txt"), "my local edit\n");
 
-    const real = process.env.JETTORTOISE_TEST_CVS || "/opt/homebrew/bin/cvs";
-    const open = async (recursing) => {
-      const shim = await writeShim(path.join(f.base, recursing ? "recursing-cvs" : "plain-cvs"), { real, recursing, stripCommitId: true });
-      const cvsProcess = new CvsProcess(shim), runs = [];
-      // 根上的递归 log 也可能带回未登记目录里的文件（本机客户端按 Entries 走，不会；别的客户端或服务器会）：追加一段合成输出。
-      const unregistered = "RCS file: /cvsroot/demo/extra/f.txt,v\nWorking file: extra/f.txt\nhead: 1.2\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: 1;\tselected revisions: 1\ndescription:\n----------------------------\nrevision 1.2\ndate: 2026-11-10 07:00:00 +0000;  author: dev-a;  state: Exp;\nunregistered\n=============================================================================\n";
-      return { runs, adapter: new CvsAdapter(f.wc, { executable: shim, run: async (...args) => {
-        runs.push(args[0]);
-        const result = await cvsProcess.run(...args);
-        return recursing && !args[0].includes("-l") ? { ...result, stdout: Buffer.concat([result.stdout, Buffer.from(`\n${unregistered}`)]) } : result;
-      } }) };
-    };
-    const summary = (revisions) => {
-      const commits = groupCommits(revisions);
-      return { unique: new Set(revisions.map(item => `${item.path}@${item.revision}`)).size, commits };
-    };
-
-    // 对照：-l 有效的服务器，每个修订一次，一个命令。
-    const plain = await open(false);
-    const expected = summary(await plain.adapter.repositoryLog({}));
-    assert.equal(plain.runs.length, 1, "a server honoring -l needs one command");
-    assert.equal(expected.commits.find(commit => commit.message === "peer: touch every depth").files.length, files.length);
-
-    // 每个目录参数都被递归：同一路径修订重复；结果必须仍是每个 path@revision 一次，提交不被拆开。
-    const recursing = await open(true);
-    const revisions = await recursing.adapter.repositoryLog({});
-    assert.equal(revisions.length, expected.unique, `repeated revisions leaked: ${revisions.length} for ${expected.unique} unique`);
-    const result = summary(revisions);
-    assert.deepEqual(result.commits.map(commit => [commit.message, commit.files.length]), expected.commits.map(commit => [commit.message, commit.files.length]));
-    // 从输出发现 -l 不被遵守后，改为在仓库根做一次递归 log，再按已登记目录过滤。
-    assert.equal(revisions.some(item => item.path.startsWith("extra/")), false, "an unregistered directory leaked into the log");
-    assert.equal(recursing.runs.length, 2, JSON.stringify(recursing.runs));
-    assert.deepEqual(recursing.runs[0].slice(0, 4), ["log", "-l", "-N", "-S"]);
-    assert.ok(recursing.runs[0].length > 5, "the first attempt passes the registered directories");
-    assert.deepEqual(recursing.runs[1], ["log", "-N", "-S"]);
-    // 记住该服务器的行为：之后（含带 -d 的范围）直接用递归形式，不再先试目录参数。
-    const since = await recursing.adapter.repositoryLog({ from: Date.now() - 86400000 });
-    assert.equal(summary(since).commits.length, expected.commits.length);
-    assert.equal(recursing.runs.length, 3);
-    assert.deepEqual(recursing.runs[2].slice(0, 4), ["log", "-N", "-S", "-d"]);
-    assert.equal(recursing.runs[2].length, 5);
-    assert.ok(recursing.runs.every(args => args[0] === "log"));
-    // 每批一个目录：第三批（./l1/l2）就出现重复，其后的批次不再取，直接回退（共 4 个命令，而不是 5 + 1）。
-    const batched = await open(true);
-    batched.adapter.batches = (_flags, items) => items.map(item => [item]);
-    assert.equal(summary(await batched.adapter.repositoryLog({})).unique, expected.unique);
-    assert.equal(batched.runs.length, 4, JSON.stringify(batched.runs));
+    const { runs, adapter } = recorded(f);
+    await adapter.update();
+    // 新目录整棵取下，空目录仍按 -P 修剪；元数据登记在父 Entries 里。
+    for (const name of files.slice(0, 3)) assert.equal(await fs.readFile(path.join(f.wc, name), "utf8"), `${name}\n`);
+    const registered = (await fs.readFile(path.join(f.wc, "CVS", "Entries"), "utf8")) + (await fs.readFile(path.join(f.wc, "CVS", "Entries.Log"), "utf8").catch(() => ""));
+    assert.match(registered, /D\/n1\//);
+    // 本地已有的同名目录一律不碰：未登记的普通目录保持原样，异 Root 检出的元数据与内容不变。
+    assert.deepEqual(await fs.readdir(path.join(f.wc, "clash-plain")), ["local.txt"]);
+    assert.equal((await fs.readFile(path.join(f.wc, "clash-foreign", "CVS", "Root"), "utf8")).trim(), `:local:${foreignRoot}`);
+    assert.deepEqual((await fs.readdir(path.join(f.wc, "clash-foreign"))).sort(), ["CVS", "o.txt"]);
+    // 本地修改的文件保持原样（不被覆盖）。
+    assert.equal(await fs.readFile(path.join(f.wc, "other.txt"), "utf8"), "my local edit\n");
+    // 命令：本地目录批次、服务器端查新目录、只对新目录的 update -d -P；没有对已登记目录的递归 -d，没有 -n。
+    assert.deepEqual(runs.map(args => args[0] === "-d" ? args[2] : args.slice(0, 4).join(" ")), ["-q update -l -P", "rlog", "-q update -d -P"]);
+    assert.deepEqual(runs.at(-1), ["-q", "update", "-d", "-P", "n1"]);
+    // 新目录里的文件：本地更改里是干净的，日志的“本地”判断为有。
+    const states = await adapter.localStatus();
+    assert.deepEqual(states.filter(item => item.newPath.startsWith("n1/")).map(item => [item.newPath, item.state]).sort(), files.slice(0, 3).map(name => [name, "Up-to-date"]).sort());
+    assert.deepEqual([...await adapter.localFiles(files.slice(0, 3))].sort(), files.slice(0, 3).sort());
+    // 再更新一次：没有新目录就没有 update -d。
+    runs.length = 0; await adapter.update();
+    assert.ok(runs.every(args => !args.includes("-d") || args[0] === "-d"), JSON.stringify(runs));
+    assert.ok(!runs.some(args => args[0] === "-q" && args.includes("-d")));
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {

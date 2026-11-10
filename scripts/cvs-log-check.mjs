@@ -11,15 +11,17 @@ import {
   mergeRevisions,
   parseRepositoryLog,
   previousRevision,
+  rlogPath,
   uniqueRevisions,
 } from "../src/cvs/log.mjs";
 
 const DASH = "-".repeat(28);
 const EQUALS = "=".repeat(77);
 /** 一个文件的 cvs log 输出块；revisions 的元素是 {rev, date, author, state, lines, commitid, branches, message(Buffer|string)}。 */
-function fileBlock(name, revisions, { working = name } = {}) {
+function fileBlock(name, revisions, { attic = false } = {}) {
+  const rcs = attic ? name.replace(/([^/]+)$/, "Attic/$1") : name;
   const head = Buffer.from(
-    `RCS file: /cvsroot/demo/${name},v\nWorking file: ${working}\nhead: ${revisions[0].rev}\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: ${revisions.length};\tselected revisions: ${revisions.length}\ndescription:\n`,
+    `RCS file: /cvsroot/demo/${rcs},v\nhead: ${revisions[0].rev}\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: ${revisions.length};\tselected revisions: ${revisions.length}\ndescription:\n`,
     "latin1",
   );
   const parts = [head];
@@ -37,6 +39,7 @@ function fileBlock(name, revisions, { working = name } = {}) {
   return Buffer.concat(parts);
 }
 /** 与真实输出一致：开头一个空行，文件块之间一个空行。 */
+const toPath = (rcs) => rlogPath(rcs, "/cvsroot", "demo");
 const output = (...blocks) => Buffer.concat([Buffer.from("\n"), ...blocks.flatMap((block, index) => (index ? [Buffer.from("\n"), block] : [block]))]);
 const rev = (path, revision, date, extra = {}) => ({
   path,
@@ -51,7 +54,7 @@ const rev = (path, revision, date, extra = {}) => ({
 // MS932 的「日本語の説明」。
 const MS932 = Buffer.from("93fa967b8cea82cc90e096be", "hex");
 
-test("parseRepositoryLog: several files, both date styles, ./ prefixes, dead, branch revisions, multi-line messages", () => {
+test("parseRepositoryLog: several files, both date styles, Attic paths, dead, branch revisions, multi-line messages", () => {
   const parsed = parseRepositoryLog(
     output(
       fileBlock(
@@ -60,14 +63,16 @@ test("parseRepositoryLog: several files, both date styles, ./ prefixes, dead, br
           { rev: "1.8", date: "2026-10-28 17:02:03 +0900", author: "dev-a", lines: "+3 -1", commitid: "c1c1c1c1c1c1c1c1", message: "first line\nsecond line\n\nlast" },
           { rev: "1.7", date: "2026/10/21 10:15:00", author: "dev-b", message: "older" },
         ],
-        { working: "./src/A.java" },
       ),
       fileBlock("src/B.java", [
         { rev: "1.3", date: "2026-10-28 17:02:04 +0900", state: "dead", commitid: "c1c1c1c1c1c1c1c1", message: "same commit" },
         { rev: "1.1", date: "2026-10-20 08:00:00 +0900", branches: "1.1.1", message: "Initial revision" },
         { rev: "1.1.1.1", date: "2026-10-20 08:00:00 +0900", lines: "+0 -0", message: "vendor import" },
       ]),
+      // 已删除的文件在服务器上位于 Attic/ 下：路径要还原成原来的位置。
+      fileBlock("src/gone/C.java", [{ rev: "1.2", date: "2026-10-22 08:00:00 +0900", state: "dead", message: "removed" }], { attic: true }),
     ),
+    toPath,
   );
   assert.deepEqual(
     parsed.map((item) => [item.path, item.revision, item.state, item.author, item.commitId, new Date(item.time).toISOString()]),
@@ -77,6 +82,7 @@ test("parseRepositoryLog: several files, both date styles, ./ prefixes, dead, br
       ["src/B.java", "1.3", "dead", "dev-a", "c1c1c1c1c1c1c1c1", "2026-10-28T08:02:04.000Z"],
       ["src/B.java", "1.1", "Exp", "dev-a", undefined, "2026-10-19T23:00:00.000Z"],
       ["src/B.java", "1.1.1.1", "Exp", "dev-a", undefined, "2026-10-19T23:00:00.000Z"],
+      ["src/gone/C.java", "1.2", "dead", "dev-a", undefined, "2026-10-21T23:00:00.000Z"],
     ],
   );
   assert.equal(parsed[0].message, "first line\nsecond line\n\nlast");
@@ -86,12 +92,12 @@ test("parseRepositoryLog: several files, both date styles, ./ prefixes, dead, br
 
 test("parseRepositoryLog: a file with no selected revision (without -S) and an empty output yield nothing", () => {
   const empty = Buffer.from(
-    `RCS file: /cvsroot/demo/old.txt,v\nWorking file: old.txt\nhead: 1.1\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: 1;\tselected revisions: 0\ndescription:\n${EQUALS}\n`,
+    `RCS file: /cvsroot/demo/old.txt,v\nhead: 1.1\nbranch:\nlocks: strict\naccess list:\nkeyword substitution: kv\ntotal revisions: 1;\tselected revisions: 0\ndescription:\n${EQUALS}\n`,
     "latin1",
   );
-  assert.deepEqual(parseRepositoryLog(output(empty, fileBlock("new.txt", [{ rev: "1.2", date: "2026-11-01 10:00:00 +0000", message: "kept" }]))).map((item) => item.path), ["new.txt"]);
-  assert.deepEqual(parseRepositoryLog(Buffer.alloc(0)), []);
-  assert.deepEqual(parseRepositoryLog(output(empty)), []);
+  assert.deepEqual(parseRepositoryLog(output(empty, fileBlock("new.txt", [{ rev: "1.2", date: "2026-11-01 10:00:00 +0000", message: "kept" }])), toPath).map((item) => item.path), ["new.txt"]);
+  assert.deepEqual(parseRepositoryLog(Buffer.alloc(0), toPath), []);
+  assert.deepEqual(parseRepositoryLog(output(empty), toPath), []);
 });
 
 test("parseRepositoryLog: MS932 and UTF-8 messages in one output are decoded one by one", () => {
@@ -103,6 +109,7 @@ test("parseRepositoryLog: MS932 and UTF-8 messages in one output are decoded one
       ]),
       fileBlock("x.txt", [{ rev: "1.1", date: "2026-10-01 10:00:00 +0000", message: Buffer.concat([MS932, Buffer.from("\nsecond line")]) }]),
     ),
+    toPath,
   );
   assert.equal(parsed[0].message, "日本語の説明 ms932");
   assert.equal(parsed[1].message, "日本語の説明 utf8");
@@ -225,7 +232,7 @@ test("logRangeArgs builds the cvs log -d range in UTC; mergeRevisions drops dupl
 test("uniqueRevisions keeps one entry per path@revision; parseRepositoryLog reports what the server sent", () => {
   const block = fileBlock("src/A.java", [{ rev: "1.2", date: "2026-10-28 17:02:03 +0900", message: "edit" }]);
   // 服务器把同一个文件重复输出多次（深层文件被每个祖先目录参数各取一次）。
-  const repeated = parseRepositoryLog(output(block, block, block));
+  const repeated = parseRepositoryLog(output(block, block, block), toPath);
   assert.equal(repeated.length, 3);
   assert.deepEqual(uniqueRevisions(repeated).map((item) => `${item.path}@${item.revision}`), ["src/A.java@1.2"]);
   assert.deepEqual(uniqueRevisions([]), []);
@@ -242,4 +249,17 @@ test("groupCommits: one commit of six files over eight seconds is one row, with 
   // 每个文件被重复 11 次（目录层数）：仍然只有一个提交、六个文件。
   const repeated = groupCommits([...Array.from({ length: 11 }, () => six).flat(), ...others]);
   assert.deepEqual(repeated.map((commit) => commit.files.length), [6, 1, 1]);
+});
+
+test("rlogPath turns an RCS file into a path relative to the working copy root", () => {
+  assert.equal(rlogPath("/cvsroot/demo/src/A.java,v", "/cvsroot", "demo"), "src/A.java");
+  assert.equal(rlogPath("/cvsroot/demo/src/Attic/A.java,v", "/cvsroot", "demo"), "src/A.java");
+  assert.equal(rlogPath("/cvsroot/demo/Attic/root.txt,v", "/cvsroot", "demo"), "root.txt");
+  // 目录本身叫 Attic 之外的名字、或 Attic 不在最后一层时保持原样。
+  assert.equal(rlogPath("/cvsroot/demo/Attic/sub/A.java,v", "/cvsroot", "demo"), "Attic/sub/A.java");
+  // 工作副本根是模块的子目录。
+  assert.equal(rlogPath("/cvsroot/mod/sub/dir/f.txt,v", "/cvsroot", "mod/sub"), "dir/f.txt");
+  // Root 路径与服务器真实路径不一致（虚拟路径）时按模块前缀截取；不在该模块下则忽略。
+  assert.equal(rlogPath("D:/repo/demo/src/A.java,v", "/cvsroot", "demo"), "src/A.java");
+  assert.equal(rlogPath("/cvsroot/other/A.java,v", "/cvsroot", "demo"), undefined);
 });

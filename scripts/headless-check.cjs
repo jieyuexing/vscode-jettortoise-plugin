@@ -5,6 +5,7 @@ const checks = [
   ["scripts/grouping-check.cjs"],
   ["scripts/cvs-core-check.cjs"],
   ["--test", "scripts/cvs-log-check.mjs"],
+  ["--test", "scripts/cvs-cache-check.mjs"],
   ["scripts/catalog-discovery-check.cjs"],
   ["scripts/git-nesting-check.cjs"],
   ["scripts/git-update-check.cjs"],

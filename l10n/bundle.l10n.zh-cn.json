@@ -222,5 +222,8 @@
   "CVS rollback completed. Backups: {0} and {1} more": "CVS 回滚完成。备份：{0} 等，另有 {1} 个",
   "CVS Repository Log": "CVS 仓库日志",
   "Unknown commit.": "未知的提交。",
-  "CVS log is too large. Choose a shorter range.": "CVS 日志过大，请选择更短的范围。"
+  "CVS log is too large. Choose a shorter range.": "CVS 日志过大，请选择更短的范围。",
+  "CVS log cache cleared.": "CVS 日志缓存已清除。",
+  "Not in the working copy. Update the project first.": "工作副本里没有这个文件，请先更新项目。",
+  "{0} ({1} ↔ working tree)": "{0}（{1} ↔ 工作树）"
 }

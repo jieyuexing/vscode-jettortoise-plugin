@@ -85,20 +85,29 @@
 .panel-header > label {
   font-weight: 600;
 }
+/* 与工具按钮同高（22px）并在标题行里垂直居中；文字盒固定行高，不受宿主字体与行高影响。 */
 .panel-segmented {
   display: flex;
+  align-items: stretch;
   flex: none;
-  height: var(--etech-row-height);
+  box-sizing: border-box;
+  height: var(--etech-tool-button);
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
   border-radius: 3px;
   overflow: hidden;
 }
 .panel-segmented button {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
   padding: 0 8px;
   border: 0;
   background: transparent;
   color: var(--vscode-foreground);
-  font: inherit;
+  font-family: inherit;
+  font-size: var(--etech-font-size);
+  line-height: 16px;
   white-space: nowrap;
   cursor: pointer;
 }

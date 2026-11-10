@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { CvsSession } from "../cvs/session";
+import { CvsSession, createCvsCacheStore } from "../cvs/session";
 import { type DivergedUpstream, divergedMessage } from "../git/gitService";
 import { resolveWorktreePath } from "../git/security";
 import { createGitRepositorySession } from "../git/session";
@@ -35,6 +35,8 @@ const LOG_COMMANDS = new Set([
   "getCvsLog",
   "getCvsCommit",
   "diffCvsRevision",
+  "compareCvsWorkingFile",
+  "openFile",
 ]);
 interface Entry {
   info: RepositoryInfo;
@@ -70,7 +72,13 @@ export class RepositoryManager implements vscode.Disposable {
   private localActive = 0;
   private readonly localWaiters: (() => void)[] = [];
   private readonly streams = new Map<vscode.Webview, Map<string, symbol>>();
+  // 仓库日志、单文件历史与修订内容的落盘缓存；没有扩展存储目录时不落盘。
+  private readonly cvsCache?: ReturnType<typeof createCvsCacheStore>;
   constructor(private readonly context: vscode.ExtensionContext) {
+    if (context.globalStorageUri)
+      this.cvsCache = createCvsCacheStore(
+        path.join(context.globalStorageUri.fsPath, "cvs-cache"),
+      );
     const configuration = vscode.workspace.onDidChangeConfiguration?.(
       (event) => {
         if (event.affectsConfiguration("workbench.iconTheme")) {
@@ -420,11 +428,17 @@ export class RepositoryManager implements vscode.Disposable {
         },
       );
     else {
-      entry.cvs = new CvsSession(id, root, guard, (snapshot) => {
-        if (this.entries.get(id) !== entry || !this.listed(entry)) return;
-        entry.snapshot = { ...snapshot, branch: entry.snapshot.branch };
-        this.publishSnapshot(entry.snapshot);
-      });
+      entry.cvs = new CvsSession(
+        id,
+        root,
+        guard,
+        (snapshot) => {
+          if (this.entries.get(id) !== entry || !this.listed(entry)) return;
+          entry.snapshot = { ...snapshot, branch: entry.snapshot.branch };
+          this.publishSnapshot(entry.snapshot);
+        },
+        this.cvsCache,
+      );
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(root, "**/*"),
       );
@@ -462,7 +476,7 @@ export class RepositoryManager implements vscode.Disposable {
     this.timers.delete(id);
   }
   private written(entry: Entry) {
-    entry.cvs?.invalidateLog();
+    entry.cvs?.markLogStale();
     for (const uri of this.revisionUris.values())
       if (uri.authority === entry.info.id) this.revisionChanges.fire(uri);
     this.broadcast("repositoryWritten", { repositoryId: entry.info.id });
@@ -819,14 +833,25 @@ export class RepositoryManager implements vscode.Disposable {
     if (entry.git) return entry.git.router.request(command, values);
     const cvs = this.cvs(entry);
     if (command === "getCvsHistory")
-      return cvs.history(repositoryPath(values.filePath));
+      return cvs.history(
+        repositoryPath(values.filePath),
+        values.refresh === true,
+      );
     if (command === "diffCvsRevision")
       return cvs.revisionDiff(
         repositoryPath(values.filePath),
         String(values.revision),
       );
+    if (command === "compareCvsWorkingFile")
+      return cvs.compareWithWorking(
+        repositoryPath(values.filePath),
+        String(values.revision),
+      );
     if (command === "getCvsLog")
-      return cvs.repositoryLog(values.days as number, values.refresh === true);
+      return cvs.repositoryLog(values.days as number, {
+        refresh: values.refresh === true,
+        cached: values.cached === true,
+      });
     if (command === "getCvsCommit")
       return cvs.commitFiles(values.commitId as string);
     if (command === "getCvsFiles")
@@ -1081,7 +1106,16 @@ export class RepositoryManager implements vscode.Disposable {
       content,
     );
   }
+  /** 清除全部 CVS 日志缓存（日志、单文件历史、修订内容）；下次打开日志整段重取。 */
+  async clearCvsCache() {
+    await this.cvsCache?.clear();
+    for (const entry of this.entries.values()) entry.cvs?.resetCache();
+    void vscode.window.showInformationMessage(
+      vscode.l10n.t("CVS log cache cleared."),
+    );
+  }
   async execute(command: string, ...args: unknown[]) {
+    if (command === "jettortoise.clearCvsLogCache") return this.clearCvsCache();
     if (command === "jettortoise.synchronizeRepository") {
       const uri = args[0] as vscode.Uri | undefined;
       const entry =

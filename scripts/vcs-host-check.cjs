@@ -9,7 +9,6 @@ const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { build } = require("esbuild");
-const { writeShim } = require("./cvs-shims.cjs");
 
 const git = (cwd, args) => cp.execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const disposable = () => ({ dispose() {} });
@@ -81,7 +80,6 @@ async function main() {
     // 会话使用记录 argv 的 cvs 包装，用来证明未同步仓查看历史时不运行 cvs -n update。
     const argvLog = path.join(base, "cvs-argv.jsonl"), cvsShim = path.join(base, "cvs-argv-shim");
     await fs.writeFile(cvsShim, `#!${process.execPath}\nconst fs=require("node:fs"),cp=require("node:child_process");const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(argvLog)},JSON.stringify(args)+"\\n");const r=cp.spawnSync(${JSON.stringify(process.env.JETTORTOISE_TEST_CVS || "cvs")},args,{stdio:"inherit"});process.exit(r.status??1);\n`, { mode: 0o755 });
-    let cvsPathUnderTest = cvsShim;
     const argvCalls = async () => (await fs.readFile(argvLog, "utf8").catch(() => "")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const watchers = [], warnings = [], infos = [], commands = [], sent = [];
     const decodes = [], editorListeners = [];
@@ -92,7 +90,7 @@ async function main() {
       l10n: { t: (message, ...args) => message.replace(/\{(\d+)\}/g, (_, index) => args[index] ?? "") },
       workspace: {
         isTrusted: true, workspaceFolders: [{ uri: Uri.file(root) }], textDocuments: [],
-        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? cvsPathUnderTest : fallback) }),
+        getConfiguration: () => ({ get: (key, fallback) => (key === "cvsPath" ? cvsShim : fallback) }),
         onDidChangeWorkspaceFolders: () => disposable(), onDidGrantWorkspaceTrust: () => disposable(), onDidSaveTextDocument: () => disposable(),
         createFileSystemWatcher: (pattern) => {
           const created = new Emitter();
@@ -133,10 +131,11 @@ async function main() {
 
     const { RepositoryManager } = require(bundle);
 
-    // 00. 仓库级日志（宿主）：独立的 :local: 仓库与工作区，未同步下取提交列表；打开日志只运行带 -d 的 cvs log，
-    //     不运行 cvs -n update；同窗口缓存；切换编辑器文件不产生 cvs 调用；不在 Entries 的文件也能打开两修订差异。
+    // 00. 仓库日志与缓存（宿主）：独立的 :local: 仓库与工作区，工作副本不更新，同事新建了目录。
+    //     日志取自服务器端 rlog（不依赖本地目录），修订内容取自 checkout -p；缓存落盘，新会话（重启）命中；
+    //     argv 记录证明只有 rlog 与 checkout -p，没有 update、没有 -n、没有 log。
     {
-      const logBase = path.join(base, "log-case"), logRepo = path.join(logBase, "repository"), logRoot = path.join(logBase, "workspace"), logSeed = path.join(logBase, "seed");
+      const logBase = path.join(base, "log-case"), logRepo = path.join(logBase, "repository"), logRoot = path.join(logBase, "workspace"), logSeed = path.join(logBase, "seed"), storage = path.join(logBase, "storage", "cvs-cache");
       await fs.mkdir(logRepo, { recursive: true }); await fs.mkdir(logRoot); await fs.mkdir(path.join(logSeed, "src"), { recursive: true });
       const logCvsRoot = `:local:${logRepo}`;
       await cvs.run(["-d", logCvsRoot, "init"], logBase);
@@ -144,145 +143,193 @@ async function main() {
       await cvs.run(["-d", logCvsRoot, "import", "-m", "sample import", "sample", "vendor", "start"], logSeed);
       const logWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logRoot, "wc"));
       const colleagueWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logBase, "colleague")), colleague = new core.CvsAdapter(colleagueWc, cvs);
+      const pause = () => new Promise((resolve) => setTimeout(resolve, 1100));
       // 修订时间只到秒：提交之间停一下，保证与导入、前一次提交不在同一秒，列表顺序才确定。
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await pause();
       await fs.writeFile(path.join(colleagueWc, "src", "Main.txt"), "v2\n"); await fs.writeFile(path.join(colleagueWc, "src", "Util.txt"), "v2\n");
       await colleague.commit(["src/Main.txt", "src/Util.txt"], "colleague: update two files");
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await pause();
       await fs.writeFile(path.join(colleagueWc, "src", "Added.txt"), "new file\n"); await colleague.add(["src/Added.txt"]); await colleague.commit(["src/Added.txt"], "colleague: add file");
+      await pause();
+      // 新建多层目录：本地工作副本没有，也不在 CVS/Entries 里。
+      await fs.mkdir(path.join(colleagueWc, "lib", "deep"), { recursive: true }); await colleague.add(["lib", "lib/deep"]);
+      await fs.writeFile(path.join(colleagueWc, "lib", "Top.txt"), "top\n"); await fs.writeFile(path.join(colleagueWc, "lib", "deep", "New.txt"), "deep new\n");
+      await colleague.add(["lib/Top.txt", "lib/deep/New.txt"]); await colleague.commit(["lib/Top.txt", "lib/deep/New.txt"], "colleague: new directories");
 
       vscode.workspace.workspaceFolders = [{ uri: Uri.file(logRoot) }];
       const { RepositoryManager: LogManager } = require(bundle);
-      const logManager = new LogManager({ extensionUri: Uri.file(process.cwd()) });
-      logManager.connect({ postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => disposable() });
-      await logManager.scan();
-      const logRepository = logManager.state().logRepositories.find((item) => item.root === logWc);
-      assert.ok(logRepository, "unsynchronized CVS repository missing from the log");
-      assert.deepEqual(logManager.repositories, [], "unsynchronized CVS repository entered local changes");
-      await logManager.request("selectRepository", { repositoryId: logRepository.id, surface: "log" });
-      await fs.writeFile(argvLog, "");
+      const context = () => ({ extensionUri: Uri.file(process.cwd()), globalStorageUri: Uri.file(path.dirname(storage)) });
+      const opened = [];
+      const open = async () => {
+        const logManager = new LogManager(context());
+        logManager.connect({ postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => disposable() });
+        await logManager.scan();
+        const repository = logManager.state().logRepositories.find((item) => item.root === logWc);
+        assert.ok(repository, "unsynchronized CVS repository missing from the log");
+        await logManager.request("selectRepository", { repositoryId: repository.id, surface: "log" });
+        opened.push(logManager);
+        return { logManager, repository, request: (command, params = {}) => logManager.request(command, { repositoryId: repository.id, ...params }) };
+      };
       const newCalls = async (from) => (await argvCalls()).slice(from);
+      const server = (args) => args[3]; // -f -d <root> <command> …
+      const stored = async () => (await fs.readdir(storage)).filter((name) => /^log-.*\.json$/.test(name));
+      await fs.writeFile(argvLog, "");
 
-      const first = await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
-      assert.deepEqual(first.commits.map((commit) => [commit.subject, commit.fileCount]), [["colleague: add file", 1], ["colleague: update two files", 2], ["sample import", 2]]);
-      assert.equal(first.days, 90);
-      const opened = await newCalls(0);
-      assert.equal(opened.length, 1, `opening the log ran ${JSON.stringify(opened)}`);
-      assert.deepEqual(opened[0].slice(0, 6), ["-f", "log", "-l", "-N", "-S", "-d"]);
-      assert.match(opened[0][6], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
-      assert.deepEqual(opened[0].slice(7), [".", "./src"]);
-      // 同窗口缓存：重复打开与回到较小范围不再连服务器。
-      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
-      assert.equal((await newCalls(0)).length, 1, "a repeated request contacted CVS again");
-      const [added, updated] = first.commits;
-      assert.deepEqual(await logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: updated.id }), [
-        { path: "src/Main.txt", revision: "1.2", previous: "1.1", kind: "modified" },
-        { path: "src/Util.txt", revision: "1.2", previous: "1.1", kind: "modified" },
+      // 1. 第一次打开：缓存为空 → 只读缓存不连服务器；再取一次 rlog（近 90 天），覆盖本地没有的目录。
+      let session = await open();
+      assert.deepEqual(await session.request("getCvsLog", { days: 90, cached: true }), { days: 90, cachedAt: undefined, fromCache: true, error: undefined, commits: [] });
+      assert.deepEqual(await argvCalls(), [], "reading the cache contacted CVS");
+      const first = await session.request("getCvsLog", { days: 90 });
+      assert.deepEqual(first.commits.map((commit) => [commit.subject, commit.fileCount]), [["colleague: new directories", 2], ["colleague: add file", 1], ["colleague: update two files", 2], ["sample import", 2]]);
+      assert.equal(first.fromCache, false);
+      const opening = await newCalls(0);
+      assert.equal(opening.length, 1, `opening the log ran ${JSON.stringify(opening)}`);
+      assert.deepEqual([opening[0].slice(0, 2), server(opening[0]), opening[0].slice(4, 8), opening[0].at(-1)], [["-f", "-d"], "rlog", ["-N", "-S", "-d"].concat(opening[0][7]), "sample"]);
+      assert.match(opening[0][7], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
+      assert.equal((await stored()).length, 1, "the log was not written to disk");
+
+      // 2. 提交文件：新建目录里的文件本地没有（标记），已有目录里的文件有。
+      const [newDirectories, added, updated] = first.commits;
+      const markers = async (commit) => Object.fromEntries((await session.request("getCvsCommit", { commitId: commit.id })).map((file) => [file.path, file.local]));
+      assert.deepEqual(await markers(newDirectories), { "lib/Top.txt": false, "lib/deep/New.txt": false });
+      assert.deepEqual(await markers(added), { "src/Added.txt": false });
+      assert.deepEqual(await markers(updated), { "src/Main.txt": true, "src/Util.txt": true });
+      assert.deepEqual(await session.request("getCvsCommit", { commitId: updated.id }), [
+        { path: "src/Main.txt", revision: "1.2", previous: "1.1", kind: "modified", local: true },
+        { path: "src/Util.txt", revision: "1.2", previous: "1.1", kind: "modified", local: true },
       ]);
-      const addedFiles = await logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: added.id });
-      assert.deepEqual(addedFiles, [{ path: "src/Added.txt", revision: "1.1", previous: undefined, kind: "added" }]);
-      await assert.rejects(logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: "unknown" }), /Unknown commit/);
-      assert.equal((await newCalls(0)).length, 1, "reading a commit contacted CVS");
+      await assert.rejects(session.request("getCvsCommit", { commitId: "unknown" }), /Unknown commit/);
 
-      // 切换编辑器文件（含不在 Entries 的路径所在目录）不运行任何 cvs 命令。
-      // follow() 是异步的：逐个切换并等它生效，避免两次切换竞争 activeFile。
+      // 3. 同窗口再次打开、回到较小范围、切换编辑器：0 次连接。
+      await session.request("getCvsLog", { days: 90 });
+      assert.equal((await session.request("getCvsLog", { days: 30, cached: true })).commits.length, 4);
       for (const file of ["Main.txt", "Util.txt"]) {
         for (const listener of editorListeners) listener({ document: { uri: Uri.file(path.join(logWc, "src", file)) } });
-        await until(() => logManager.state().activeFile === `src/${file}`, `editor switch to ${file} was not followed`);
+        await until(() => session.logManager.state().activeFile === `src/${file}`, `editor switch to ${file} was not followed`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      assert.equal((await newCalls(0)).length, 1, "switching editors ran a CVS command");
+      assert.equal((await newCalls(0)).length, 1, "a repeated open or an editor switch contacted CVS");
 
-      // 不在 Entries 的新增文件：两修订差异（空 ↔ 1.1）。
-      await logManager.request("diffCvsRevision", { repositoryId: logRepository.id, filePath: "src/Added.txt", revision: "1.1" });
-      const addedDiff = commands.findLast((args) => args[0] === "vscode.diff");
-      assert.deepEqual([addedDiff[1].query, addedDiff[2].query], ["ref=empty", "ref=1.1"]);
-      assert.equal(Buffer.from(await logManager.readFile(addedDiff[2])).toString("utf8"), "new file\n");
+      // 4. 看差异：本地没有目录的文件，取自服务器（rlog + checkout -p），第二次看同一修订 0 次调用。
+      const before = (await argvCalls()).length;
+      await session.request("diffCvsRevision", { filePath: "lib/deep/New.txt", revision: "1.1" });
+      const newDiff = commands.findLast((args) => args[0] === "vscode.diff");
+      assert.deepEqual([newDiff[1].query, newDiff[2].query], ["ref=empty", "ref=1.1"]);
+      assert.equal(Buffer.from(await session.logManager.readFile(newDiff[2])).toString("utf8"), "deep new\n");
+      const diffCalls = (await newCalls(before)).map((args) => server(args));
+      assert.ok(diffCalls.includes("rlog") && diffCalls.includes("checkout"), JSON.stringify(diffCalls));
+      const reading = (await argvCalls()).length;
+      assert.equal(Buffer.from(await session.logManager.readFile(newDiff[2])).toString("utf8"), "deep new\n");
+      assert.equal((await argvCalls()).length, reading, "the same revision was read from CVS twice");
+      await assert.rejects(fs.access(path.join(logWc, "lib")), "viewing the log created local directories");
 
-      // 更早的范围、「全部」与刷新各取一次；已覆盖的范围不重复取。
-      const beforeEarlier = (await newCalls(0)).length;
-      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 180 });
-      const earlier = (await newCalls(0)).slice(beforeEarlier);
-      assert.equal(earlier.length > 0 && earlier.every((args) => args[1] === "log" && args.includes("-d") && /<=/.test(args[args.indexOf("-d") + 1])), true, `earlier range: ${JSON.stringify(earlier)}`);
-      const everything = await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 0 });
-      assert.equal(everything.commits.length, 3);
-      const afterAll = (await newCalls(0)).length;
-      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
-      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 0 });
-      assert.equal((await newCalls(0)).length, afterAll, "covered ranges contacted CVS again");
-      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90, refresh: true });
-      const refreshed = (await newCalls(0)).slice(afterAll);
-      assert.equal(refreshed.length, 1);
-      assert.ok(refreshed[0].includes("-d"));
+      // 5. 重启（新会话）：命中落盘缓存，不连服务器；修订内容也来自磁盘。
+      session.logManager.dispose();
+      const reopenedFrom = (await argvCalls()).length;
+      session = await open();
+      const warm = await session.request("getCvsLog", { days: 90, cached: true });
+      assert.deepEqual([warm.fromCache, warm.commits.length, typeof warm.cachedAt], [true, 4, "number"]);
+      assert.deepEqual(await session.request("getCvsLog", { days: 90 }).then((result) => [result.fromCache, result.commits.length]), [true, 4], "a fresh cache after a restart must not contact CVS");
+      await session.request("diffCvsRevision", { filePath: "lib/deep/New.txt", revision: "1.1" });
+      const restartedDiff = commands.findLast((args) => args[0] === "vscode.diff");
+      assert.equal(Buffer.from(await session.logManager.readFile(restartedDiff[2])).toString("utf8"), "deep new\n");
+      assert.deepEqual((await newCalls(reopenedFrom)).filter((args) => server(args) === "checkout"), [], "revision content was fetched again after a restart");
 
-      const all = await newCalls(0);
-      assert.ok(all.every((args) => args[1] === "log" || (args[1] === "update" && args[2] === "-p")), `unexpected CVS commands: ${JSON.stringify(all)}`);
-      assert.ok(!all.some((args) => args.includes("-n")), "the log ran cvs -n update");
-      assert.equal(logManager.state().snapshots.length, 0, "the log published a local-changes snapshot");
-      assert.equal(logManager.state().unsyncedCvsCount, 1);
-      console.log(JSON.stringify({ repositoryLogArgv: all.filter((args) => args[1] === "log") }));
-      logManager.dispose();
+      // 6. 单文件历史：仓库缓存没有覆盖全部历史时取一次并按文件缓存；点刷新或本地 Entries 修订号变了才重取。
+      const historyFrom = (await argvCalls()).length;
+      const history = await session.request("getCvsHistory", { filePath: "src/Main.txt" });
+      assert.deepEqual(history.map((item) => item.revisionId).sort(), ["1.1", "1.1.1.1", "1.2"]);
+      assert.equal((await newCalls(historyFrom)).length, 1);
+      await session.request("getCvsHistory", { filePath: "src/Main.txt" });
+      assert.equal((await newCalls(historyFrom)).length, 1, "a cached file history contacted CVS again");
+      await session.request("getCvsHistory", { filePath: "src/Main.txt", refresh: true });
+      assert.equal((await newCalls(historyFrom)).length, 2, "refresh must fetch the file history again");
+      const entriesFile = path.join(logWc, "src", "CVS", "Entries");
+      await fs.writeFile(entriesFile, (await fs.readFile(entriesFile, "utf8")).replace("/Main.txt/1.1.1.1/", "/Main.txt/1.2/"));
+      await session.request("getCvsHistory", { filePath: "src/Main.txt" });
+      assert.equal((await newCalls(historyFrom)).length, 3, "a changed Entries revision must refetch the file history");
+      await fs.writeFile(entriesFile, (await fs.readFile(entriesFile, "utf8")).replace("/Main.txt/1.2/", "/Main.txt/1.1.1.1/"));
+
+      // 7. 过了新鲜期：只发一条带 -d ">=T" 的增量（T = 最新缓存时间往回 5 分钟），新提交合并进来，不重复。
+      session.logManager.dispose();
+      const staleFile = path.join(storage, (await stored())[0]);
+      const diskState = JSON.parse(await fs.readFile(staleFile, "utf8"));
+      diskState.fetchedAt -= 10 * 60 * 1000;
+      await fs.writeFile(staleFile, JSON.stringify(diskState));
+      await pause();
+      await fs.writeFile(path.join(colleagueWc, "src", "Main.txt"), "v3\n"); await colleague.commit(["src/Main.txt"], "colleague: later edit");
+      const incrementalFrom = (await argvCalls()).length;
+      session = await open();
+      const incremental = await session.request("getCvsLog", { days: 90 });
+      const incrementalCalls = await newCalls(incrementalFrom);
+      assert.equal(incrementalCalls.length, 1, JSON.stringify(incrementalCalls));
+      assert.equal(server(incrementalCalls[0]), "rlog");
+      assert.equal(incrementalCalls[0][7], `>=${new Date(diskState.newest - 5 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19)} +0000`);
+      assert.deepEqual(incremental.commits.map((commit) => commit.subject), ["colleague: later edit", "colleague: new directories", "colleague: add file", "colleague: update two files", "sample import"]);
+      assert.equal(incremental.fromCache, false);
+
+      // 8. 点刷新强制增量（不再整段重取）；提交或更新之后只标记过期，缓存保留，下次走增量。
+      const refreshFrom = (await argvCalls()).length;
+      await session.request("getCvsLog", { days: 90, refresh: true });
+      const refreshCalls = await newCalls(refreshFrom);
+      assert.equal(refreshCalls.length, 1);
+      assert.equal(refreshCalls[0][7].startsWith(">="), true);
+      const newest = JSON.parse(await fs.readFile(staleFile, "utf8")).newest;
+      assert.equal(refreshCalls[0][7], `>=${new Date(newest - 5 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19)} +0000`, "refresh must be incremental from the newest cached time");
+      const writtenFrom = (await argvCalls()).length;
+      session.logManager.written(session.logManager.entries.get(session.repository.id));
+      const afterWrite = await session.request("getCvsLog", { days: 90 });
+      assert.equal(afterWrite.commits.length, 5, "a write must not discard the cache");
+      assert.equal((await newCalls(writtenFrom)).length, 1, "after a write the next open is one incremental fetch");
+
+      // 9. 更早的范围与「全部」：只取尚未覆盖的一段并记进缓存；「全部」之后单文件历史直接来自仓库缓存。
+      const rangeFrom = (await argvCalls()).length;
+      await session.request("getCvsLog", { days: 0 });
+      const rangeCalls = await newCalls(rangeFrom);
+      assert.equal(rangeCalls.length, 1);
+      assert.match(rangeCalls[0][7], /^<=/);
+      assert.equal(JSON.parse(await fs.readFile(staleFile, "utf8")).coveredFrom, 0);
+      const derivedFrom = (await argvCalls()).length;
+      assert.deepEqual((await session.request("getCvsHistory", { filePath: "src/Util.txt" })).map((item) => item.revisionId).sort(), ["1.1", "1.1.1.1", "1.2"]);
+      assert.equal((await newCalls(derivedFrom)).length, 0, "the repository cache covers the whole history of the file");
+
+      // 10. 版本不符或损坏：丢掉重取（整段，不是增量）；清除命令：删光缓存，下次整段重取。
+      for (const text of ["{broken", JSON.stringify({ ...diskState, version: 99 })]) {
+        session.logManager.dispose();
+        await fs.writeFile(staleFile, text);
+        session = await open();
+        assert.equal((await session.request("getCvsLog", { days: 90, cached: true })).commits.length, 0, "an unreadable cache must read as empty");
+        const recoverFrom = (await argvCalls()).length;
+        assert.equal((await session.request("getCvsLog", { days: 90 })).commits.length, 5);
+        const recover = await newCalls(recoverFrom);
+        assert.equal(recover.length, 1);
+        assert.match(recover[0][7], /^>=/);
+        assert.equal(JSON.parse(await fs.readFile(staleFile, "utf8")).version, 1, "the cache was not rewritten after recovery");
+      }
+      await session.logManager.execute("jettortoise.clearCvsLogCache");
+      await assert.rejects(fs.access(storage), "the clear command left the cache behind");
+      const clearedFrom = (await argvCalls()).length;
+      assert.equal((await session.request("getCvsLog", { days: 90 })).commits.length, 5);
+      assert.equal((await newCalls(clearedFrom)).length, 1);
+
+      // 全程：只有服务器端 rlog 与 checkout -p；没有 update、没有 -n、没有 log。
+      const all = await argvCalls();
+      assert.ok(all.every((args) => ["rlog", "checkout"].includes(server(args))), `unexpected CVS commands: ${JSON.stringify(all.map((args) => args.slice(0, 4)))}`);
+      assert.ok(all.filter((args) => server(args) === "checkout").every((args) => args[4] === "-p" && args[5] === "-r"));
+      assert.ok(!all.some((args) => args.includes("-n") || args.includes("update")));
+      assert.equal(session.logManager.state().snapshots.length, 0);
+      console.log(JSON.stringify({ repositoryLogArgv: all.map((args) => [args[3], ...(args[3] === "rlog" ? args.slice(4, 8) : args.slice(4, 8))]) }));
+      for (const item of opened) item.dispose();
       vscode.workspace.workspaceFolders = [{ uri: Uri.file(root) }];
       await fs.writeFile(argvLog, "");
     }
+
 
     manager = new RepositoryManager({ extensionUri: Uri.file(process.cwd()) });
     manager.connect({ postMessage: (message) => { sent.push(message); return Promise.resolve(true); }, onDidReceiveMessage: () => disposable() });
-    // 00b. 服务器对目录参数忽略 -l（每个目录参数都被递归，深层文件重复）：日志仍是每个 path@revision 一次，
-    //      提交不被拆开；从输出发现后改为仓库根的一次递归 log（无 -l、无目录参数），之后的范围直接用它。
-    {
-      const base2 = path.join(base, "log-case-deep"), repo2 = path.join(base2, "repository"), root2 = path.join(base2, "workspace"), seed2 = path.join(base2, "seed");
-      await fs.mkdir(repo2, { recursive: true }); await fs.mkdir(root2);
-      const levels = ["l1", "l1/l2", "l1/l2/l3"], files2 = ["root.txt", ...levels.map((dir) => `${dir}/f.txt`)];
-      for (const dir of levels) await fs.mkdir(path.join(seed2, dir), { recursive: true });
-      for (const name of files2) await fs.writeFile(path.join(seed2, name), "v1\n");
-      const cvsRoot2 = `:local:${repo2}`;
-      await cvs.run(["-d", cvsRoot2, "init"], base2);
-      await cvs.run(["-d", cvsRoot2, "import", "-m", "sample import", "deepmod", "vendor", "start"], seed2);
-      const wc2 = await core.checkout(cvs, cvsRoot2, "deepmod", path.join(root2, "wc"));
-      const peerWc = await core.checkout(cvs, cvsRoot2, "deepmod", path.join(base2, "colleague"));
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-      for (const name of files2) await fs.writeFile(path.join(peerWc, name), "v2\n");
-      await new core.CvsAdapter(peerWc, cvs).commit(files2, "colleague: touch every depth");
-
-      const recursing = await writeShim(path.join(base2, "recursing-cvs"), { real: process.env.JETTORTOISE_TEST_CVS || "cvs", argvLog, recursing: true, stripCommitId: true });
-      cvsPathUnderTest = recursing;
-      vscode.workspace.workspaceFolders = [{ uri: Uri.file(root2) }];
-      const { RepositoryManager: DeepManager } = require(bundle);
-      const deepManager = new DeepManager({ extensionUri: Uri.file(process.cwd()) });
-      deepManager.connect({ postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => disposable() });
-      await deepManager.scan();
-      const deepRepository = deepManager.state().logRepositories.find((item) => item.root === wc2);
-      assert.ok(deepRepository, "deep CVS repository missing from the log");
-      await deepManager.request("selectRepository", { repositoryId: deepRepository.id, surface: "log" });
-      await fs.writeFile(argvLog, "");
-      const deepLog = await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 90 });
-      assert.deepEqual(deepLog.commits.map((commit) => [commit.subject, commit.fileCount]), [["colleague: touch every depth", files2.length], ["sample import", files2.length]]);
-      const touched = await deepManager.request("getCvsCommit", { repositoryId: deepRepository.id, commitId: deepLog.commits[0].id });
-      assert.deepEqual(touched.map((file) => file.path), [...files2].sort((a, b) => a.localeCompare(b)));
-      const deepCalls = await argvCalls();
-      assert.equal(deepCalls.length, 2, `expected the directory attempt and the recursive fallback: ${JSON.stringify(deepCalls)}`);
-      assert.deepEqual(deepCalls[0].slice(0, 6), ["-f", "log", "-l", "-N", "-S", "-d"]);
-      assert.ok(deepCalls[0].length > 8, "the first attempt passes the registered directories");
-      assert.deepEqual([deepCalls[1].slice(0, 5), deepCalls[1].length], [["-f", "log", "-N", "-S", "-d"], 6]);
-      // 记住该服务器：更早的范围直接用递归形式；已覆盖的范围不连服务器。
-      await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 180 });
-      await deepManager.request("getCvsLog", { repositoryId: deepRepository.id, days: 90 });
-      const deepAll = await argvCalls();
-      assert.equal(deepAll.length, 3);
-      assert.deepEqual(deepAll[2].slice(0, 5), ["-f", "log", "-N", "-S", "-d"]);
-      assert.ok(!deepAll.some((args) => args[1] !== "log" || args.includes("-n")), `unexpected CVS commands: ${JSON.stringify(deepAll)}`);
-      assert.equal(deepManager.state().snapshots.length, 0);
-      console.log(JSON.stringify({ deepRepositoryLogArgv: deepAll.map((args) => args.slice(0, args.indexOf("-d") + 1).concat(args.length > 8 ? ["<registered directories…>"] : [])) }));
-      deepManager.dispose();
-      cvsPathUnderTest = cvsShim;
-      vscode.workspace.workspaceFolders = [{ uri: Uri.file(root) }];
-      await fs.writeFile(argvLog, "");
-    }
 
     await manager.scan();
 
-    // 0. 未同步的 CVS 也列入日志：文件清单只读 Entries，查看文件历史与修订差异才运行 cvs log／update -p，
+    // 0. 未同步的 CVS 也列入日志：文件清单只读 Entries，查看文件历史与修订差异才运行服务器端 rlog／checkout -p，
     //    不运行 cvs -n update，也不进入本地更改。
     const unsynced = manager.state().logRepositories.find((item) => item.root === wc);
     assert.ok(unsynced, "unsynced CVS repository missing from the log");
@@ -298,7 +345,7 @@ async function main() {
     for (const side of [unsyncedDiff[1], unsyncedDiff[2]])
       assert.equal(Buffer.from(await manager.readFile(side)).toString("utf8"), "base\n", `revision ${side.query} unreadable`);
     const viewing = await argvCalls();
-    assert.ok(viewing.length > 0 && viewing.every((args) => args[0] === "-f" && (args[1] === "log" || (args[1] === "update" && args[2] === "-p"))), `unexpected CVS commands: ${JSON.stringify(viewing)}`);
+    assert.ok(viewing.length > 0 && viewing.every((args) => args[0] === "-f" && args[1] === "-d" && (args[3] === "rlog" || (args[3] === "checkout" && args[4] === "-p"))), `unexpected CVS commands: ${JSON.stringify(viewing)}`);
     assert.ok(!viewing.some((args) => args.includes("-n")), "viewing history ran cvs -n update");
     assert.equal(manager.state().snapshots.some((item) => item.repositoryId === unsynced.id), false, "history published a local-changes snapshot");
     assert.equal(manager.state().unsyncedCvsCount, 1);

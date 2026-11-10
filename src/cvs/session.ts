@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { CvsComparisonResolver } from "../comparison/resolver";
@@ -19,6 +20,7 @@ export interface CvsRevision {
   author: { name: string };
   subject: string;
   body: string;
+  state?: string;
 }
 interface LogRevision {
   path: string;
@@ -34,6 +36,8 @@ export interface CvsLogFile {
   revision: string;
   previous?: string;
   kind: "added" | "modified" | "deleted";
+  /** 本地工作副本里有这个文件；没有时界面标“本地没有”，提示先更新（含 update -d）。 */
+  local?: boolean;
 }
 interface LogCommit {
   id: string;
@@ -65,8 +69,23 @@ interface Adapter {
     name: string,
     revision: string,
     signal?: AbortSignal,
-    options?: { maxBytes?: number },
+    options?: {
+      maxBytes?: number;
+      revisions?: () => Promise<CvsRevision[]>;
+    },
   ): Promise<Buffer>;
+  identity(): Promise<{
+    root: string;
+    repository: string;
+    tag: string;
+    branch: string;
+    workingCopy: string;
+  }>;
+  localFiles(names: string[]): Promise<Set<string>>;
+  contentCache?: {
+    read(name: string, revision: string): Promise<Buffer | undefined>;
+    write(name: string, revision: string, bytes: Buffer): Promise<void>;
+  };
   commit(names: string[], message: string, signal?: AbortSignal): Promise<void>;
   rollback(
     names: string[],
@@ -99,16 +118,63 @@ const commits = require("./log.mjs") as {
   groupCommits(revisions: LogRevision[]): LogCommit[];
   mergeRevisions(a: LogRevision[], b: LogRevision[]): LogRevision[];
   previousRevision(revision: string): string | undefined;
+  compareRevisions(a: string, b: string): number;
+  logDate(time: number): string;
 };
+const cacheModule = require("./cache.mjs") as {
+  LOG_FRESH_MS: number;
+  LOG_OVERLAP_MS: number;
+  CvsCacheStore: new (
+    directory: string,
+  ) => CvsCacheStore & {
+    clear(): Promise<void>;
+  };
+};
+/** 落盘缓存（目录由调用方给出，只在扩展存储目录里）。 */
+export function createCvsCacheStore(directory: string) {
+  return new cacheModule.CvsCacheStore(directory);
+}
 const DAY = 24 * 60 * 60 * 1000;
+/** 仓库日志缓存：已覆盖的起点（0 为全部历史）、最新修订时间、最近一次连服务器的时间与修订。 */
+interface LogState {
+  coveredFrom: number;
+  newest: number | null;
+  fetchedAt: number;
+  revisions: LogRevision[];
+}
+interface HistoryEntry {
+  entryRevision: string;
+  fetchedAt: number;
+  revisions: CvsRevision[];
+}
+interface RepositoryCache {
+  readLog(): Promise<LogState | undefined>;
+  writeLog(state: LogState): Promise<void>;
+  readHistories(): Promise<Record<string, HistoryEntry>>;
+  writeHistories(files: Record<string, HistoryEntry>): Promise<void>;
+  readContent(file: string, revision: string): Promise<Buffer | undefined>;
+  writeContent(file: string, revision: string, bytes: Buffer): Promise<void>;
+}
+export interface CvsCacheStore {
+  repository(identity: {
+    root: string;
+    repository: string;
+    branch: string;
+    workingCopy: string;
+  }): RepositoryCache;
+}
 
 export class CvsSession {
   private readonly queue = new core.SerialQueue();
   private readonly issuedRevisions = new Set<string>();
   private readonly adapter: Adapter;
   private files: CvsFile[] = [];
-  // 仓库级日志按窗口缓存：原始修订连同取到的范围（days 为 0 表示全部）；写入后失效，下次打开重取。
-  private logCache?: { anchor: number; days: number; revisions: LogRevision[] };
+  // 仓库日志与单文件历史的内存副本，来自落盘缓存；key 随 CVSROOT、模块与粘性标签变化。
+  private logState?: LogState;
+  private histories?: Record<string, HistoryEntry>;
+  private cacheKey = "";
+  // 提交、更新等写入之后：缓存保留，下次打开或刷新走增量。
+  private logStale = false;
   private logFiles = new Map<string, CvsLogFile[]>();
   private localTail: Promise<void> = Promise.resolve();
   private network: Promise<void> | undefined;
@@ -120,6 +186,7 @@ export class CvsSession {
     readonly root: string,
     private readonly guard: () => Promise<void>,
     private readonly publish: (snapshot: RepositorySnapshot) => void,
+    private readonly store?: CvsCacheStore,
   ) {
     const process = new core.CvsProcess(
       vscode.workspace
@@ -142,6 +209,38 @@ export class CvsSession {
         });
       },
     });
+    // 修订内容落盘缓存：修订不可变，命中即不再向服务器读取。
+    this.adapter.contentCache = {
+      read: async (file, revision) =>
+        (await this.context().catch(() => undefined))?.cache?.readContent(
+          file,
+          revision,
+        ),
+      write: async (file, revision, bytes) => {
+        await (await this.context().catch(() => undefined))?.cache
+          ?.writeContent(file, revision, bytes)
+          .catch(() => {});
+      },
+    };
+  }
+  /** 仓库标识（CVSROOT、模块、标签）与落盘缓存；没有扩展存储或读不到 CVS 元数据时没有落盘缓存。 */
+  private async context() {
+    const id = await this.adapter.identity();
+    const key = JSON.stringify([id.root, id.repository, id.tag]);
+    if (key !== this.cacheKey) {
+      this.cacheKey = key;
+      this.logState = undefined;
+      this.histories = undefined;
+    }
+    return {
+      id,
+      cache: this.store?.repository({
+        root: id.root,
+        repository: id.repository,
+        branch: id.tag,
+        workingCopy: id.workingCopy,
+      }),
+    };
   }
   private changes(files: CvsFile[]): ChangeFile[] {
     return files
@@ -327,82 +426,221 @@ export class CvsSession {
       true,
     );
   }
-  history(file: string) {
+  history(file: string, refresh = false) {
     return this.operate(
       vscode.l10n.t("CVS File History"),
-      (adapter, signal) => adapter.log(file, signal),
+      (adapter, signal) => this.fileHistory(adapter, signal, file, refresh),
       false,
       vscode.ProgressLocation.Window,
     );
   }
   /**
-   * 仓库级提交列表（近 days 天，0 为全部）。同一窗口内缓存：范围已覆盖时不连服务器，
-   * 更大的范围只取缺的那一段并整体重新分组；refresh 丢弃缓存重取。
+   * 单文件历史：仓库缓存已覆盖全部历史（没有粘性分支）时直接由它给出；否则用按文件缓存的结果，
+   * 以本地 Entries 里的修订号为准（修订号变了就重取）；都没有、或 refresh 时取一次并缓存。
    */
-  repositoryLog(days: number, refresh = false) {
+  private async fileHistory(
+    adapter: Adapter,
+    signal: AbortSignal,
+    file: string,
+    refresh: boolean,
+  ): Promise<CvsRevision[]> {
+    const context = await this.context();
+    await this.loadCache(context.cache);
+    const entry = await adapter.file(file).then(
+      (item) => item.entryRevision.replace(/^-/, ""),
+      () => "",
+    );
+    if (!refresh) {
+      const own = (
+        this.logState?.coveredFrom === 0 && !context.id.branch
+          ? this.logState.revisions.filter((item) => item.path === file)
+          : []
+      ).sort((a, b) => commits.compareRevisions(b.revision, a.revision));
+      if (own.length && (!entry || own.some((item) => item.revision === entry)))
+        return own.map((item) => ({
+          revisionId: item.revision,
+          timestamp: commits.logDate(item.time),
+          author: { name: item.author },
+          subject: item.message.split("\n")[0] || "(empty)",
+          body: item.message.split("\n").slice(1).join("\n"),
+          state: item.state,
+        }));
+      const cached = this.histories?.[file];
+      if (cached && cached.entryRevision === entry) return cached.revisions;
+    }
+    const revisions = await adapter.log(file, signal);
+    this.histories = {
+      ...this.histories,
+      [file]: { entryRevision: entry, fetchedAt: Date.now(), revisions },
+    };
+    await context.cache?.writeHistories(this.histories).catch(() => {});
+    return revisions;
+  }
+  /**
+   * 仓库级提交列表（近 days 天，0 为全部），缓存落盘：
+   * - cached：只读缓存，不连服务器（打开日志时先显示它）；
+   * - 否则缓存已覆盖该范围且距上次连服务器不到 LOG_FRESH_MS 时不连服务器；
+   * - 更大的范围只取缺的那一段；过了新鲜期或 refresh 时从最新缓存时间往回 LOG_OVERLAP_MS 取增量，
+   *   按 path@revision 合并去重。写入（提交、更新）只标记过期，缓存不作废。
+   */
+  async repositoryLog(
+    days: number,
+    options: { refresh?: boolean; cached?: boolean } = {},
+  ) {
+    if (options.cached) {
+      await this.guard();
+      const context = await this.context();
+      await this.loadCache(context.cache);
+      return this.logResult(days, true);
+    }
     return this.operate(
       vscode.l10n.t("CVS Repository Log"),
       async (adapter, signal) => {
-        let cache = refresh ? undefined : this.logCache;
-        if (!cache) {
-          const anchor = Date.now();
-          cache = {
-            anchor,
-            days,
-            revisions: await adapter.repositoryLog(
-              { from: days ? anchor - days * DAY : undefined },
-              signal,
-            ),
-          };
-        } else if (cache.days !== 0 && (days === 0 || days > cache.days)) {
-          const older = await adapter.repositoryLog(
-            {
-              from: days ? cache.anchor - days * DAY : undefined,
-              to: cache.anchor - cache.days * DAY,
-            },
+        const context = await this.context();
+        await this.loadCache(context.cache);
+        const now = Date.now();
+        const needFrom = days ? now - days * DAY : 0;
+        let state = this.logState;
+        let contacted = false;
+        let error: string | undefined;
+        const save = async (next: LogState) => {
+          this.logState = state = next;
+          await context.cache?.writeLog(next).catch(() => {});
+        };
+        const newest = (revisions: LogRevision[]) =>
+          revisions.reduce<number | null>(
+            (latest, item) =>
+              latest === null || item.time > latest ? item.time : latest,
+            null,
+          );
+        if (!state) {
+          const revisions = await adapter.repositoryLog(
+            { from: needFrom || undefined },
             signal,
           );
-          cache = {
-            ...cache,
-            days,
-            revisions: commits.mergeRevisions(cache.revisions, older),
-          };
-        }
-        this.logCache = cache;
-        const since = days
-          ? cache.anchor - days * DAY
-          : Number.NEGATIVE_INFINITY;
-        const grouped = commits.groupCommits(
-          cache.revisions.filter((item) => item.time >= since),
-        );
-        this.logFiles = new Map(grouped.map((item) => [item.id, item.files]));
-        return {
-          days,
-          commits: grouped.map(
-            (item): CvsLogCommit => ({
-              id: item.id,
-              time: item.time,
-              author: item.author,
-              subject: item.message.split("\n")[0] || "(empty)",
-              body: item.message.split("\n").slice(1).join("\n"),
-              fileCount: item.files.length,
-            }),
-          ),
-        };
+          await save({
+            coveredFrom: needFrom,
+            newest: newest(revisions),
+            fetchedAt: Date.now(),
+            revisions,
+          });
+          contacted = true;
+        } else
+          try {
+            if (state.coveredFrom !== 0 && needFrom < state.coveredFrom) {
+              const older = await adapter.repositoryLog(
+                { from: needFrom || undefined, to: state.coveredFrom },
+                signal,
+              );
+              await save({
+                ...state,
+                coveredFrom: needFrom,
+                revisions: commits.mergeRevisions(state.revisions, older),
+              });
+              contacted = true;
+            }
+            if (
+              options.refresh ||
+              this.logStale ||
+              now - state.fetchedAt >= cacheModule.LOG_FRESH_MS
+            ) {
+              // 别的窗口可能已经更新过缓存：先取它的。
+              const disk = await context.cache?.readLog();
+              if (
+                disk &&
+                disk.fetchedAt > state.fetchedAt &&
+                (disk.coveredFrom === 0 ||
+                  disk.coveredFrom <= state.coveredFrom)
+              )
+                this.logState = state = disk;
+              if (
+                options.refresh ||
+                this.logStale ||
+                now - state.fetchedAt >= cacheModule.LOG_FRESH_MS
+              ) {
+                const fresh = await adapter.repositoryLog(
+                  {
+                    from:
+                      state.newest === null
+                        ? state.coveredFrom || undefined
+                        : state.newest - cacheModule.LOG_OVERLAP_MS,
+                  },
+                  signal,
+                );
+                const revisions = commits.mergeRevisions(
+                  state.revisions,
+                  fresh,
+                );
+                await save({
+                  ...state,
+                  newest: newest(revisions),
+                  fetchedAt: Date.now(),
+                  revisions,
+                });
+                this.logStale = false;
+                contacted = true;
+              }
+            }
+          } catch (failure) {
+            // 有缓存时保留已显示的列表，只报告这次没取成。
+            error = cvsErrorText(failure);
+          }
+        return this.logResult(days, !contacted, error);
       },
       false,
       vscode.ProgressLocation.Window,
     );
   }
-  /** 日志列表里某个提交的文件，取自最近一次列表，不连服务器。 */
-  commitFiles(commitId: string) {
+  private async loadCache(cache?: RepositoryCache) {
+    if (!this.logState && cache) this.logState = await cache.readLog();
+    if (!this.histories) this.histories = (await cache?.readHistories()) ?? {};
+  }
+  private logResult(days: number, fromCache: boolean, error?: string) {
+    const state = this.logState;
+    const since = days ? Date.now() - days * DAY : 0;
+    const grouped = commits.groupCommits(
+      (state?.revisions ?? []).filter((item) => item.time >= since),
+    );
+    this.logFiles = new Map(grouped.map((item) => [item.id, item.files]));
+    return {
+      days,
+      cachedAt: state?.fetchedAt,
+      fromCache,
+      error,
+      commits: grouped.map(
+        (item): CvsLogCommit => ({
+          id: item.id,
+          time: item.time,
+          author: item.author,
+          subject: item.message.split("\n")[0] || "(empty)",
+          body: item.message.split("\n").slice(1).join("\n"),
+          fileCount: item.files.length,
+        }),
+      ),
+    };
+  }
+  /** 日志列表里某个提交的文件，取自最近一次列表；标出本地工作副本里没有的文件，不连服务器。 */
+  async commitFiles(commitId: string): Promise<CvsLogFile[]> {
     const files = this.logFiles.get(commitId);
     if (!files) throw new Error(vscode.l10n.t("Unknown commit."));
-    return files;
+    const present = await this.adapter.localFiles(
+      files.filter((file) => file.kind !== "deleted").map((file) => file.path),
+    );
+    return files.map((file) => ({
+      ...file,
+      local: file.kind === "deleted" || present.has(file.path),
+    }));
   }
-  /** 本窗口的仓库日志缓存已过期（有写入）；已显示的列表保持，下次打开或刷新才重取。 */
-  invalidateLog() {
-    this.logCache = undefined;
+  /** 写入（提交、更新、回滚）之后：缓存保留，下次打开或刷新才走增量。 */
+  markLogStale() {
+    this.logStale = true;
+  }
+  /** 丢弃内存里的缓存（落盘缓存由调用方清除）。 */
+  resetCache() {
+    this.logState = undefined;
+    this.histories = undefined;
+    this.cacheKey = "";
+    this.logFiles.clear();
   }
   /** 先确认，再在可取消的通知进度里排队执行；返回的 done 在完成时结束，调用方不必等待。 */
   async rollback(paths: string[]) {
@@ -498,6 +736,26 @@ export class CvsSession {
       `${file} (${previous} ↔ ${revision})`,
     );
   }
+  /** 所选修订与本地工作副本里的同名文件比较；本地没有该文件时报错，提示先更新。 */
+  async compareWithWorking(file: string, revision: string) {
+    await this.guard();
+    await assertOwnedPath(this.root, "cvs", file);
+    const target = path.join(this.root, file);
+    if (!(await fs.stat(target).catch(() => undefined))?.isFile())
+      throw new Error(
+        vscode.l10n.t("Not in the working copy. Update the project first."),
+      );
+    const history = await this.history(file);
+    if (!history.some((entry) => entry.revisionId === revision))
+      throw new Error(vscode.l10n.t("Unknown revision."));
+    await this.guard();
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      this.uri(file, revision),
+      vscode.Uri.file(target),
+      vscode.l10n.t("{0} ({1} ↔ working tree)", file, revision),
+    );
+  }
   async readFile(uri: vscode.Uri) {
     await this.guard();
     if (!this.issuedRevisions.has(uri.toString()))
@@ -510,6 +768,12 @@ export class CvsSession {
       throw new Error(vscode.l10n.t("Repository mismatch."));
     const file = uri.path.slice(1);
     await assertOwnedPath(this.root, "cvs", file);
+    // 已缓存的修订内容直接返回，不排队、不连服务器。
+    const requested = new URLSearchParams(uri.query).get("ref") ?? "";
+    if (/^\d+(?:\.\d+)+$/.test(requested)) {
+      const hit = await this.adapter.contentCache?.read(file, requested);
+      if (hit) return hit;
+    }
     return this.operate(
       vscode.l10n.t("CVS revision"),
       async (adapter, signal) => {
@@ -522,7 +786,20 @@ export class CvsSession {
         }
         return revision === "empty"
           ? Buffer.alloc(0)
-          : adapter.content(file, revision, signal);
+          : adapter.content(file, revision, signal, {
+              // 缓存里没有该修订时才需要历史；找不到就重取一次（别人刚提交的新修订）。
+              revisions: async () => {
+                const known = await this.fileHistory(
+                  adapter,
+                  signal,
+                  file,
+                  false,
+                );
+                return known.some((item) => item.revisionId === revision)
+                  ? known
+                  : this.fileHistory(adapter, signal, file, true);
+              },
+            });
       },
     );
   }

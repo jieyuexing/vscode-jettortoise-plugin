@@ -3,7 +3,7 @@
   "displayName": "%category.jettortoise%",
   "publisher": "jieyuexing",
   "description": "%description%",
-  "version": "0.6.23",
+  "version": "0.6.24",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
@@ -179,6 +179,11 @@
       {
         "command": "jettortoise.synchronizeRepository",
         "title": "%cmd.synchronizeRepository%",
+        "category": "%category.jettortoise%"
+      },
+      {
+        "command": "jettortoise.clearCvsLogCache",
+        "title": "%cmd.clearCvsLogCache%",
         "category": "%category.jettortoise%"
       }
     ],

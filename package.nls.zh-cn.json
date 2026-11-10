@@ -20,5 +20,6 @@
   "cmd.updateProject": "更新项目",
   "cmd.openCommitPanel": "提交…",
   "cmd.openHistory": "显示历史",
-  "cmd.synchronizeRepository": "与资源库同步"
+  "cmd.synchronizeRepository": "与资源库同步",
+  "cmd.clearCvsLogCache": "清除 CVS 日志缓存"
 }

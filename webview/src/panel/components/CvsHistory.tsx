@@ -75,17 +75,20 @@ export function CvsHistory({
     }
   }, [repositoryId, activeFile]);
   const loadHistory = useCallback(
-    async (name = selected) => {
+    async (name = selected, refresh = false) => {
       const generation = ++historyGeneration.current;
       if (!name) return;
       setLoading(true);
       setError("");
       setRevisions([]);
       try {
-        const result = (await bridge.request("getCvsHistory", {
-          repositoryId,
-          filePath: name,
-        })) as Revision[];
+        // 刷新才强制向服务器重取；平时由宿主按本地 Entries 修订号决定是否用缓存。
+        const result = (await bridge.request(
+          "getCvsHistory",
+          refresh
+            ? { repositoryId, filePath: name, refresh: true }
+            : { repositoryId, filePath: name },
+        )) as Revision[];
         if (generation === historyGeneration.current) setRevisions(result);
       } catch (error) {
         if (generation === historyGeneration.current) setError(String(error));
@@ -181,7 +184,7 @@ export function CvsHistory({
           }
           action={() => {
             void loadFiles();
-            void loadHistory();
+            void loadHistory(selected, true);
           }}
         />
       </PanelHeader>

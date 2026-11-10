@@ -907,6 +907,8 @@ export class CvsAdapter {
           if (found.has(key)) repeated = true;
           else found.set(key, item);
         }
+        // 结果反正要丢弃，不必取完剩下的批次。
+        if (repeated) break;
       }
       if (!repeated) return [...found.values()];
       this.logIgnoresLocal = true;

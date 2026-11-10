@@ -366,6 +366,11 @@ test("temporary local CVS: a server that ignores -l on directory arguments repea
     assert.deepEqual(recursing.runs[2].slice(0, 4), ["log", "-N", "-S", "-d"]);
     assert.equal(recursing.runs[2].length, 5);
     assert.ok(recursing.runs.every(args => args[0] === "log"));
+    // 每批一个目录：第三批（./l1/l2）就出现重复，其后的批次不再取，直接回退（共 4 个命令，而不是 5 + 1）。
+    const batched = await open(true);
+    batched.adapter.batches = (_flags, items) => items.map(item => [item]);
+    assert.equal(summary(await batched.adapter.repositoryLog({})).unique, expected.unique);
+    assert.equal(batched.runs.length, 4, JSON.stringify(batched.runs));
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {

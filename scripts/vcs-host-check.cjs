@@ -142,6 +142,8 @@ async function main() {
       await cvs.run(["-d", logCvsRoot, "import", "-m", "sample import", "sample", "vendor", "start"], logSeed);
       const logWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logRoot, "wc"));
       const colleagueWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logBase, "colleague")), colleague = new core.CvsAdapter(colleagueWc, cvs);
+      // 修订时间只到秒：提交之间停一下，保证与导入、前一次提交不在同一秒，列表顺序才确定。
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       await fs.writeFile(path.join(colleagueWc, "src", "Main.txt"), "v2\n"); await fs.writeFile(path.join(colleagueWc, "src", "Util.txt"), "v2\n");
       await colleague.commit(["src/Main.txt", "src/Util.txt"], "colleague: update two files");
       await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -181,9 +183,12 @@ async function main() {
       assert.equal((await newCalls(0)).length, 1, "reading a commit contacted CVS");
 
       // 切换编辑器文件（含不在 Entries 的路径所在目录）不运行任何 cvs 命令。
-      for (const file of ["Main.txt", "Util.txt"]) for (const listener of editorListeners) listener({ document: { uri: Uri.file(path.join(logWc, "src", file)) } });
+      // follow() 是异步的：逐个切换并等它生效，避免两次切换竞争 activeFile。
+      for (const file of ["Main.txt", "Util.txt"]) {
+        for (const listener of editorListeners) listener({ document: { uri: Uri.file(path.join(logWc, "src", file)) } });
+        await until(() => logManager.state().activeFile === `src/${file}`, `editor switch to ${file} was not followed`);
+      }
       await new Promise((resolve) => setTimeout(resolve, 200));
-      assert.equal(logManager.state().activeFile, "src/Util.txt");
       assert.equal((await newCalls(0)).length, 1, "switching editors ran a CVS command");
 
       // 不在 Entries 的新增文件：两修订差异（空 ↔ 1.1）。

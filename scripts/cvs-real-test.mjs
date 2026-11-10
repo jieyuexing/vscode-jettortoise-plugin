@@ -254,6 +254,8 @@ test("temporary local CVS: repository log of an unsynchronized working copy grou
   try {
     const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer")), other = new CvsAdapter(peer, f.process);
     const pause = () => new Promise(done => setTimeout(done, 1100));
+    // 修订时间只到秒：每次提交前停一下，保证与导入、前一次提交不在同一秒，列表顺序才确定。
+    await pause();
     // 提交一：改两个文件并新增一个，一次 cvs commit 共用一个 commitid。
     await fs.writeFile(path.join(peer, "中文 file.txt"), "edited by colleague\n"); await fs.writeFile(path.join(peer, "other.txt"), "edited other\n");
     await fs.writeFile(path.join(peer, "fresh.txt"), "fresh\n"); await other.add(["fresh.txt"]);

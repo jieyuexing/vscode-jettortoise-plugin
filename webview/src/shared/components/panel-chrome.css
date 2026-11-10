@@ -85,3 +85,31 @@
 .panel-header > label {
   font-weight: 600;
 }
+.panel-segmented {
+  display: flex;
+  flex: none;
+  height: var(--etech-row-height);
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  border-radius: 3px;
+  overflow: hidden;
+}
+.panel-segmented button {
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.panel-segmented button:hover:not([aria-pressed="true"]) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.panel-segmented button[aria-pressed="true"] {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+.panel-segmented button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}

@@ -6,7 +6,7 @@
 
 <h1>JetTortoise</h1>
 
-IDEA-style Commit and Log for Git and CVS across workspace repositories. Changes are grouped by repository and directory; unversioned files and incoming updates stay separate. Git retains the upstream graph, shelf, and branch tools; CVS provides file revision history.
+IDEA-style Commit and Log for Git and CVS across workspace repositories. Changes are grouped by repository and directory; unversioned files and incoming updates stay separate. Git retains the upstream graph, shelf, and branch tools; CVS provides a repository-level commit log (file revisions grouped into commits, last 90 days by default) and per-file revision history.
 
 > Fork of [zhyc9de/jet-git](https://github.com/zhyc9de/jet-git) with full IntelliJ IDEA-style context menus and UI enhancements.
 

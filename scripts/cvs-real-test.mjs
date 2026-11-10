@@ -6,6 +6,7 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CvsAdapter, CvsProcess, SerialQueue, checkout, cvsRoot, findWorkingCopy, relativeFile, revision } from "../src/cvs/core.mjs";
+import { groupCommits } from "../src/cvs/log.mjs";
 import { validateMessage } from "../src/cvs/protocol.mjs";
 
 async function fixture() {
@@ -247,6 +248,59 @@ test("temporary local CVS: POSIX character classes and combinations follow C loc
     for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
     await fs.rm(f.base, { recursive: true, force: true });
   }
+});
+test("temporary local CVS: repository log of an unsynchronized working copy groups a colleague's commits and reads files outside Entries", async () => {
+  const f = await fixture();
+  try {
+    const peer = await checkout(f.process, f.root, "demo", path.join(f.base, "peer")), other = new CvsAdapter(peer, f.process);
+    const pause = () => new Promise(done => setTimeout(done, 1100));
+    // 提交一：改两个文件并新增一个，一次 cvs commit 共用一个 commitid。
+    await fs.writeFile(path.join(peer, "中文 file.txt"), "edited by colleague\n"); await fs.writeFile(path.join(peer, "other.txt"), "edited other\n");
+    await fs.writeFile(path.join(peer, "fresh.txt"), "fresh\n"); await other.add(["fresh.txt"]);
+    await other.commit(["中文 file.txt", "other.txt", "fresh.txt"], "peer: three files");
+    await pause();
+    // 提交二：新增后删除一个文件，本地工作副本从未见过它。
+    await fs.writeFile(path.join(peer, "gone.txt"), "gone\n"); await other.add(["gone.txt"]); await other.commit(["gone.txt"], "peer: add gone");
+    await pause();
+    await fs.rm(path.join(peer, "gone.txt")); await other.commit(["gone.txt"], "peer: remove gone");
+    await pause();
+    // 提交三：说明为 MS932 字节。
+    await fs.writeFile(path.join(peer, "中文 file.txt"), "edited twice\n");
+    const message = path.join(f.base, "message.txt"); await fs.writeFile(message, Buffer.from("93fa967b8cea82cc90e096be", "hex"));
+    await f.process.run(["commit", "-F", message, "中文 file.txt"], peer);
+
+    const runs = [];
+    const adapter = new CvsAdapter(f.wc, { executable: f.process.executable, run: (...args) => { runs.push(args[0]); return f.process.run(...args); } });
+    // 本地工作副本没有更新：Entries 里没有 fresh.txt 与 gone.txt。
+    const revisions = await adapter.repositoryLog({});
+    assert.deepEqual(runs, [["log", "-l", "-N", "-S", "."]], "repository log must run exactly one cvs log and nothing else");
+    const commits = groupCommits(revisions), by = (text) => commits.find(commit => commit.message === text);
+    assert.deepEqual(commits.map(commit => commit.message), ["日本語の説明", "peer: remove gone", "peer: add gone", "peer: three files", "initial"]);
+    assert.deepEqual(by("peer: three files").files.map(file => `${file.path} ${file.previous ?? "-"}>${file.revision} ${file.kind}`), ["fresh.txt ->1.1 added", "other.txt 1.1>1.2 modified", "中文 file.txt 1.1>1.2 modified"]);
+    assert.deepEqual(by("peer: remove gone").files.map(file => `${file.path} ${file.previous}>${file.revision} ${file.kind}`), ["gone.txt 1.1>1.2 deleted"]);
+    assert.deepEqual(by("initial").files.map(file => `${file.path} ${file.revision} ${file.kind}`), ["other.txt 1.1 added", "中文 file.txt 1.1 added"]);
+    assert.equal(by("日本語の説明").files[0].revision, "1.3");
+
+    // -d：只取最近两次提交；上界与下界相接的窗口合并后得到完整列表。
+    const removed = revisions.filter(item => item.message === "peer: remove gone")[0].time;
+    const since = await adapter.repositoryLog({ from: removed });
+    assert.deepEqual(groupCommits(since).map(commit => commit.message), ["日本語の説明", "peer: remove gone"]);
+    assert.deepEqual(runs.at(-1).slice(0, 5), ["log", "-l", "-N", "-S", "-d"]);
+    assert.match(runs.at(-1)[5], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
+    const older = await adapter.repositoryLog({ to: removed - 1000 });
+    assert.deepEqual(groupCommits(older).map(commit => commit.message), ["peer: add gone", "peer: three files", "initial"]);
+    assert.equal(runs.every(args => args[0] === "log"), true);
+
+    // 差异所需的文件历史与修订内容：不在 Entries 的新增文件、已删除文件（dead 修订为空内容）。
+    assert.ok((await adapter.log("fresh.txt")).some(item => item.revisionId === "1.1"));
+    assert.equal((await adapter.content("fresh.txt", "1.1")).toString(), "fresh\n");
+    assert.equal((await adapter.log("gone.txt")).find(item => item.revisionId === "1.2").state, "dead");
+    assert.equal((await adapter.content("gone.txt", "1.2")).length, 0);
+    assert.equal((await adapter.content("gone.txt", "1.1")).toString(), "gone\n");
+    // 路径仍须在本工作副本的已登记目录内。
+    await assert.rejects(adapter.log("no-such-dir/x.txt"));
+    await assert.rejects(adapter.log("../escape.txt"), { code: "path" });
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
 test("CVS input, symlink and cancellation boundaries reject hostile inputs", async () => {
   for (const value of ["../a", "a/../b", "/etc/passwd", "CVS/Root", "a\\b", "./a", "a//b"]) assert.throws(() => relativeFile(value));

@@ -19,7 +19,7 @@
 
 Git 与 CVS 每仓一次提交、各自排队，不把多个仓库承诺为一个原子事务。开始前验证全部所选根；逐仓失败会报告已经成功的仓库并保留说明。Git 先检查完整索引，再 `git commit -m <message> -- <paths>`，未选择的暂存内容保留；合并类操作进行中例外，见「合并中提交与分叉更新」。Amend 和 Commit and Push 只在单个 Git 仓选择中可用；Shelf/Stash 明示仅 Git。
 
-一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 文件历史只列所选文件的修订号、日期、作者和说明；点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
+一个 `kind + canonical root` 对应独立的服务、队列、watcher、快照、错误和修订内容访问权。当前编辑器只驱动底部 Log 的默认仓库；提交区明确选择的仓库优先控制 Update Project。Git 日志行在说明前显示分支/标签标记，说明保留完整文本并由行内布局在末尾省略，不修改原图或其它日志组件。CVS 日志默认是仓库级提交列表（见「CVS 仓库级日志」）；「当前文件」模式的文件历史只列所选文件的修订号、日期、作者和说明，点修订用原生 diff 比较上一修订。工作区 diff 为 Entries 的 BASE 与磁盘。
 
 修订 scheme `jettortoise` 通过 `onFileSystem:jettortoise` 激活，恢复标签页的首次读取等待仓库发现；0.6.8 起，CVS 恢复修订页不自动连服务器，需显式重新打开差异才允许该会话读取相应修订。Git 的本地修订恢复不变。扩展另以 `onStartupFinished` 激活：Theia 1.76 只在视图展开时发 `onView`，布局恢复时已可见的 webview 视图不会触发，也不会像 VS Code 那样为 `contributes.views` 隐式补 `onView`，否则 ETECH Theia 里提交与日志视图空白。CVS 工作区 diff 使用动态 `BASE` URI，在每次队列读取时解析当前 Entries，标题不固定修订号；历史 diff 保持指定修订。提交、回滚和更新后，按仓触发已读取修订 URI 的文本与文件系统变更事件，并通知正显示该仓的 CVS 文件历史重新加载；其它仓不跟随刷新。嵌套边界拦截提示列出最多三个相对目录，余项显示 `and N more`。
 
@@ -76,7 +76,7 @@ Headless、fixture 和构建通过不代表 VS Code 窗口交互、加载版本�
 
 ## 工程资源命令（2026-10-30，0.6.1）
 
-ETECH 工程右键通过公开命令 `jettortoise.updateProject`、`jettortoise.openCommitPanel`、`jettortoise.openHistory` 传入资源 URI；文件历史沿用 `jettortoise.showFileHistory`。新命令等待首次发现，再按资源的真实物理边界定位已发现仓库并核对工作区与信任；非法资源不回退到前一仓库。更新仍走原 request/update 队列、确认、可取消进度及 Git 快进／CVS 显式已登记目录规则。提交只选定所属仓并打开已有提交视图，不自动提交；工程历史清除旧文件选择，CVS 沿用已有文件选择器和修订列表，不宣称提供跨文件变更集日志。提交面板原有消息与行为保持不变。
+ETECH 工程右键通过公开命令 `jettortoise.updateProject`、`jettortoise.openCommitPanel`、`jettortoise.openHistory` 传入资源 URI；文件历史沿用 `jettortoise.showFileHistory`。新命令等待首次发现，再按资源的真实物理边界定位已发现仓库并核对工作区与信任；非法资源不回退到前一仓库。更新仍走原 request/update 队列、确认、可取消进度及 Git 快进／CVS 显式已登记目录规则。提交只选定所属仓并打开已有提交视图，不自动提交；工程历史清除旧文件选择；CVS 工程历史自 0.6.22 起显示仓库级提交列表，带文件的显示历史切到「当前文件」。提交面板原有消息与行为保持不变。
 
 检查沿用 `pnpm run test:headless`，`scripts/restart-host-check.cjs` 覆盖资源选仓、无效/失信拒绝和公开入口的真实本地 CVS 更新。版本只改 package.json 与 CHANGELOG.md，候选不推送、不打标签、不发布。
 
@@ -131,7 +131,7 @@ D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将�
 数量上限的当前行为以「扫描暂停」一节为准，覆盖本节原来的逐仓通知和只能重开工作区恢复规则；写入仍独立验证真实边界，不能以停扫解除保护。检查并入既有 `pnpm run test:headless` 的 `scripts/repository-performance-check.cjs` 与 UI 用例，只有合成仓和本地进程，不连接公司服务。ETW-E1 授权合成工作区开发构建 GUI 验收，覆盖本页历史实验的“不启动 GUI”限制。
 
 
-E1 远端入口补查：CVS 历史挂载、自动选文件与编辑器跟随的文件清单只读本地 Entries；0.6.21 起日志可见时按自动选中的文件查询远端历史（见「日志默认列出 CVS 仓库」），其余由文件选择、刷新历史或显式打开历史命令触发；写后历史刷新仍源于用户写操作。恢复的 CVS 修订 URI 不再直接取服务器；只有当前会话通过显式差异入口签发的 URI 才读取远端，保持队列内 BASE 解析、动态失效和独立边界预检。这是“打开不连网”优先于 0.6.0 自动恢复 CVS 内容的明确行为调整，没有新增控件。
+E1 远端入口补查：CVS 历史挂载、自动选文件与编辑器跟随的文件清单只读本地 Entries；0.6.21 起日志可见时按自动选中的文件查询远端历史，0.6.22 起该行为只在「当前文件」模式（见「CVS 仓库级日志」；默认「整个仓库」只在打开、选仓、切范围、加载更早、刷新时取一次），其余由文件选择、刷新历史或显式打开历史命令触发；写后历史刷新仍源于用户写操作。恢复的 CVS 修订 URI 不再直接取服务器；只有当前会话通过显式差异入口签发的 URI 才读取远端，保持队列内 BASE 解析、动态失效和独立边界预检。这是“打开不连网”优先于 0.6.0 自动恢复 CVS 内容的明确行为调整，没有新增控件。
 
 
 E1 追加视觉决定（2026-11-03）：用户否定 6 万列表观感，以 `local-changes.html` 的交互和 `components.html`「2 树行」为准，不新增控件。树行统一基础内边距 8px（2026-11-04 按 D1b 与同角色一致原则更新，覆盖 E1 原 6px）、每级 16px、行高 20px／字号 12px，箭头槽 14px 内放 12px 箭头、间距 5px、右留白 8px；宽窄布局均使用 8px 树基础内边距。类别标题 600，仓库／目录／文件 400；仓库仍是逻辑分组，保留 CVS/Git 标签，不把单文件仓库合并。目录用既有灰色文件夹，文件图标 16px 读取当前安装主题：公开 `vscode.extensions` 贡献和 workbench.iconTheme，限主题目录内的图片，批量读取仅可视文件，浅深色由 webview 主题类选择；无图片主题时沿用已有图标回落。字体图标主题的字体渲染不在本次范围。仓库按自然名称排序并以类型、根路径确定同名顺序。文件选择的背景横跨整行，活动／离焦分别消费宿主 list.activeSelectionBackground／list.inactiveSelectionBackground，移除文件和树标签描边；提交表单与工具按钮保留焦点标识。文件名只占剩余宽度，过长省略，不挤走图标。
@@ -262,6 +262,20 @@ M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n
 - 提交面没有明确选仓时沿用日志所选仓；日志选中未同步 CVS 时，宿主 `commitFallback()` 与 webview `commitTarget()` 都改用 `repositories` 第一项，提交面请求、Update Project 与命令面板 Git 命令不会落到未同步仓。
 - 未同步 CVS 只放行日志的只读入口：`selectRepository`（surface 为 log）、`getCvsFiles`、`getCvsHistory`、`diffCvsRevision`、CVS 修订 URI 的 `readFile`（仍要求本会话显式差异签发），以及 `openHistory`／`showFileHistory`。`scanRepository`、`updateProject`、`openCommitPanel`、提交、回滚、预览等仍报“请选择可用的仓库”。
 - 文件清单 `CvsAdapter.entryNames()` 沿 Entries 的 `D/` 记录走已登记目录（`registeredCvsDirectories`，与 update 的目录集合相同，子仓边界不进入），只读 Entries/Entries.Log 的文件行，不 lstat 文件、不执行 CVS、不改会话快照。目录超过 10000 个时返回空清单；文件数不设上限（上万个文件时下拉选项多，渲染较慢）。
-- CvsHistory 挂载或当前编辑器文件变化后，文件清单选中当前文件，否则保留原选择，否则首个文件，并查询其历史。日志 webview 隐藏时保留上下文，可见性初值写进 HTML 的 `data-visible`，之后由宿主 `onDidChangeVisibility` 发 `viewVisibility` 事件；隐藏期间只记下待查文件，显示后再查。显式打开历史只查一次。
+- CvsHistory 挂载或当前编辑器文件变化后，文件清单选中当前文件，否则保留原选择，否则首个文件，并查询其历史。0.6.22 起仅「当前文件」模式如此，默认的「整个仓库」模式切换编辑器文件不查询。日志 webview 隐藏时保留上下文，可见性初值写进 HTML 的 `data-visible`，之后由宿主 `onDidChangeVisibility` 发 `viewVisibility` 事件；隐藏期间只记下待查文件，显示后再查。显式打开历史只查一次。
 
 回归：`scripts/repository-performance-check.cjs`「日志列出未同步 CVS」（假 cvs 记录调用，清单不调 CVS、不读本地状态，提交面请求拒绝未同步仓并回落到 Git）、`scripts/vcs-host-check.cjs` 第 0 节（真实 `:local:` CVS，未同步下取清单、修订列表与两侧修订内容；argv 包装记录只有 `log` 与 `update -p`，同步后出现 `-n update` 作对照）、`scripts/restart-host-check.cjs`（日志视图可见性初值与事件）、`commit-ui.test.tsx`（日志下拉含未同步仓并显示历史、隐藏时等待、显式打开只查一次、提交面回落）。真实窗口、Windows CVSNT 与公司 CVS 未验。
+
+## CVS 仓库级日志（2026-11-10，0.6.22）
+
+用户 11-10 看了 0.6.21 只能按单个文件看履历后不满意，认可样图后改为：底栏「日志」对 CVS 仓库是仓库级提交列表。产品侧记录在 ETECH 仓 `ETECH.md`「版本控制按需同步与打开速度」。此节覆盖 0.6.21 的“CvsHistory 挂载即查文件历史”，其余 0.6.21 规则（`logRepositories`、未同步 CVS 的只读放行、提交面回落）不变。
+
+- 取数：`CvsAdapter.repositoryLog({from, to})` 沿 `registeredCvsDirectories` 用 `cvs -f log -l -N -S [-d 范围] . <目录…>` 逐批取（与 update、文件清单同一目录集合，8000 字符分批，不进入嵌套或异 Root 的检出），只读 stdout。`-d` 用 UTC 的 `>=`／`<=`／`A<=B`（含两端）。单次输出上限 128MiB、超时 5 分钟，超出报“CVS 日志过大”；「全部」在大仓可能触及，由用户改选范围。
+- 解析与分组在纯模块 `src/cvs/log.mjs`：日志按字节读入，作者、路径、说明逐条解码（严格 UTF-8，不合法再按 MS932）；日期兼容 `2026-11-10 12:08:39 +0800`（CVS 1.12）与 `2026/10/28 08:02:03`（旧版本，UTC）。有 commitid 按 commitid 分组；没有时按时间升序，同作者同说明、与组内最近一个修订相差不超过 `COMMIT_WINDOW_SECONDS`（60）、且该文件尚未在组内就并入，否则另起一组（链式窗口，同一文件不会在一个提交里出现两次）。有无 commitid 的修订不互相并入。导入产生的 1.1 与厂商分支 1.1.1.1 共用 commitid：文件取主干修订，说明取导入时写的那条；分支上新增文件时主干留下的 dead 1.1 只是占位，不算删除。提交按最近一个修订的时间倒序；文件的“上一修订”按修订号推算（主干减一、分支首修订回到分支点）。
+- 缓存与时机：`CvsSession.repositoryLog(days, refresh)` 在宿主缓存原始修订和已覆盖的天数（0 为全部）；已覆盖的范围不连服务器，更大的范围只取缺的那一段（`from<=to` 含两端，按文件＋修订号去重）并整体重新分组，所以跨窗口边界的提交不会被拆开；刷新丢弃缓存重取。webview 只在日志可见时、且在首次打开、切换范围、加载更早、点刷新时请求；`follow()` 切换编辑器文件、`repositoryWritten` 都不请求。写入（提交、更新、回滚）后宿主使缓存失效，已显示的列表保持，下次打开或刷新才重取。切换编辑器会把日志选中的仓库切到文件所在仓库，首次选中另一 CVS 仓库按“选中该仓库（首次）”取一次。
+- 协议：`getCvsLog {days, refresh?}` 返回 `{days, commits:[{id,time,author,subject,body,fileCount}]}`，`getCvsCommit {commitId}` 返回该提交的 `{path,revision,previous?,kind}`，取自宿主最近一次列表，不连服务器；两者与 `diffCvsRevision` 同属未同步 CVS 可用的只读入口。`days` 为 0～36500 的整数。
+- 差异：`diffCvsRevision` 不变，`CvsAdapter.log()` 的路径门由“文件在 Entries”放宽为“所在目录是已登记的 CVS 目录”（`revisionFile()`，仍检查工作副本内、无符号链接与嵌套边界），所以同事新增的文件、已被删除的文件（dead 修订内容为空）也能打开两修订差异。
+- 界面：标题行是仓库下拉、[整个仓库｜当前文件]、[近 N 天｜全部]、刷新（22px `ToolbarButton`，在仓库模式下只刷新日志）；主体左右两栏，左栏日期／作者／说明／文件数列表（20px 行，定高虚拟渲染）与底部「加载更早…」，右栏所选提交的标题、元数据与文件行（右侧 `1.7 → 1.8`／`新增 1.1`／`删除 1.4`，单击打开差异，右键「显示该文件历史」切到「当前文件」并选中它，文件可以不在本地 Entries）。默认选中最新一行；方向键移动。「当前文件」沿用 `CvsHistory`。显式显示历史：带文件（项目树右键）切到「当前文件」，工程级（`jettortoise.openHistory`）留在「整个仓库」；编辑器切换不改模式。
+- 未覆盖：Windows CVSNT 与 pserver 下的 `-d`／`-S`／`-N` 行为未验；大量目录（数千个已登记目录）时 `cvs log` 分多批、每批一次连接；「全部」输出过大时只有报错，没有分页；日志里说明含整行 `----------------------------` 后接 `revision` 行时会被误切（CVS 日志格式本身无转义）。
+
+回归：`scripts/cvs-log-check.mjs`（解析、分组、范围参数、合并，纯函数）、`scripts/cvs-real-test.mjs`「repository log」（真实 `:local:`：未同步副本里看到同事提交、新增与删除、MS932 说明、`-d` 范围、不在 Entries 的文件的修订与 dead 修订）、`scripts/vcs-host-check.cjs` 第 00 节（argv 包装记录：打开日志只有带 `-d` 的 `cvs log`，缓存、更早范围与刷新各一次，切换编辑器零调用，无 `-n update`）、`commit-ui.test.tsx`「CVS 仓库级日志」。

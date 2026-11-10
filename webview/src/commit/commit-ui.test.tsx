@@ -48,6 +48,8 @@ vi.mock("./utils/file-icon", () => ({
 }));
 vi.mock("./components/IdeaShelfTab", () => ({ IdeaShelfTab: () => null }));
 vi.mock("./components/ShelfTab", () => ({ ShelfTab: () => null }));
+// 导入时（store 等模块级订阅）已登记的事件监听；其后组件登记的监听由用例自行清理。
+const moduleEvents = mocks.events.length;
 const repositories = [
   { id: "a", kind: "git" as const, root: "/fixture/git", name: "git" },
   { id: "b", kind: "cvs" as const, root: "/fixture/cvs", name: "cvs" },
@@ -780,16 +782,62 @@ it("显式打开历史只查询一次", async () => {
   view.unmount();
 });
 
-it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async () => {
-  const unsynced = {
-    id: "c",
-    kind: "cvs" as const,
-    root: "/fixture/GOFCatsWeb",
-    name: "GOFCatsWeb",
-  };
+const logRepository = {
+  id: "c",
+  kind: "cvs" as const,
+  root: "/fixture/SampleWeb",
+  name: "SampleWeb",
+};
+const logCommits = [
+  {
+    id: "k2",
+    time: Date.parse("2026-10-28T12:02:00Z"),
+    author: "dev-a",
+    subject: "add the search filter",
+    body: "",
+    fileCount: 3,
+  },
+  {
+    id: "k1",
+    time: Date.parse("2026-10-21T12:15:00Z"),
+    author: "dev-b",
+    subject: "fix the report",
+    body: "",
+    fileCount: 1,
+  },
+];
+const commitFiles: Record<string, unknown[]> = {
+  k2: [
+    {
+      path: "src/Search.java",
+      revision: "1.8",
+      previous: "1.7",
+      kind: "modified",
+    },
+    { path: "src/SearchForm.java", revision: "1.1", kind: "added" },
+    { path: "src/Old.java", revision: "1.4", previous: "1.3", kind: "deleted" },
+  ],
+  k1: [
+    {
+      path: "src/Report.java",
+      revision: "1.3",
+      previous: "1.2",
+      kind: "modified",
+    },
+  ],
+};
+const logCalls = () =>
+  mocks.request.mock.calls.filter(([command]) =>
+    ["getCvsLog", "getCvsCommit", "getCvsFiles", "getCvsHistory"].includes(
+      command,
+    ),
+  );
+function useCvsLog() {
+  // 订阅表跨用例累积；只保留模块级监听与当前用例组件的监听。
+  mocks.events.length = moduleEvents;
   useRepositoryStore.setState({
     repositories: [repositories[0]],
-    logRepositories: [repositories[0], unsynced],
+    logRepositories: [repositories[0], logRepository],
     snapshots: [snapshots[0]],
     logRepositoryId: "c",
     unsyncedCvsCount: 1,
@@ -797,7 +845,12 @@ it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async ()
   mocks.request.mockImplementation(
     async (command: string, params: Record<string, unknown> = {}) => {
       if (command === "getRepositories") return workspace();
-      if (command === "getCvsFiles") return ["WEB-INF/web.xml"];
+      if (command === "getCvsLog")
+        return { commits: logCommits, days: params.days };
+      if (command === "getCvsCommit")
+        return commitFiles[params.commitId as string];
+      if (command === "getCvsFiles")
+        return ["src/Search.java", "src/Report.java"];
       if (command === "getCvsHistory")
         return [
           {
@@ -811,6 +864,10 @@ it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async ()
       return [];
     },
   );
+}
+
+it("日志下拉列出未同步的 CVS 仓库，默认显示仓库级提交列表", async () => {
+  useCvsLog();
   const view = render(<PanelApp />);
   const repository = view.getByLabelText("Repository") as HTMLSelectElement;
   expect([...repository.options].map((option) => option.value)).toEqual([
@@ -819,9 +876,227 @@ it("日志下拉列出未同步的 CVS 仓库并显示其文件历史", async ()
   ]);
   expect(repository.value).toBe("c");
   await waitFor(() =>
-    expect(view.getByText("history of WEB-INF/web.xml")).toBeTruthy(),
+    expect(view.getAllByText("add the search filter").length).toBeGreaterThan(
+      0,
+    ),
   );
   expect(view.queryByText("No available repository.")).toBeNull();
+  expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+    repositoryId: "c",
+    days: 90,
+  });
+  expect(logCalls().map(([command]) => command)).toEqual([
+    "getCvsLog",
+    "getCvsCommit",
+  ]);
+});
+
+describe("CVS 仓库级日志", () => {
+  beforeEach(() => useCvsLog());
+
+  it("列出日期、作者、说明、文件数；选中一行右侧列出文件及修订变化，单击文件打开两修订差异", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    const row = view
+      .getAllByText("add the search filter")[0]
+      .closest('[role="row"]');
+    expect(row?.textContent).toContain("dev-a");
+    expect(row?.textContent).toContain("2026-10-28");
+    expect(row?.textContent).toContain("3");
+    // 默认选中最新一行，详情标题、作者与文件数。
+    await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
+    expect(view.getByText("New 1.1")).toBeTruthy();
+    expect(view.getByText("Deleted 1.4")).toBeTruthy();
+    expect(view.getByText("src/SearchForm.java")).toBeTruthy();
+    fireEvent.click(view.getByText("src/Search.java"));
+    expect(mocks.request).toHaveBeenCalledWith("diffCvsRevision", {
+      repositoryId: "c",
+      filePath: "src/Search.java",
+      revision: "1.8",
+    });
+    fireEvent.click(view.getByText("src/Old.java"));
+    expect(mocks.request).toHaveBeenCalledWith("diffCvsRevision", {
+      repositoryId: "c",
+      filePath: "src/Old.java",
+      revision: "1.4",
+    });
+    fireEvent.click(view.getByText("fix the report"));
+    await waitFor(() => expect(view.getByText("1.2 → 1.3")).toBeTruthy());
+    expect(mocks.request).toHaveBeenCalledWith("getCvsCommit", {
+      repositoryId: "c",
+      commitId: "k1",
+    });
+  });
+
+  it("范围：默认近 90 天；全部、加载更早、刷新各向宿主请求一次", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "All" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+        repositoryId: "c",
+        days: 0,
+      }),
+    );
+    expect(view.queryByText("Load earlier…")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Last 90 days" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+        repositoryId: "c",
+        days: 90,
+      }),
+    );
+    mocks.request.mockClear();
+    fireEvent.click(await view.findByText("Load earlier…"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+        repositoryId: "c",
+        days: 180,
+      }),
+    );
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Last 180 days" })).toBeTruthy(),
+    );
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "Refresh" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsLog", {
+        repositoryId: "c",
+        days: 180,
+        refresh: true,
+      }),
+    );
+  });
+
+  it("整个仓库模式下切换编辑器文件、写入通知都不再连服务器", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
+    mocks.request.mockClear();
+    for (const file of ["src/Search.java", "src/Report.java", undefined])
+      act(() => useRepositoryStore.setState({ activeFile: file }));
+    act(() => {
+      for (const listener of mocks.events)
+        listener("repositoryWritten", { repositoryId: "c" });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(logCalls()).toEqual([]);
+  });
+
+  it("日志隐藏时不取，可见后才取一次", async () => {
+    act(() => useRepositoryStore.setState({ visible: false }));
+    const view = render(<PanelApp />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(logCalls()).toEqual([]);
+    act(() => useRepositoryStore.setState({ visible: true }));
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    expect(
+      logCalls().filter(([command]) => command === "getCvsLog"),
+    ).toHaveLength(1);
+  });
+
+  it("当前文件模式保留单文件历史，只有此模式下编辑器切换才更新它", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    mocks.request.mockClear();
+    fireEvent.click(view.getByRole("button", { name: "Current file" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsFiles", {
+        repositoryId: "c",
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/Search.java",
+      }),
+    );
+    await waitFor(() =>
+      expect(view.getByText("history of src/Search.java")).toBeTruthy(),
+    );
+    expect(
+      mocks.request.mock.calls.some(([command]) => command === "getCvsLog"),
+    ).toBe(false);
+    mocks.request.mockClear();
+    act(() => useRepositoryStore.setState({ activeFile: "src/Report.java" }));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/Report.java",
+      }),
+    );
+    // 回到整个仓库：列表来自宿主缓存的同一次请求，编辑器切换不再触发历史。
+    fireEvent.click(view.getByRole("button", { name: "Whole repository" }));
+    await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
+    mocks.request.mockClear();
+    act(() => useRepositoryStore.setState({ activeFile: "src/Search.java" }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      mocks.request.mock.calls.filter(([command]) =>
+        ["getCvsHistory", "getCvsFiles"].includes(command),
+      ),
+    ).toEqual([]);
+  });
+
+  it("显式显示文件历史切到当前文件模式；工程级打开历史留在整个仓库模式", async () => {
+    act(() =>
+      useRepositoryStore.setState({
+        activeFile: "src/Report.java",
+        historyRequest: { repositoryId: "c", sequence: 1 },
+      }),
+    );
+    const file = render(<PanelApp />);
+    await waitFor(() =>
+      expect(file.getByText("history of src/Report.java")).toBeTruthy(),
+    );
+    expect(
+      mocks.request.mock.calls.some(([command]) => command === "getCvsLog"),
+    ).toBe(false);
+    cleanup();
+    mocks.request.mockClear();
+    act(() =>
+      useRepositoryStore.setState({
+        activeFile: undefined,
+        historyRequest: { repositoryId: "c", sequence: 2 },
+      }),
+    );
+    const project = render(<PanelApp />);
+    await waitFor(() =>
+      expect(
+        project.getAllByText("add the search filter").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(
+      mocks.request.mock.calls.some(([command]) => command === "getCvsHistory"),
+    ).toBe(false);
+  });
+
+  it("详情里的文件右键「显示该文件历史」切到当前文件并选中该文件", async () => {
+    const view = render(<PanelApp />);
+    await waitFor(() => expect(view.getByText("1.7 → 1.8")).toBeTruthy());
+    mocks.request.mockClear();
+    fireEvent.contextMenu(view.getByText("src/SearchForm.java"));
+    fireEvent.click(view.getByText("Show history of this file"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/SearchForm.java",
+      }),
+    );
+  });
+
+  it("失败时在面板内显示原因，范围不变", async () => {
+    mocks.request.mockImplementation(async (command: string) => {
+      if (command === "getRepositories") return workspace();
+      if (command === "getCvsLog") throw new Error("CVS failed.");
+      return [];
+    });
+    const view = render(<PanelApp />);
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain("CVS failed."),
+    );
+  });
 });
 
 it("日志选中未同步 CVS 时，提交面回落到第一个可用仓库", () => {

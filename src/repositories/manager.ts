@@ -32,6 +32,8 @@ type GitSession = ReturnType<typeof createGitRepositorySession>;
 const LOG_COMMANDS = new Set([
   "getCvsFiles",
   "getCvsHistory",
+  "getCvsLog",
+  "getCvsCommit",
   "diffCvsRevision",
 ]);
 interface Entry {
@@ -460,6 +462,7 @@ export class RepositoryManager implements vscode.Disposable {
     this.timers.delete(id);
   }
   private written(entry: Entry) {
+    entry.cvs?.invalidateLog();
     for (const uri of this.revisionUris.values())
       if (uri.authority === entry.info.id) this.revisionChanges.fire(uri);
     this.broadcast("repositoryWritten", { repositoryId: entry.info.id });
@@ -822,6 +825,10 @@ export class RepositoryManager implements vscode.Disposable {
         repositoryPath(values.filePath),
         String(values.revision),
       );
+    if (command === "getCvsLog")
+      return cvs.repositoryLog(values.days as number, values.refresh === true);
+    if (command === "getCvsCommit")
+      return cvs.commitFiles(values.commitId as string);
     if (command === "getCvsFiles")
       return cvs.scanAvailable ? cvs.fileNames() : [];
     if (command === "showDiffForWorkingFile")

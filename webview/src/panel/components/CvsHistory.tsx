@@ -16,10 +16,13 @@ interface Revision {
 export function CvsHistory({
   repositoryId,
   activeFile,
+  initialFile,
   requestId = 0,
 }: {
   repositoryId: string;
   activeFile?: string;
+  /** 从仓库日志的文件右键进入时先选中的文件，可以不在本地 Entries 里（同事新增的文件）。 */
+  initialFile?: string;
   requestId?: number;
 }) {
   const [files, setFiles] = useState<string[]>([]);
@@ -31,6 +34,7 @@ export function CvsHistory({
   const [pending, setPending] = useState("");
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  const wantedFile = useRef(initialFile);
   const fileGeneration = useRef(0);
   const handledRequest = useRef(0);
   const latestRequest = useRef(requestId);
@@ -50,14 +54,19 @@ export function CvsHistory({
       })) as string[];
       if (generation !== fileGeneration.current) return;
       setError("");
-      setFiles(names);
-      // 返回值与选中项一致：当前编辑器文件优先，其次保留原选择，否则首个文件。
+      const wanted = wantedFile.current;
+      wantedFile.current = undefined;
+      const options =
+        wanted && !names.includes(wanted) ? [...names, wanted] : names;
+      setFiles(options);
+      // 返回值与选中项一致：指定文件优先，其次当前编辑器文件，其次保留原选择，否则首个文件。
       const name =
-        activeFile && names.includes(activeFile)
+        wanted ??
+        (activeFile && options.includes(activeFile)
           ? activeFile
-          : names.includes(selectedRef.current)
+          : options.includes(selectedRef.current)
             ? selectedRef.current
-            : (names[0] ?? "");
+            : (options[0] ?? ""));
       selectedRef.current = name;
       setSelected(name);
       return name;

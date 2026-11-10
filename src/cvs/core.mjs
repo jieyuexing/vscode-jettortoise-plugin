@@ -13,6 +13,7 @@ import {
   repositoryTree,
 } from "../repositories/boundaries.cjs";
 import { runNetwork } from "../repositories/network.cjs";
+import { logRangeArgs, parseRepositoryLog } from "./log.mjs";
 
 // CVS 1.12 内置忽略表（ignore.c 的 ign_default）。
 const DEFAULT_IGNORE =
@@ -850,8 +851,47 @@ export class CvsAdapter {
       await this.run(["add", "./" + name], signal);
     }
   }
+  /**
+   * 修订查询的路径门：所在目录须是本工作副本已登记的 CVS 目录，文件本身可以不在 Entries
+   * （同事新增、已被删除的文件在仓库日志里照样出现）。
+   */
+  async revisionFile(name) {
+    relativeFile(name);
+    await contained(this.root, name);
+    await assertOwnedPath(this.root, "cvs", name);
+    await this.entriesAt(path.dirname(path.join(this.root, name)));
+  }
+  /**
+   * 整个仓库的文件修订（只读 cvs log，不运行 update）：沿已登记目录用 -l 逐批取，
+   * 与 update、文件清单同一目录集合，不进入嵌套或异 Root 的检出。
+   * from／to 为毫秒时间戳，限定 -d 日期范围（含两端）。
+   */
+  async repositoryLog({ from, to } = {}, signal) {
+    this.root = await fs.realpath(this.root);
+    const directories = await registeredCvsDirectories(this.root);
+    const flags = ["log", "-l", "-N", "-S", ...logRangeArgs({ from, to })];
+    const revisions = [];
+    for (const batch of this.batches(flags, directories)) {
+      if (signal?.aborted) fail("cancelled");
+      // 全部历史可能很大：放宽输出与时间上限，只取 stdout（stderr 的 Logging 行会混进说明）。
+      const output = await this.run([...flags, ...batch], signal, [0], {
+        stdoutOnly: true,
+        timeoutMs: 300000,
+        maxBytes: 128 * 1024 * 1024,
+      });
+      for (const item of parseRepositoryLog(output.stdout)) {
+        try {
+          relativeFile(item.path);
+        } catch {
+          continue;
+        }
+        revisions.push(item);
+      }
+    }
+    return revisions;
+  }
   async log(name, signal) {
-    await this.file(name);
+    await this.revisionFile(name);
     return parseLog(
       (await this.run(["log", "./" + name], signal)).stdout.toString("utf8"),
     );

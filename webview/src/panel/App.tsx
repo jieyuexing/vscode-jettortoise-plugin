@@ -1,7 +1,8 @@
 import { Allotment } from "allotment";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CodiconRefresh from "~icons/codicon/refresh";
 import { PanelHeader } from "../shared/components/PanelHeader";
+import { Segmented } from "../shared/components/Segmented";
 import { ToolbarButton } from "../shared/components/ToolbarButton";
 import { t } from "../shared/i18n";
 import "allotment/dist/style.css";
@@ -13,9 +14,12 @@ import { usePanelStore } from "../shared/store/panel-store";
 import { useRepositoryStore } from "../shared/store/repository-store";
 import { BranchTree } from "./components/BranchTree";
 import { CvsHistory } from "./components/CvsHistory";
+import { CvsRepositoryLog } from "./components/CvsRepositoryLog";
 import { DetailPanel } from "./components/DetailPanel";
 import { GitGraphPanel } from "./components/GitGraphPanel";
 import { Toolbar } from "./components/Toolbar";
+
+const LOG_PERIOD_DAYS = 90;
 
 function ProgressBar({ visible }: { visible: boolean }) {
   if (!visible) return null;
@@ -329,6 +333,23 @@ export function PanelApp() {
   } = useRepositoryStore();
   const repositories = logRepositories ?? commitRepositories;
   const repository = repositories.find((item) => item.id === logRepositoryId);
+  // CVS 日志：整个仓库（默认）或当前文件；范围按 90 天一档，0 为全部。
+  const [mode, setMode] = useState<"repo" | "file">(
+    historyRequest && activeFile ? "file" : "repo",
+  );
+  const [days, setDays] = useState(LOG_PERIOD_DAYS);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [pickedFile, setPickedFile] = useState<string>();
+  const handledRequest = useRef(historyRequest?.sequence ?? 0);
+  useEffect(() => {
+    // 显式显示历史：带文件（项目树右键）切到当前文件，工程级留在整个仓库；编辑器切换不改模式。
+    if (!historyRequest || historyRequest.sequence === handledRequest.current)
+      return;
+    handledRequest.current = historyRequest.sequence;
+    setPickedFile(undefined);
+    setMode(activeFile ? "file" : "repo");
+  }, [historyRequest, activeFile]);
+  const cvsLog = repository?.kind === "cvs" && mode === "repo";
   useEffect(() => {
     void load();
   }, [load]);
@@ -381,6 +402,31 @@ export function PanelApp() {
             </option>
           ))}
         </select>
+        {repository?.kind === "cvs" && (
+          <Segmented
+            label={t("Log view")}
+            value={mode}
+            items={[
+              { value: "repo", label: t("Whole repository") },
+              { value: "file", label: t("Current file") },
+            ]}
+            onChange={setMode}
+          />
+        )}
+        {cvsLog && (
+          <Segmented
+            label={t("Log range")}
+            value={days === 0 ? "all" : "recent"}
+            items={[
+              {
+                value: "recent",
+                label: t("Last {0} days", days || LOG_PERIOD_DAYS),
+              },
+              { value: "all", label: t("All") },
+            ]}
+            onChange={(value) => setDays(value === "all" ? 0 : LOG_PERIOD_DAYS)}
+          />
+        )}
         <ToolbarButton
           label={t("Refresh")}
           icon={
@@ -391,7 +437,11 @@ export function PanelApp() {
               aria-hidden="true"
             />
           }
-          action={() => void bridge.request("refreshRepositories")}
+          action={() =>
+            cvsLog
+              ? setRefreshToken((value) => value + 1)
+              : void bridge.request("refreshRepositories")
+          }
         />
       </PanelHeader>
       <div style={{ flex: 1, minHeight: 0 }}>
@@ -401,11 +451,24 @@ export function PanelApp() {
           <div className="repository-empty">
             {t("No available repository.")}
           </div>
+        ) : cvsLog ? (
+          <CvsRepositoryLog
+            key={repository.id}
+            repositoryId={repository.id}
+            days={days}
+            refreshToken={refreshToken}
+            onLoadEarlier={() => setDays((value) => value + LOG_PERIOD_DAYS)}
+            onShowFileHistory={(file) => {
+              setPickedFile(file);
+              setMode("file");
+            }}
+          />
         ) : repository.kind === "cvs" ? (
           <CvsHistory
             key={repository.id}
             repositoryId={repository.id}
             activeFile={activeFile}
+            initialFile={pickedFile}
             requestId={
               historyRequest?.repositoryId === repository.id
                 ? historyRequest?.sequence

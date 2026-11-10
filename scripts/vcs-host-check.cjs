@@ -82,7 +82,7 @@ async function main() {
     await fs.writeFile(cvsShim, `#!${process.execPath}\nconst fs=require("node:fs"),cp=require("node:child_process");const args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(argvLog)},JSON.stringify(args)+"\\n");const r=cp.spawnSync(${JSON.stringify(process.env.JETTORTOISE_TEST_CVS || "cvs")},args,{stdio:"inherit"});process.exit(r.status??1);\n`, { mode: 0o755 });
     const argvCalls = async () => (await fs.readFile(argvLog, "utf8").catch(() => "")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const watchers = [], warnings = [], infos = [], commands = [], sent = [];
-    const decodes = [];
+    const decodes = [], editorListeners = [];
     const vscode = {
       Uri, EventEmitter: Emitter, Disposable: class { constructor(fn) { this.dispose = fn; } },
       RelativePattern: class { constructor(base, pattern) { this.base = base; this.pattern = pattern; } },
@@ -107,7 +107,7 @@ async function main() {
         encode: async (text) => new TextEncoder().encode(text),
       },
       window: {
-        onDidChangeActiveTextEditor: () => disposable(), onDidChangeWindowState: () => disposable(),
+        onDidChangeActiveTextEditor: (listener) => { editorListeners.push(listener); return disposable(); }, onDidChangeWindowState: () => disposable(),
         withProgress: (_options, run) => run({ report() {} }, { onCancellationRequested: () => disposable() }),
         showWarningMessage: async (message, ...labels) => { warnings.push(message); return labels.find((label) => typeof label === "string"); },
         showInformationMessage: async (message) => { infos.push(message); return undefined; }, showErrorMessage: async () => undefined, setStatusBarMessage: () => disposable(), activeTextEditor: undefined,
@@ -130,6 +130,95 @@ async function main() {
     const wc = await core.checkout(cvs, cvsRoot, "demo", path.join(root, "legacy"));
 
     const { RepositoryManager } = require(bundle);
+
+    // 00. 仓库级日志（宿主）：独立的 :local: 仓库与工作区，未同步下取提交列表；打开日志只运行带 -d 的 cvs log，
+    //     不运行 cvs -n update；同窗口缓存；切换编辑器文件不产生 cvs 调用；不在 Entries 的文件也能打开两修订差异。
+    {
+      const logBase = path.join(base, "log-case"), logRepo = path.join(logBase, "repository"), logRoot = path.join(logBase, "workspace"), logSeed = path.join(logBase, "seed");
+      await fs.mkdir(logRepo, { recursive: true }); await fs.mkdir(logRoot); await fs.mkdir(path.join(logSeed, "src"), { recursive: true });
+      const logCvsRoot = `:local:${logRepo}`;
+      await cvs.run(["-d", logCvsRoot, "init"], logBase);
+      await fs.writeFile(path.join(logSeed, "src", "Main.txt"), "v1\n"); await fs.writeFile(path.join(logSeed, "src", "Util.txt"), "v1\n");
+      await cvs.run(["-d", logCvsRoot, "import", "-m", "sample import", "sample", "vendor", "start"], logSeed);
+      const logWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logRoot, "wc"));
+      const colleagueWc = await core.checkout(cvs, logCvsRoot, "sample", path.join(logBase, "colleague")), colleague = new core.CvsAdapter(colleagueWc, cvs);
+      await fs.writeFile(path.join(colleagueWc, "src", "Main.txt"), "v2\n"); await fs.writeFile(path.join(colleagueWc, "src", "Util.txt"), "v2\n");
+      await colleague.commit(["src/Main.txt", "src/Util.txt"], "colleague: update two files");
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await fs.writeFile(path.join(colleagueWc, "src", "Added.txt"), "new file\n"); await colleague.add(["src/Added.txt"]); await colleague.commit(["src/Added.txt"], "colleague: add file");
+
+      vscode.workspace.workspaceFolders = [{ uri: Uri.file(logRoot) }];
+      const { RepositoryManager: LogManager } = require(bundle);
+      const logManager = new LogManager({ extensionUri: Uri.file(process.cwd()) });
+      logManager.connect({ postMessage: () => Promise.resolve(true), onDidReceiveMessage: () => disposable() });
+      await logManager.scan();
+      const logRepository = logManager.state().logRepositories.find((item) => item.root === logWc);
+      assert.ok(logRepository, "unsynchronized CVS repository missing from the log");
+      assert.deepEqual(logManager.repositories, [], "unsynchronized CVS repository entered local changes");
+      await logManager.request("selectRepository", { repositoryId: logRepository.id, surface: "log" });
+      await fs.writeFile(argvLog, "");
+      const newCalls = async (from) => (await argvCalls()).slice(from);
+
+      const first = await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
+      assert.deepEqual(first.commits.map((commit) => [commit.subject, commit.fileCount]), [["colleague: add file", 1], ["colleague: update two files", 2], ["sample import", 2]]);
+      assert.equal(first.days, 90);
+      const opened = await newCalls(0);
+      assert.equal(opened.length, 1, `opening the log ran ${JSON.stringify(opened)}`);
+      assert.deepEqual(opened[0].slice(0, 6), ["-f", "log", "-l", "-N", "-S", "-d"]);
+      assert.match(opened[0][6], /^>=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+0000$/);
+      assert.deepEqual(opened[0].slice(7), [".", "./src"]);
+      // 同窗口缓存：重复打开与回到较小范围不再连服务器。
+      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
+      assert.equal((await newCalls(0)).length, 1, "a repeated request contacted CVS again");
+      const [added, updated] = first.commits;
+      assert.deepEqual(await logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: updated.id }), [
+        { path: "src/Main.txt", revision: "1.2", previous: "1.1", kind: "modified" },
+        { path: "src/Util.txt", revision: "1.2", previous: "1.1", kind: "modified" },
+      ]);
+      const addedFiles = await logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: added.id });
+      assert.deepEqual(addedFiles, [{ path: "src/Added.txt", revision: "1.1", previous: undefined, kind: "added" }]);
+      await assert.rejects(logManager.request("getCvsCommit", { repositoryId: logRepository.id, commitId: "unknown" }), /Unknown commit/);
+      assert.equal((await newCalls(0)).length, 1, "reading a commit contacted CVS");
+
+      // 切换编辑器文件（含不在 Entries 的路径所在目录）不运行任何 cvs 命令。
+      for (const file of ["Main.txt", "Util.txt"]) for (const listener of editorListeners) listener({ document: { uri: Uri.file(path.join(logWc, "src", file)) } });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      assert.equal(logManager.state().activeFile, "src/Util.txt");
+      assert.equal((await newCalls(0)).length, 1, "switching editors ran a CVS command");
+
+      // 不在 Entries 的新增文件：两修订差异（空 ↔ 1.1）。
+      await logManager.request("diffCvsRevision", { repositoryId: logRepository.id, filePath: "src/Added.txt", revision: "1.1" });
+      const addedDiff = commands.findLast((args) => args[0] === "vscode.diff");
+      assert.deepEqual([addedDiff[1].query, addedDiff[2].query], ["ref=empty", "ref=1.1"]);
+      assert.equal(Buffer.from(await logManager.readFile(addedDiff[2])).toString("utf8"), "new file\n");
+
+      // 更早的范围、「全部」与刷新各取一次；已覆盖的范围不重复取。
+      const beforeEarlier = (await newCalls(0)).length;
+      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 180 });
+      const earlier = (await newCalls(0)).slice(beforeEarlier);
+      assert.equal(earlier.length > 0 && earlier.every((args) => args[1] === "log" && args.includes("-d") && /<=/.test(args[args.indexOf("-d") + 1])), true, `earlier range: ${JSON.stringify(earlier)}`);
+      const everything = await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 0 });
+      assert.equal(everything.commits.length, 3);
+      const afterAll = (await newCalls(0)).length;
+      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90 });
+      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 0 });
+      assert.equal((await newCalls(0)).length, afterAll, "covered ranges contacted CVS again");
+      await logManager.request("getCvsLog", { repositoryId: logRepository.id, days: 90, refresh: true });
+      const refreshed = (await newCalls(0)).slice(afterAll);
+      assert.equal(refreshed.length, 1);
+      assert.ok(refreshed[0].includes("-d"));
+
+      const all = await newCalls(0);
+      assert.ok(all.every((args) => args[1] === "log" || (args[1] === "update" && args[2] === "-p")), `unexpected CVS commands: ${JSON.stringify(all)}`);
+      assert.ok(!all.some((args) => args.includes("-n")), "the log ran cvs -n update");
+      assert.equal(logManager.state().snapshots.length, 0, "the log published a local-changes snapshot");
+      assert.equal(logManager.state().unsyncedCvsCount, 1);
+      console.log(JSON.stringify({ repositoryLogArgv: all.filter((args) => args[1] === "log") }));
+      logManager.dispose();
+      vscode.workspace.workspaceFolders = [{ uri: Uri.file(root) }];
+      await fs.writeFile(argvLog, "");
+    }
+
     manager = new RepositoryManager({ extensionUri: Uri.file(process.cwd()) });
     manager.connect({ postMessage: (message) => { sent.push(message); return Promise.resolve(true); }, onDidReceiveMessage: () => disposable() });
     await manager.scan();

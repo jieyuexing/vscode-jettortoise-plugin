@@ -16,6 +16,7 @@
 | 无文件的合并提交、破坏性操作单次确认、合并／变基／更新失败原因、大批量提交与回滚、预览编码 | `pnpm run test:headless` | `CLAUDE.md`「环节 7 打磨」；入口 `scripts/git-update-check.cjs`、`scripts/vcs-host-check.cjs`、`scripts/cvs-real-test.mjs` 与 `webview/src/commit/commit-ui.test.tsx` |
 | CVS 分批回滚与后台进度、修改已推送提交后的强制推送确认 | `pnpm run test:headless` | `CLAUDE.md`「环节 7 遗留」；入口 `scripts/cvs-real-test.mjs`、`scripts/vcs-host-check.cjs` 与 `webview/src/commit/commit-ui.test.tsx` |
 | CVS 未受版本控制列表的忽略规则（POSIX 字符类、内置表、`.cvsignore`、`~/.cvsignore`、`CVSIGNORE`、pserver 服务器内置表） | `pnpm run test:headless` | `CLAUDE.md`「CVS 忽略规则」；入口 `scripts/cvs-real-test.mjs` 与 `scripts/cvs-nesting-check.mjs` |
+| CVS 仓库级提交日志（按 commitid／60 秒窗口分组、近 90 天与加载更早、整个仓库／当前文件模式、日志的连网时机与缓存） | `pnpm run test:headless` | `CLAUDE.md`「CVS 仓库级日志」；入口 `scripts/cvs-log-check.mjs`、`scripts/cvs-real-test.mjs`、`scripts/vcs-host-check.cjs` 第 00 节与 `webview/src/commit/commit-ui.test.tsx` |
 | 构建与打包候选 | `pnpm run check-types`、`pnpm run lint`、`pnpm run build`、`pnpm run vsce:package` | `CLAUDE.md`「检查」 |
 | 中文界面、翻译覆盖与 Commit 列表密度 | `pnpm run test:headless`（包含 `scripts/check-l10n.cjs`） | `CLAUDE.md`「本地化与列表密度」 |
 

@@ -219,5 +219,8 @@
   "Force push \"{0}\" to \"{1}\"? The amended commit replaces {2} on the remote; if the remote has changed since your last fetch, the push is refused.": "强制推送“{0}”到“{1}”？修改后的提交将替换远端的 {2}；若远端在上次获取后又有变化，推送会被拒绝。",
   "Force Push": "强制推送",
   "Hard reset \"{0}\" to \"{1}\"? All uncommitted changes will be discarded. This cannot be undone.": "将“{0}”硬重置到“{1}”？所有未提交的更改将被丢弃，此操作无法撤销。",
-  "CVS rollback completed. Backups: {0} and {1} more": "CVS 回滚完成。备份：{0} 等，另有 {1} 个"
+  "CVS rollback completed. Backups: {0} and {1} more": "CVS 回滚完成。备份：{0} 等，另有 {1} 个",
+  "CVS Repository Log": "CVS 仓库日志",
+  "Unknown commit.": "未知的提交。",
+  "CVS log is too large. Choose a shorter range.": "CVS 日志过大，请选择更短的范围。"
 }

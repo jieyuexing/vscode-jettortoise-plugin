@@ -20,12 +20,47 @@ export interface CvsRevision {
   subject: string;
   body: string;
 }
+interface LogRevision {
+  path: string;
+  revision: string;
+  time: number;
+  author: string;
+  state: string;
+  commitId?: string;
+  message: string;
+}
+export interface CvsLogFile {
+  path: string;
+  revision: string;
+  previous?: string;
+  kind: "added" | "modified" | "deleted";
+}
+interface LogCommit {
+  id: string;
+  time: number;
+  author: string;
+  message: string;
+  files: CvsLogFile[];
+}
+/** 日志列表一行；文件另经 commitFiles 取，列表不带文件。 */
+export interface CvsLogCommit {
+  id: string;
+  time: number;
+  author: string;
+  subject: string;
+  body: string;
+  fileCount: number;
+}
 interface Adapter {
   localStatus(names?: string[]): Promise<CvsFile[]>;
   entryNames(): Promise<string[]>;
   status(signal?: AbortSignal, local?: CvsFile[]): Promise<CvsFile[]>;
   file(name: string): Promise<CvsFile>;
   log(name: string, signal?: AbortSignal): Promise<CvsRevision[]>;
+  repositoryLog(
+    range: { from?: number; to?: number },
+    signal?: AbortSignal,
+  ): Promise<LogRevision[]>;
   content(
     name: string,
     revision: string,
@@ -60,12 +95,21 @@ const core = require("./core.mjs") as {
   CvsAdapter: new (root: string, process: Process) => Adapter;
   SerialQueue: new () => Queue;
 };
+const commits = require("./log.mjs") as {
+  groupCommits(revisions: LogRevision[]): LogCommit[];
+  mergeRevisions(a: LogRevision[], b: LogRevision[]): LogRevision[];
+  previousRevision(revision: string): string | undefined;
+};
+const DAY = 24 * 60 * 60 * 1000;
 
 export class CvsSession {
   private readonly queue = new core.SerialQueue();
   private readonly issuedRevisions = new Set<string>();
   private readonly adapter: Adapter;
   private files: CvsFile[] = [];
+  // 仓库级日志按窗口缓存：原始修订连同取到的范围（days 为 0 表示全部）；写入后失效，下次打开重取。
+  private logCache?: { anchor: number; days: number; revisions: LogRevision[] };
+  private logFiles = new Map<string, CvsLogFile[]>();
   private localTail: Promise<void> = Promise.resolve();
   private network: Promise<void> | undefined;
   private disposed = false;
@@ -291,6 +335,75 @@ export class CvsSession {
       vscode.ProgressLocation.Window,
     );
   }
+  /**
+   * 仓库级提交列表（近 days 天，0 为全部）。同一窗口内缓存：范围已覆盖时不连服务器，
+   * 更大的范围只取缺的那一段并整体重新分组；refresh 丢弃缓存重取。
+   */
+  repositoryLog(days: number, refresh = false) {
+    return this.operate(
+      vscode.l10n.t("CVS Repository Log"),
+      async (adapter, signal) => {
+        let cache = refresh ? undefined : this.logCache;
+        if (!cache) {
+          const anchor = Date.now();
+          cache = {
+            anchor,
+            days,
+            revisions: await adapter.repositoryLog(
+              { from: days ? anchor - days * DAY : undefined },
+              signal,
+            ),
+          };
+        } else if (cache.days !== 0 && (days === 0 || days > cache.days)) {
+          const older = await adapter.repositoryLog(
+            {
+              from: days ? cache.anchor - days * DAY : undefined,
+              to: cache.anchor - cache.days * DAY,
+            },
+            signal,
+          );
+          cache = {
+            ...cache,
+            days,
+            revisions: commits.mergeRevisions(cache.revisions, older),
+          };
+        }
+        this.logCache = cache;
+        const since = days
+          ? cache.anchor - days * DAY
+          : Number.NEGATIVE_INFINITY;
+        const grouped = commits.groupCommits(
+          cache.revisions.filter((item) => item.time >= since),
+        );
+        this.logFiles = new Map(grouped.map((item) => [item.id, item.files]));
+        return {
+          days,
+          commits: grouped.map(
+            (item): CvsLogCommit => ({
+              id: item.id,
+              time: item.time,
+              author: item.author,
+              subject: item.message.split("\n")[0] || "(empty)",
+              body: item.message.split("\n").slice(1).join("\n"),
+              fileCount: item.files.length,
+            }),
+          ),
+        };
+      },
+      false,
+      vscode.ProgressLocation.Window,
+    );
+  }
+  /** 日志列表里某个提交的文件，取自最近一次列表，不连服务器。 */
+  commitFiles(commitId: string) {
+    const files = this.logFiles.get(commitId);
+    if (!files) throw new Error(vscode.l10n.t("Unknown commit."));
+    return files;
+  }
+  /** 本窗口的仓库日志缓存已过期（有写入）；已显示的列表保持，下次打开或刷新才重取。 */
+  invalidateLog() {
+    this.logCache = undefined;
+  }
   /** 先确认，再在可取消的通知进度里排队执行；返回的 done 在完成时结束，调用方不必等待。 */
   async rollback(paths: string[]) {
     const confirmed = await vscode.window.showWarningMessage(
@@ -371,11 +484,7 @@ export class CvsSession {
     const history = await this.history(file);
     if (!history.some((entry) => entry.revisionId === revision))
       throw new Error(vscode.l10n.t("Unknown revision."));
-    const parts = revision.split(".").map(Number);
-    let previous = "empty";
-    if (parts[parts.length - 1] > 1)
-      previous = [...parts.slice(0, -1), parts[parts.length - 1] - 1].join(".");
-    else if (parts.length > 2) previous = parts.slice(0, -2).join(".");
+    const previous = commits.previousRevision(revision) ?? "empty";
     if (
       previous !== "empty" &&
       !history.some((entry) => entry.revisionId === previous)
@@ -437,6 +546,7 @@ export function cvsErrorText(error: unknown): string {
       "CVS cancelled. Refresh to check whether files were partly changed.",
     ),
     timeout: vscode.l10n.t("CVS timed out. Refresh before retrying."),
+    outputLimit: vscode.l10n.t("CVS log is too large. Choose a shorter range."),
     commitState: vscode.l10n.t(
       "Selected files cannot be committed. Refresh and resolve conflicts first.",
     ),

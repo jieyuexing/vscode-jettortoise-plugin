@@ -15,6 +15,7 @@ import {
 import { runNetwork } from "../repositories/network.cjs";
 import { rootPath } from "./cache.mjs";
 import {
+  decodeBytes,
   logDate,
   logRangeArgs,
   parseLogDate,
@@ -391,7 +392,8 @@ export class SerialQueue {
     for (const controller of this.controllers) controller.abort();
   }
 }
-export function parseLog(text) {
+// text 可以是按 latin1 读入的原始字节；decode 逐字段解码（见 log.mjs 的 decodeBytes）。
+export function parseLog(text, decode = (value) => value) {
   const symbols = [
     ...(
       text.match(/symbolic names:\r?\n([\s\S]*?)keyword substitution:/)?.[1] ||
@@ -402,7 +404,7 @@ export function parseLog(text) {
       parts = raw.split(".");
     if (parts.length >= 4 && parts.at(-2) === "0") parts.splice(-2, 1);
     return {
-      name: match[1],
+      name: decode(match[1]),
       raw,
       number: parts.join("."),
       branch: parts.length % 2 === 1,
@@ -418,7 +420,7 @@ export function parseLog(text) {
         /^\r?\nrevision (\d+(?:\.\d+)+)\r?\ndate: ([^;]+);\s+author: ([^;]+);\s+state: ([^;]+);[^\r\n]*\r?\n([\s\S]*)/,
       );
       if (!match) return [];
-      const message = match[5]
+      const message = decode(match[5])
           .replace(/^branches:[^\n]*\n/, "")
           .replace(/\n={20,}[\s\S]*$/, "")
           .trim(),
@@ -450,7 +452,7 @@ export function parseLog(text) {
           references,
           revisionId: match[1],
           timestamp: match[2],
-          author: { name: match[3] },
+          author: { name: decode(match[3]) },
           state: match[4],
           subject: message.split("\n")[0] || "(empty)",
           body: message.split("\n").slice(1).join("\n"),
@@ -946,12 +948,14 @@ export class CvsAdapter {
       signal,
       { stdoutOnly: true },
     );
-    return parseLog(output.stdout.toString("utf8")).map((item) => ({
-      ...item,
-      timestamp: Number.isNaN(parseLogDate(item.timestamp))
-        ? item.timestamp
-        : logDate(parseLogDate(item.timestamp)),
-    }));
+    return parseLog(output.stdout.toString("latin1"), decodeBytes).map(
+      (item) => ({
+        ...item,
+        timestamp: Number.isNaN(parseLogDate(item.timestamp))
+          ? item.timestamp
+          : logDate(parseLogDate(item.timestamp)),
+      }),
+    );
   }
   /**
    * 修订内容：先看落盘缓存；dead 修订（文件在该修订被删除）为空内容；其余用服务器端

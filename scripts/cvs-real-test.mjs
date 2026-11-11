@@ -329,6 +329,29 @@ test("temporary local CVS: repository log of an unsynchronized working copy cove
     await assert.rejects(adapter.log("../escape.txt"), { code: "path" });
   } finally { await fs.rm(f.base, { recursive: true, force: true }); }
 });
+test("temporary local CVS: single-file history decodes a Shift_JIS message field by field", async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.wc, "other.txt"), "edited\n");
+    // 说明为 Shift_JIS 字节：首行“日本語の説明”，正文“本文”。
+    const message = path.join(f.base, "message.txt");
+    await fs.writeFile(message, Buffer.from("93fa967b8cea82cc90e096be0a967b95b6", "hex"));
+    await f.process.run(["commit", "-F", message, "other.txt"], f.wc);
+    const item = (await f.cvs.log("other.txt")).find(entry => entry.revisionId === "1.2");
+    assert.equal(item.subject, "日本語の説明");
+    assert.equal(item.body, "本文");
+    assert.equal((await f.cvs.log("other.txt")).find(entry => entry.revisionId === "1.1").subject, "Initial revision");
+    // 末字节为 0xA0：UTF-8 的“だ”（E3 81 A0）与 Shift_JIS 的“あ”（82 A0）不能被 trim 当作 NBSP 吃掉。
+    for (const [text, bytes] of [["だ", "e381a0"], ["あ", "82a0"]]) {
+      await fs.appendFile(path.join(f.wc, "other.txt"), `${text}\n`);
+      await fs.writeFile(message, Buffer.from(bytes, "hex"));
+      await f.process.run(["commit", "-F", message, "other.txt"], f.wc);
+    }
+    const log = await f.cvs.log("other.txt");
+    assert.equal(log.find(entry => entry.revisionId === "1.3").subject, "だ");
+    assert.equal(log.find(entry => entry.revisionId === "1.4").subject, "あ");
+  } finally { await fs.rm(f.base, { recursive: true, force: true }); }
+});
 test("temporary local CVS: a working copy on a branch logs that branch with -r", async () => {
   const f = await fixture();
   try {

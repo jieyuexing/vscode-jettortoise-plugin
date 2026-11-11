@@ -12,7 +12,7 @@ try {
 }
 
 // 日志按字节读入（latin1 一字节一字符）；每个字段单独解码：严格 UTF-8，不合法再按 MS932。
-function decodeBytes(text) {
+export function decodeBytes(text) {
   if (!/[\x80-\xff]/.test(text)) return text;
   const bytes = Buffer.from(text, "latin1");
   try {

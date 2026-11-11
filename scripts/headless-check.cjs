@@ -24,6 +24,7 @@ const checks = [
   ["scripts/cvs-core-check.cjs"],
   ["--test", "scripts/cvs-log-check.mjs"],
   ["--test", "scripts/cvs-cache-check.mjs"],
+  ["--test", "scripts/cvs-log-session-check.mjs"],
   ["scripts/catalog-discovery-check.cjs"],
   ["scripts/git-nesting-check.cjs"],
   ["scripts/git-update-check.cjs"],

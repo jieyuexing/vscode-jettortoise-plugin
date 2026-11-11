@@ -1168,7 +1168,12 @@ describe("CVS 仓库级日志", () => {
     await waitFor(() => expect(view.getByText("fix the report")).toBeTruthy());
     fireEvent.contextMenu(view.getByTitle("src/SearchForm.java"));
     fireEvent.click(view.getByText("Show history of this file"));
-    await waitFor(() => expect(view.getByText("Current file")).toBeTruthy());
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("getCvsHistory", {
+        repositoryId: "c",
+        filePath: "src/SearchForm.java",
+      }),
+    );
     mocks.request.mockClear();
     act(() => useRepositoryStore.setState({ logRepositoryId: "d" }));
     await waitFor(() =>

@@ -1,4 +1,4 @@
-import { fail, relativeFile, revision } from "./core.mjs";
+import { fail, relativeFile, revision } from "tortoise-core/cvs";
 
 export const capabilities = Object.freeze({
   compareRevision: true,

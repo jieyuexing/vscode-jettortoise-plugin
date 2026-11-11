@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 
 (async () => {
-  const cvs = await import("../src/cvs/core.mjs");
+  const cvs = await import("tortoise-core/cvs");
   const protocol = await import("../src/cvs/protocol.mjs");
   for (const value of ["../outside", "CVS/Root", "/absolute", "a//b", "a\\b"]) {
     assert.throws(() => cvs.relativeFile(value), /path/);

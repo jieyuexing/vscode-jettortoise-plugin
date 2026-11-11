@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
+import { assertOwnedPath } from "tortoise-core/boundaries";
 
 /**
  * A repository-relative path suitable for passing to Git after `--`.

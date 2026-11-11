@@ -1,9 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { assertOwnedPath } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import { CvsComparisonResolver } from "../comparison/resolver";
 import { isScanLimit, localizeError } from "../messages/errors";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import type { ChangeFile, RepositorySnapshot } from "../repositories/changes";
 import { hasDirtyEditors } from "../repositories/editor-documents";
 
@@ -109,19 +109,19 @@ interface Queue {
   run<T>(job: (signal: AbortSignal) => Promise<T>): Promise<T>;
   cancel(): void;
 }
-const core = require("./core.mjs") as {
+const core = require("tortoise-core/cvs") as {
   CvsProcess: new (executable?: string) => Process;
   CvsAdapter: new (root: string, process: Process) => Adapter;
   SerialQueue: new () => Queue;
 };
-const commits = require("./log.mjs") as {
+const commits = require("tortoise-core/cvs/log") as {
   groupCommits(revisions: LogRevision[]): LogCommit[];
   mergeRevisions(a: LogRevision[], b: LogRevision[]): LogRevision[];
   previousRevision(revision: string): string | undefined;
   compareRevisions(a: string, b: string): number;
   logDate(time: number): string;
 };
-const cacheModule = require("./cache.mjs") as {
+const cacheModule = require("tortoise-core/cvs/cache") as {
   LOG_FRESH_MS: number;
   LOG_OVERLAP_MS: number;
   CvsCacheStore: new (

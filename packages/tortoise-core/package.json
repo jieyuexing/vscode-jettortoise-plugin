@@ -1,0 +1,20 @@
+{
+  "name": "tortoise-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CVS 与仓库边界内核：不依赖 vscode，由 JetTortoise 与 T3 插件共用。",
+  "exports": {
+    "./cvs": "./cvs-client/core.mjs",
+    "./cvs/log": "./cvs-client/log.mjs",
+    "./cvs/cache": "./cvs-client/cache.mjs",
+    "./boundaries": {
+      "types": "./repositories/boundaries.d.cts",
+      "default": "./repositories/boundaries.cjs"
+    },
+    "./network": {
+      "types": "./repositories/network.d.cts",
+      "default": "./repositories/network.cjs"
+    }
+  }
+}

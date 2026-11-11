@@ -1,10 +1,10 @@
 import * as nodefs from "node:fs/promises";
 import * as path from "node:path";
+import { assertOwnedPath } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import { GitComparisonResolver } from "../comparison/resolver";
 import { MessageRouter } from "../messages/messageRouter";
 import { ErrorCode } from "../messages/protocol";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import { hasDirtyEditors } from "../repositories/editor-documents";
 import type { RepositoryDescriptor } from "../repositories/types";
 import { ConflictsManager } from "../views/conflictsManager";

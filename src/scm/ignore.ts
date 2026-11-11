@@ -1,8 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { assertOwnedPath } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import { resolveWorktreePath, safeRelativePath } from "../git/security";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import type { RepositoryKind } from "../repositories/types";
 
 /** 每项写入前后都检查归属；拒绝符号链接和任意模式注入。 */

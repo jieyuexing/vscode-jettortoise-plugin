@@ -12,7 +12,7 @@ import {
   isCvsContinuation,
   listNestedRepositories,
   nearestRepositories,
-} from "../src/repositories/boundaries.cjs";
+} from "tortoise-core/boundaries";
 import {
   CvsAdapter,
   CvsProcess,
@@ -21,7 +21,7 @@ import {
   findWorkingCopy,
   parseStatus,
   parseUpdateStatus,
-} from "../src/cvs/core.mjs";
+} from "tortoise-core/cvs";
 
 const execFile = promisify(execFileCallback);
 const cvsExecutable = process.env.JETTORTOISE_TEST_CVS || "/opt/homebrew/bin/cvs";

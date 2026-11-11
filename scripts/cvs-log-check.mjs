@@ -13,7 +13,7 @@ import {
   previousRevision,
   rlogPath,
   uniqueRevisions,
-} from "../src/cvs/log.mjs";
+} from "tortoise-core/cvs/log";
 
 const DASH = "-".repeat(28);
 const EQUALS = "=".repeat(77);

@@ -2,6 +2,13 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  assertOwnedPath,
+  boundariesForPaths,
+  NestedRepositoryError,
+  nearestRepositories,
+  within,
+} from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import { CvsSession, createCvsCacheStore } from "../cvs/session";
 import { type DivergedUpstream, divergedMessage } from "../git/gitService";
@@ -10,13 +17,6 @@ import { createGitRepositorySession } from "../git/session";
 import { isScanLimit, localizeError } from "../messages/errors";
 import { ignorePaths } from "../scm/ignore";
 import { clearFileIconCache, getFileIcons } from "../views/file-icons";
-import {
-  assertOwnedPath,
-  boundariesForPaths,
-  NestedRepositoryError,
-  nearestRepositories,
-  within,
-} from "./boundaries.cjs";
 import type { ChangeFile, RepositoryInfo, RepositorySnapshot } from "./changes";
 import { canCommit, compareRepositories, snapshotDelta } from "./changes";
 import {

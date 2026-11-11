@@ -1,11 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TextDecoder } from "node:util";
+import { assertOwnedPath } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import { GitContentTooLargeError, type GitService } from "../git/gitService";
 import { resolveWorktreePath, safeRelativePath } from "../git/security";
 import type { DiffFile } from "../git/types";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import { decodeAsWorkingFile } from "../repositories/editor-documents";
 
 /** The small adapter surface shared with the native CVS core. */

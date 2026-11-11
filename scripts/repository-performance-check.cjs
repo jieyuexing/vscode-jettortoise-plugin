@@ -39,7 +39,7 @@ const setup = async () => {
   };
   global.__performanceVscode = vscode;
   const bundle = path.join(base, 'manager.cjs');
-  await build({ stdin: {contents: 'export {RepositoryManager} from "./src/repositories/manager.ts"; export {CvsAdapter} from "./src/cvs/core.mjs"; export {runNetwork} from "./src/repositories/network.cjs";', resolveDir:process.cwd()}, bundle: true, platform: 'node', format: 'cjs', outfile: bundle, plugins: [{ name: 'vscode-fixture', setup(b) { b.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'fixture' })); b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: 'module.exports=global.__performanceVscode;' })); } }] });
+  await build({ stdin: {contents: 'export {RepositoryManager} from "./src/repositories/manager.ts"; export {CvsAdapter} from "tortoise-core/cvs"; export {runNetwork} from "tortoise-core/network";', resolveDir:process.cwd()}, bundle: true, platform: 'node', format: 'cjs', outfile: bundle, plugins: [{ name: 'vscode-fixture', setup(b) { b.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'fixture' })); b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: 'module.exports=global.__performanceVscode;' })); } }] });
   const { RepositoryManager, CvsAdapter, runNetwork } = require(bundle);
   const localReads=[];const localStatus=CvsAdapter.prototype.localStatus;
   CvsAdapter.prototype.localStatus=function(...args){localReads.push(this.root);return localStatus.apply(this,args)};
@@ -181,7 +181,7 @@ test('Git 自动状态不遍历两万忽略目录与嵌套仓内部，写预检�
     const snapshot=fx.manager.state().snapshots.find(s=>s.repositoryId===id);
     assert.equal(snapshot.error,undefined);assert.equal(snapshot.scanPaused,undefined);
     assert.deepEqual(snapshot.files.map(f=>f.path).sort(),['.gitignore','visible.txt']);
-    const {listNestedRepositories}=require('../src/repositories/boundaries.cjs');
+    const {listNestedRepositories}=require('tortoise-core/boundaries');
     await assert.rejects(listNestedRepositories(root,'git'),{code:'SCAN_LIMIT'},'write preflight silently skipped ignored directories');
     assert.deepEqual(await listNestedRepositories(nested,'git').catch(e=>e.code),'BOUNDARY_UNAVAILABLE');
     assert.equal(fx.warnings.length,0);
@@ -197,7 +197,7 @@ test('CVS 与 Git 共用命令队列，本地命令不占网络位置且排队�
     for (const command of ['fake-cvs','git']) await fs.writeFile(path.join(base,command),executable,{mode:0o755});
     process.env.PATH = base + path.delimiter + previousPath;
     const bundle = path.join(base,'mixed.cjs');
-    await build({stdin:{contents:`export {CvsProcess} from ${JSON.stringify(path.resolve('src/cvs/core.mjs'))};export {GitService} from ${JSON.stringify(path.resolve('src/git/gitService.ts'))};export {runNetwork} from ${JSON.stringify(path.resolve('src/repositories/network.cjs'))};export {snapshotDelta,applySnapshotDelta} from ${JSON.stringify(path.resolve('src/repositories/changes.ts'))};`,resolveDir:process.cwd()},bundle:true,platform:'node',format:'cjs',outfile:bundle,plugins:[{name:'vscode-fixture',setup(b){b.onResolve({filter:/^vscode$/},()=>({path:'vscode',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'module.exports={l10n:{t:x=>x}};'}));}}]});
+    await build({stdin:{contents:`export {CvsProcess} from "tortoise-core/cvs";export {GitService} from ${JSON.stringify(path.resolve('src/git/gitService.ts'))};export {runNetwork} from "tortoise-core/network";export {snapshotDelta,applySnapshotDelta} from ${JSON.stringify(path.resolve('src/repositories/changes.ts'))};`,resolveDir:process.cwd()},bundle:true,platform:'node',format:'cjs',outfile:bundle,plugins:[{name:'vscode-fixture',setup(b){b.onResolve({filter:/^vscode$/},()=>({path:'vscode',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'module.exports={l10n:{t:x=>x}};'}));}}]});
     const {CvsProcess,GitService,runNetwork,snapshotDelta,applySnapshotDelta}=require(bundle);
     const network=[];
     for(let i=0;i<4;i++) network.push(new CvsProcess(path.join(base,'fake-cvs')).run(['update'],base));

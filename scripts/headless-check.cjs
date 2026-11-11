@@ -1,4 +1,22 @@
 const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+// packages/tortoise-core 不得 import 或 require vscode。
+const vscodeImport = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']vscode["']/;
+function sourceFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(file);
+    return /\.[cm]?[jt]sx?$/.test(entry.name) ? [file] : [];
+  });
+}
+const coreDir = path.join(__dirname, "..", "packages", "tortoise-core");
+const offenders = sourceFiles(coreDir).filter((file) => vscodeImport.test(fs.readFileSync(file, "utf8")));
+if (offenders.length) {
+  process.stderr.write(`packages/tortoise-core 不得引用 vscode：\n${offenders.map((file) => `  ${path.relative(coreDir, file)}`).join("\n")}\n`);
+  process.exit(1);
+}
 const checks = [
   ["scripts/check-l10n.cjs"],
   ["scripts/manifest-check.cjs"],

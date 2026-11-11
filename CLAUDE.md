@@ -6,10 +6,10 @@
 
 - `src/extension.ts`：公共 Commit/Log 视图、原生命令和聚合只读修订 URI。
 - `src/repositories/manager.ts`：按类型和真实根生成 ID、工作区内元数据发现、当前编辑器归属、独立快照和消息分发；视图只传已发现 ID，不传 cwd。
-- `src/repositories/{boundaries.cjs,discovery.ts}`：从 main 移植的元数据发现、CVS 连续/同项目判定和物理子仓写边界。
+- `packages/tortoise-core/repositories/boundaries.cjs`、`src/repositories/discovery.ts`：从 main 移植的元数据发现、CVS 连续/同项目判定和物理子仓写边界。
 - `src/repositories/{changes.ts,requests.ts}`：共享的纯分组模型和新入口运行时消息合同；分组模型不导入 Node、VS Code 或 VCS 内核。
 - `src/git/{session.ts,gitService.ts,security.ts}`：每仓独立服务、消息合同、确认和写队列；保留上游图、分支、Shelf 与对话框。
-- `src/cvs/{core.mjs,protocol.mjs,session.ts}`：现行 CVS CLI 内核、输入合同和每仓会话，保留取消、超时、脱敏、备份回滚。
+- `packages/tortoise-core/cvs-client/core.mjs`（含 `log.mjs`、`cache.mjs`）与 `src/cvs/{protocol.mjs,session.ts}`：现行 CVS CLI 内核、输入合同和每仓会话，保留取消、超时、脱敏、备份回滚。
 - `src/scm/ignore.ts`：只复用忽略文件写入，不注册原生 SCM，也不改内置 Git 的配置。
 - `webview/src/commit/`：上游提交区内按仓库再目录分组；`webview/src/panel/`：上游 Git 图与 CVS 文件历史。
 
@@ -124,7 +124,7 @@ D1b（同为 0.6.7，2026-11-02）：按组件目录「3 面板标题行」将�
 
 ## 大工作区刷新与渲染（2026-11-03，0.6.8）
 
-用户 ETW-E1 决定打开与自动刷新不连网，所有仓库网络命令全局并发最多 2。`src/repositories/network.cjs` 在 CVS 进程及 Git fetch/pull/push/ls-remote/clone 执行边界共用；本地 Git 命令不占位，队列内再次核验存活与取消，保留每仓写队列。忽略文件写后仅本地刷新；显式添加、回滚、更新、提交保持原有操作合同。未查询服务器前没有传入状态是预期行为。
+用户 ETW-E1 决定打开与自动刷新不连网，所有仓库网络命令全局并发最多 2。`packages/tortoise-core/repositories/network.cjs` 在 CVS 进程及 Git fetch/pull/push/ls-remote/clone 执行边界共用；本地 Git 命令不占位，队列内再次核验存活与取消，保留每仓写队列。忽略文件写后仅本地刷新；显式添加、回滚、更新、提交保持原有操作合同。未查询服务器前没有传入状态是预期行为。
 
 变更树在原 20px 行与 16px 缩进上展平可见模型，仅挂载视口和前后各 6 行；方向键、Home/End 按完整模型定位并挂载目标，折叠后夹紧滚动位置。文件勾选、懒展开、右键和预览沿用原动作。0.6.11 起，初始连接先传文件为空的仓库摘要与加载标记，随后分批传文件（见下文），覆盖旧版“初始连接仍传完整快照”；后续小变更通知发送 changed/removed 与仓元数据；前端直接消费通知，不为每条通知重新拉取全工作区。登记与选仓通知不携带文件。
 
@@ -243,7 +243,7 @@ M3 安装版 0.6.15 复测（ETECH 环节 7）留下六处：解决结果与本�
 
 M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n update` 不报它，本地更改的未受控列表却列出 `.gradle`。0.6.18 的本地判定只用内置表。
 
-- 规则：`src/cvs/core.mjs` 按 CVS 1.12 客户端（ignore.c 的 `ign_setup`）顺序叠加内置表 → `~/.cvsignore`（家目录先取 `HOME`）→ 环境变量 `CVSIGNORE` → 各目录自己的 `.cvsignore`；目录规则只作用于该目录下的名字，不继承到子目录。规则按空白切分；单独的 `!` 清空此前规则（仍保留 `CVS`），目录里的 `!` 只影响该目录。模式按无标志 `fnmatch`：`*`、`?` 也匹配开头的点，方括号支持 `!`／`^` 取反与范围，反斜杠转义；无效范围不匹配任何名字。0.6.20 起支持 C locale（ASCII）的 POSIX 字符类：`alpha`、`digit`、`alnum`、`upper`、`lower`、`space`、`blank`、`punct`、`xdigit`、`cntrl`、`print`、`graph`，可与普通字符、范围、取反和转义组合（如 `[![:digit:]]*`、`[[:alpha:]_]`）。未知小写类不匹配，写在未知类之前的正向成员仍可匹配（`[a[:unknown:]b]` 只匹配 `a`）；取反未知类不匹配，按本机 CVS 1.12 的 fnmatch 实测。本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；未管理目录按其所在目录的规则判断。
+- 规则：`packages/tortoise-core/cvs-client/core.mjs` 按 CVS 1.12 客户端（ignore.c 的 `ign_setup`）顺序叠加内置表 → `~/.cvsignore`（家目录先取 `HOME`）→ 环境变量 `CVSIGNORE` → 各目录自己的 `.cvsignore`；目录规则只作用于该目录下的名字，不继承到子目录。规则按空白切分；单独的 `!` 清空此前规则（仍保留 `CVS`），目录里的 `!` 只影响该目录。模式按无标志 `fnmatch`：`*`、`?` 也匹配开头的点，方括号支持 `!`／`^` 取反与范围，反斜杠转义；无效范围不匹配任何名字。0.6.20 起支持 C locale（ASCII）的 POSIX 字符类：`alpha`、`digit`、`alnum`、`upper`、`lower`、`space`、`blank`、`punct`、`xdigit`、`cntrl`、`print`、`graph`，可与普通字符、范围、取反和转义组合（如 `[![:digit:]]*`、`[[:alpha:]_]`）。未知小写类不匹配，写在未知类之前的正向成员仍可匹配（`[a[:unknown:]b]` 只匹配 `a`）；取反未知类不匹配，按本机 CVS 1.12 的 fnmatch 实测。本地清单的未管理文件与目录、按文件刷新的 untracked 判定共用；未管理目录按其所在目录的规则判断。
 - pserver：客户端未忽略的名字再由服务器按它自己的表（内置表与 `CVSROOT/cvsignore`）判断，目录 `.cvsignore` 里的 `!` 清不掉服务器的内置表；只有 `~/.cvsignore` 或 `CVSIGNORE` 里的 `!` 让服务器也不忽略。因此 `:pserver:` 根在目录有 `.cvsignore` 且全局没有 `!` 时，末尾再并上内置表（vcs-sim pserver 实测）。
 - 不读服务器端 `CVSROOT/cvsignore`：pserver 下要连网，`:local:` 下为与 pserver 一致也不读。它只在网络刷新的结果（`?` 行）里生效，之后的本地刷新仍会列出这些文件。
 - 缓存：规则文件按路径缓存模式与编译后的匹配器，mtime、ctime 或大小变化即重读，删除即失效；`~/.cvsignore` 与 `CVSIGNORE` 每次清单读一次。清单只在目录列表里有 `.cvsignore` 时才读它，没有时直接用全局匹配器。读不到的规则文件按不存在处理（CVS 只警告后继续）。
@@ -271,7 +271,7 @@ M3 安装版 0.6.18（AM 轮）：工程 `.cvsignore` 写了 `.gradle`，`cvs -n
 用户 11-10 看了 0.6.21 只能按单个文件看履历后不满意，认可样图后改为：底栏「日志」对 CVS 仓库是仓库级提交列表。产品侧记录在 ETECH 仓 `ETECH.md`「版本控制按需同步与打开速度」。此节覆盖 0.6.21 的“CvsHistory 挂载即查文件历史”，其余 0.6.21 规则（`logRepositories`、未同步 CVS 的只读放行、提交面回落）不变。
 
 - 取数：`CvsAdapter.repositoryLog({from, to})` 沿 `registeredCvsDirectories` 用 `cvs -f log -l -N -S [-d 范围] . <目录…>` 逐批取（与 update、文件清单同一目录集合，8000 字符分批，不进入嵌套或异 Root 的检出），只读 stdout。0.6.23 起结果按 `path@revision` 去重（`uniqueRevisions`）：输出里出现重复就是服务器没有按 `-l` 只给出目录本身的文件（成因未确认，见下），此时丢弃该次结果（已发现重复就不再取剩下的批次），改为在仓库根做一次递归 `cvs log -N -S [-d 范围]`（无 `-l`、无目录参数），再只保留已登记目录里的文件，并把这一判断记在 `CvsAdapter.logIgnoresLocal`（同一会话），之后的范围直接用递归形式；嵌套或异 Root 的检出仍由 `registeredCvsDirectories` 先行拒绝。`-d` 用 UTC 的 `>=`／`<=`／`A<=B`（含两端）。单次输出上限 128MiB、超时 5 分钟，超出报“CVS 日志过大”；「全部」在大仓可能触及，由用户改选范围。
-- 解析与分组在纯模块 `src/cvs/log.mjs`：日志按字节读入，作者、路径、说明逐条解码（严格 UTF-8，不合法再按 MS932）；日期兼容 `2026-11-10 12:08:39 +0800`（CVS 1.12）与 `2026/10/28 08:02:03`（旧版本，UTC）。有 commitid 按 commitid 分组；没有时按时间升序，同作者同说明、与组内最近一个修订相差不超过 `COMMIT_WINDOW_SECONDS`（60）、且该文件尚未在组内就并入，否则另起一组（链式窗口，同一文件不会在一个提交里出现两次）。有无 commitid 的修订不互相并入。导入产生的 1.1 与厂商分支 1.1.1.1（同作者同时刻，有无 commitid 都一样）折成主干修订，说明取导入时写的那条（`foldImports`）；输入先按 `path@revision` 去重，重复输出不会触发“同一文件第二次出现另起一组”；分支上新增文件时主干留下的 dead 1.1 只是占位，不算删除。提交按最近一个修订的时间倒序；文件的“上一修订”按修订号推算（主干减一、分支首修订回到分支点）。
+- 解析与分组在纯模块 `packages/tortoise-core/cvs-client/log.mjs`：日志按字节读入，作者、路径、说明逐条解码（严格 UTF-8，不合法再按 MS932）；日期兼容 `2026-11-10 12:08:39 +0800`（CVS 1.12）与 `2026/10/28 08:02:03`（旧版本，UTC）。有 commitid 按 commitid 分组；没有时按时间升序，同作者同说明、与组内最近一个修订相差不超过 `COMMIT_WINDOW_SECONDS`（60）、且该文件尚未在组内就并入，否则另起一组（链式窗口，同一文件不会在一个提交里出现两次）。有无 commitid 的修订不互相并入。导入产生的 1.1 与厂商分支 1.1.1.1（同作者同时刻，有无 commitid 都一样）折成主干修订，说明取导入时写的那条（`foldImports`）；输入先按 `path@revision` 去重，重复输出不会触发“同一文件第二次出现另起一组”；分支上新增文件时主干留下的 dead 1.1 只是占位，不算删除。提交按最近一个修订的时间倒序；文件的“上一修订”按修订号推算（主干减一、分支首修订回到分支点）。
 - 缓存与时机：`CvsSession.repositoryLog(days, refresh)` 在宿主缓存原始修订和已覆盖的天数（0 为全部）；已覆盖的范围不连服务器，更大的范围只取缺的那一段（`from<=to` 含两端，按文件＋修订号去重）并整体重新分组，所以跨窗口边界的提交不会被拆开；刷新丢弃缓存重取。webview 只在日志可见时、且在首次打开、切换范围、加载更早、点刷新时请求；`follow()` 切换编辑器文件、`repositoryWritten` 都不请求。写入（提交、更新、回滚）后宿主使缓存失效，已显示的列表保持，下次打开或刷新才重取。切换编辑器会把日志选中的仓库切到文件所在仓库，首次选中另一 CVS 仓库按“选中该仓库（首次）”取一次。
 - 协议：`getCvsLog {days, refresh?}` 返回 `{days, commits:[{id,time,author,subject,body,fileCount}]}`，`getCvsCommit {commitId}` 返回该提交的 `{path,revision,previous?,kind}`，取自宿主最近一次列表，不连服务器；两者与 `diffCvsRevision` 同属未同步 CVS 可用的只读入口。`days` 为 0～36500 的整数。
 - 差异：`diffCvsRevision` 不变，`CvsAdapter.log()` 的路径门由“文件在 Entries”放宽为“所在目录是已登记的 CVS 目录”（`revisionFile()`，仍检查工作副本内、无符号链接与嵌套边界），所以同事新增的文件、已被删除的文件也能打开两修订差异；`content()` 按日志里该修订的 `state` 判断 dead 并直接返回空内容，不调用 `update -p`（不依赖服务器对它的退出码与输出）。

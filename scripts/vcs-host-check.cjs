@@ -7,7 +7,6 @@ const cp = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { pathToFileURL } = require("node:url");
 const { build } = require("esbuild");
 
 const git = (cwd, args) => cp.execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -117,7 +116,7 @@ async function main() {
     global.__vcsHostVscode = vscode;
     const bundle = path.join(base, "host.cjs");
     await build({ entryPoints: ["src/repositories/manager.ts"], bundle: true, platform: "node", format: "cjs", outfile: bundle, plugins: [{ name: "fixture", setup(build) { build.onResolve({ filter: /^vscode$/ }, () => ({ path: "vscode", namespace: "fixture" })); build.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: "module.exports=global.__vcsHostVscode;" })); } }] });
-    const core = await import(pathToFileURL(path.resolve("src/cvs/core.mjs")).href);
+    const core = await import("tortoise-core/cvs");
     const cvs = new core.CvsProcess(process.env.JETTORTOISE_TEST_CVS || "cvs");
     const repository = path.join(base, "cvs-repository"), seed = path.join(base, "seed"), cvsRoot = `:local:${repository}`;
     await fs.mkdir(repository); await fs.mkdir(seed);

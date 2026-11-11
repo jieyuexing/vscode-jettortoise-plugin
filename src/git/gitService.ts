@@ -3,14 +3,14 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import * as vscode from "vscode";
 import {
   assertNoNestedRepositories,
   assertOwnedPath as assertRepositoryOwnedPath,
   boundariesForPaths,
   NestedRepositoryError,
-} from "../repositories/boundaries.cjs";
-import { runNetwork } from "../repositories/network.cjs";
+} from "tortoise-core/boundaries";
+import { runNetwork } from "tortoise-core/network";
+import * as vscode from "vscode";
 import { GitCache } from "./cache";
 import { computeGraphLayout } from "./graphLayout";
 import {

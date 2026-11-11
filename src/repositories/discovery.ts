@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { isCvsContinuation, isCvsSameProject } from "./boundaries.cjs";
+import { isCvsContinuation, isCvsSameProject } from "tortoise-core/boundaries";
 import type { RepositoryKind } from "./types";
 
 const execFileAsync = promisify(execFile);

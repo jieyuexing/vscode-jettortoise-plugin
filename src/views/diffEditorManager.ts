@@ -1,3 +1,4 @@
+import { assertOwnedPath } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import {
   GitComparisonResolver,
@@ -6,7 +7,6 @@ import {
 import type { GitService } from "../git/gitService";
 import { resolveWorktreePath } from "../git/security";
 import type { DiffFile } from "../git/types";
-import { assertOwnedPath } from "../repositories/boundaries.cjs";
 import { gitRevisionUri } from "./gitContentProvider";
 
 export class DiffEditorManager {

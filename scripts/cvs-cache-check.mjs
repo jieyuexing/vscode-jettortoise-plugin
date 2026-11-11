@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { CACHE_VERSION, CvsCacheStore, rootIdentity, rootPath } from "../src/cvs/cache.mjs";
+import { CACHE_VERSION, CvsCacheStore, rootIdentity, rootPath } from "tortoise-core/cvs/cache";
 
 async function directory() {
   return fs.realpath(await fs.mkdtemp(path.join(tmpdir(), "jettortoise-cache-")));

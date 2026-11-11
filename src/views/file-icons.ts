@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { within } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
-import { within } from "../repositories/boundaries.cjs";
 
 interface Associations {
   file?: string;

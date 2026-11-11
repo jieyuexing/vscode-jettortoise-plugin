@@ -2,10 +2,10 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { nearestRepositories, within } from "tortoise-core/boundaries";
 import * as vscode from "vscode";
 import type { GitCache } from "../git/cache";
 import type { MessageRouter } from "../messages/messageRouter";
-import { nearestRepositories, within } from "../repositories/boundaries.cjs";
 
 type Scope = "all" | "branches" | "status" | "mergeState" | "log";
 const execFileAsync = promisify(execFile);

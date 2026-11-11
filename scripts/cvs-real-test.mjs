@@ -5,8 +5,8 @@ import { promisify } from "node:util";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { CvsAdapter, CvsProcess, SerialQueue, checkout, cvsRoot, findWorkingCopy, relativeFile, revision } from "../src/cvs/core.mjs";
-import { groupCommits } from "../src/cvs/log.mjs";
+import { CvsAdapter, CvsProcess, SerialQueue, checkout, cvsRoot, findWorkingCopy, relativeFile, revision } from "tortoise-core/cvs";
+import { groupCommits } from "tortoise-core/cvs/log";
 import { validateMessage } from "../src/cvs/protocol.mjs";
 
 async function fixture() {

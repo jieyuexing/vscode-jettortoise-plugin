@@ -94,18 +94,20 @@ export function parseRepositoryLog(input, toPath) {
       if (!match) continue;
       const time = parseLogDate(match[2]);
       if (Number.isNaN(time)) continue;
-      const message = (match[6] ?? "")
-        .replace(/(?:^|\r?\n)={77}\s*$/, "")
-        .replace(/^branches:[^\r\n]*\r?\n?/, "")
-        .trim();
+      // 先解码再去空白：末字节 0xA0 在 latin1 下是 NBSP，先 trim 会切坏多字节字符。
+      const message = decode(
+        (match[6] ?? "")
+          .replace(/(?:^|\r?\n)={77}\s*$/, "")
+          .replace(/^branches:[^\r\n]*\r?\n?/, ""),
+      ).trim();
       revisions.push({
         path,
         revision: match[1],
         time,
-        author: decode(match[3].trim()),
+        author: decode(match[3]).trim(),
         state: match[4].trim(),
         commitId: match[5].match(/commitid: ([^;\s]+)/)?.[1],
-        message: decode(message),
+        message,
       });
     }
   });

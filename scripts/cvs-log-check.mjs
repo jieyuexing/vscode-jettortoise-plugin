@@ -116,6 +116,20 @@ test("parseRepositoryLog: MS932 and UTF-8 messages in one output are decoded one
   assert.equal(parsed[2].message, "日本語の説明\nsecond line");
 });
 
+test("parseRepositoryLog: a message or author whose last byte is 0xA0 is decoded before trimming", () => {
+  // UTF-8「だ」= E3 81 A0，Shift_JIS「あ」= 82 A0：末字节 0xA0 在 latin1 下是 NBSP，先 trim 会把它切掉。
+  const parsed = parseRepositoryLog(
+    output(
+      fileBlock("a.txt", [{ rev: "1.1", date: "2026-10-01 10:00:00 +0000", author: Buffer.from("だ", "utf8").toString("latin1"), message: "これは説明だ" }]),
+      fileBlock("b.txt", [{ rev: "1.1", date: "2026-10-01 10:00:00 +0000", message: Buffer.from([0x82, 0xa0]) }]),
+    ),
+    toPath,
+  );
+  assert.equal(parsed[0].message, "これは説明だ");
+  assert.equal(parsed[0].author, "だ");
+  assert.equal(parsed[1].message, "あ");
+});
+
 test("previousRevision follows revision arithmetic and branch points", () => {
   assert.equal(previousRevision("1.8"), "1.7");
   assert.equal(previousRevision("1.1"), undefined);

@@ -4,6 +4,7 @@ out/**
 node_modules/**
 src/**
 webview/**
+packages/**
 docs/**
 .gitignore
 .npmrc

@@ -8,6 +8,7 @@ CVS 与仓库边界的纯 Node 内核，不依赖 VS Code。
 | --- | --- | --- |
 | `tortoise-core/cvs` | `cvs-client/core.mjs` | CVS 命令适配、队列、签出、忽略规则 |
 | `tortoise-core/cvs/log` | `cvs-client/log.mjs` | 仓库日志解析与按提交分组 |
+| `tortoise-core/cvs/log-session` | `cvs-client/log-session.mjs`（类型 `log-session.d.mts`） | 仓库日志取数编排：范围覆盖、新鲜期、增量与合并；时间、取数与缓存由调用方注入 |
 | `tortoise-core/cvs/cache` | `cvs-client/cache.mjs` | 日志落盘缓存 |
 | `tortoise-core/boundaries` | `repositories/boundaries.cjs` | 仓库边界、Entries 读取、写路径校验 |
 | `tortoise-core/network` | `repositories/network.cjs` | 网络命令全局并发闸 |

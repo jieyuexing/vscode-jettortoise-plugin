@@ -7,6 +7,10 @@
   "exports": {
     "./cvs": "./cvs-client/core.mjs",
     "./cvs/log": "./cvs-client/log.mjs",
+    "./cvs/log-session": {
+      "types": "./cvs-client/log-session.d.mts",
+      "default": "./cvs-client/log-session.mjs"
+    },
     "./cvs/cache": "./cvs-client/cache.mjs",
     "./boundaries": {
       "types": "./repositories/boundaries.d.cts",

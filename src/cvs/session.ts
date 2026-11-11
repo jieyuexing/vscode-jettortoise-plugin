@@ -121,9 +121,28 @@ const commits = require("tortoise-core/cvs/log") as {
   compareRevisions(a: string, b: string): number;
   logDate(time: number): string;
 };
+const logSession = require("tortoise-core/cvs/log-session") as {
+  loadRepositoryLog(input: {
+    state?: LogState;
+    days: number;
+    refresh?: boolean;
+    stale?: boolean;
+    fetchRevisions(
+      range: { from?: number; to?: number },
+      signal?: AbortSignal,
+    ): Promise<LogRevision[]>;
+    readLog(): Promise<LogState | undefined>;
+    writeLog(state: LogState): Promise<void>;
+    signal?: AbortSignal;
+  }): Promise<{
+    state: LogState;
+    contacted: boolean;
+    refreshed: boolean;
+    error?: unknown;
+  }>;
+  rangeStart(days: number, now: number): number;
+};
 const cacheModule = require("tortoise-core/cvs/cache") as {
-  LOG_FRESH_MS: number;
-  LOG_OVERLAP_MS: number;
   CvsCacheStore: new (
     directory: string,
   ) => CvsCacheStore & {
@@ -134,7 +153,6 @@ const cacheModule = require("tortoise-core/cvs/cache") as {
 export function createCvsCacheStore(directory: string) {
   return new cacheModule.CvsCacheStore(directory);
 }
-const DAY = 24 * 60 * 60 * 1000;
 /** 仓库日志缓存：已覆盖的起点（0 为全部历史）、最新修订时间、最近一次连服务器的时间与修订。 */
 interface LogState {
   coveredFrom: number;
@@ -498,94 +516,21 @@ export class CvsSession {
       async (adapter, signal) => {
         const context = await this.context();
         await this.loadCache(context.cache);
-        const now = Date.now();
-        const needFrom = days ? now - days * DAY : 0;
-        let state = this.logState;
-        let contacted = false;
-        let error: string | undefined;
-        const save = async (next: LogState) => {
-          this.logState = state = next;
-          await context.cache?.writeLog(next).catch(() => {});
-        };
-        const newest = (revisions: LogRevision[]) =>
-          revisions.reduce<number | null>(
-            (latest, item) =>
-              latest === null || item.time > latest ? item.time : latest,
-            null,
-          );
-        if (!state) {
-          const revisions = await adapter.repositoryLog(
-            { from: needFrom || undefined },
-            signal,
-          );
-          await save({
-            coveredFrom: needFrom,
-            newest: newest(revisions),
-            fetchedAt: Date.now(),
-            revisions,
-          });
-          contacted = true;
-        } else
-          try {
-            if (state.coveredFrom !== 0 && needFrom < state.coveredFrom) {
-              const older = await adapter.repositoryLog(
-                { from: needFrom || undefined, to: state.coveredFrom },
-                signal,
-              );
-              await save({
-                ...state,
-                coveredFrom: needFrom,
-                revisions: commits.mergeRevisions(state.revisions, older),
-              });
-              contacted = true;
-            }
-            if (
-              options.refresh ||
-              this.logStale ||
-              now - state.fetchedAt >= cacheModule.LOG_FRESH_MS
-            ) {
-              // 别的窗口可能已经更新过缓存：先取它的。
-              const disk = await context.cache?.readLog();
-              if (
-                disk &&
-                disk.fetchedAt > state.fetchedAt &&
-                (disk.coveredFrom === 0 ||
-                  disk.coveredFrom <= state.coveredFrom)
-              )
-                this.logState = state = disk;
-              if (
-                options.refresh ||
-                this.logStale ||
-                now - state.fetchedAt >= cacheModule.LOG_FRESH_MS
-              ) {
-                const fresh = await adapter.repositoryLog(
-                  {
-                    from:
-                      state.newest === null
-                        ? state.coveredFrom || undefined
-                        : state.newest - cacheModule.LOG_OVERLAP_MS,
-                  },
-                  signal,
-                );
-                const revisions = commits.mergeRevisions(
-                  state.revisions,
-                  fresh,
-                );
-                await save({
-                  ...state,
-                  newest: newest(revisions),
-                  fetchedAt: Date.now(),
-                  revisions,
-                });
-                this.logStale = false;
-                contacted = true;
-              }
-            }
-          } catch (failure) {
-            // 有缓存时保留已显示的列表，只报告这次没取成。
-            error = cvsErrorText(failure);
-          }
-        return this.logResult(days, !contacted, error);
+        const result = await logSession.loadRepositoryLog({
+          state: this.logState,
+          days,
+          refresh: options.refresh,
+          stale: this.logStale,
+          fetchRevisions: (range, abort) => adapter.repositoryLog(range, abort),
+          readLog: () => context.cache?.readLog() ?? Promise.resolve(undefined),
+          writeLog: (next) =>
+            context.cache?.writeLog(next) ?? Promise.resolve(),
+          signal,
+        });
+        this.logState = result.state;
+        if (result.refreshed) this.logStale = false;
+        const error = result.error ? cvsErrorText(result.error) : undefined;
+        return this.logResult(days, !result.contacted, error);
       },
       false,
       vscode.ProgressLocation.Window,
@@ -597,7 +542,7 @@ export class CvsSession {
   }
   private logResult(days: number, fromCache: boolean, error?: string) {
     const state = this.logState;
-    const since = days ? Date.now() - days * DAY : 0;
+    const since = logSession.rangeStart(days, Date.now());
     const grouped = commits.groupCommits(
       (state?.revisions ?? []).filter((item) => item.time >= since),
     );
